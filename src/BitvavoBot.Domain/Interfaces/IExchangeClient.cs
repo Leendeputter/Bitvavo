@@ -11,20 +11,18 @@ public sealed record OrderResult(
     decimal FeePaid);
 
 /// <summary>
-/// Exchange-agnostic spot trading client. Bitvavo is the first full implementation
-/// (<c>BitvavoExchangeClient</c>); <c>PaperExchangeClient</c> implements the same contract but
-/// simulates every call locally instead of talking to a real exchange. The active implementation
-/// is chosen by dependency injection based on the globally selected <see cref="TradingMode"/>.
+/// Read-only live market data: market list, tickers, order book depth and fee schedule. Both the
+/// real Bitvavo client and <c>PaperExchangeClient</c> read from one shared instance of this so
+/// Papertrading always reacts to the same live data as Live trading (functional spec 8.2) — the
+/// Marktmonitor screen is mode-independent and always uses this feed directly.
 /// </summary>
-public interface IExchangeClient
+public interface IMarketDataFeed
 {
-    TradingMode Mode { get; }
     ConnectionStatus ConnectionStatus { get; }
 
     event EventHandler<ConnectionStatus>? ConnectionStatusChanged;
     event EventHandler<Ticker>? TickerUpdated;
     event EventHandler<OrderBookSnapshot>? OrderBookUpdated;
-    event EventHandler<OrderResult>? OrderUpdated;
 
     Task ConnectAsync(CancellationToken cancellationToken = default);
     Task DisconnectAsync(CancellationToken cancellationToken = default);
@@ -37,6 +35,21 @@ public interface IExchangeClient
 
     Task SubscribeTickerAsync(string market, CancellationToken cancellationToken = default);
     Task UnsubscribeTickerAsync(string market, CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Exchange-agnostic spot trading client. Bitvavo is the first full implementation
+/// (<c>BitvavoExchangeClient</c>); <c>PaperExchangeClient</c> implements the same contract but
+/// simulates every call locally instead of talking to a real exchange, reading prices from a
+/// shared <see cref="IMarketDataFeed"/> instead of maintaining its own connection. The active
+/// implementation is chosen by dependency injection based on the globally selected
+/// <see cref="TradingMode"/>.
+/// </summary>
+public interface IExchangeClient : IMarketDataFeed
+{
+    TradingMode Mode { get; }
+
+    event EventHandler<OrderResult>? OrderUpdated;
 
     Task<IReadOnlyList<AssetBalance>> GetBalanceAsync(CancellationToken cancellationToken = default);
 
