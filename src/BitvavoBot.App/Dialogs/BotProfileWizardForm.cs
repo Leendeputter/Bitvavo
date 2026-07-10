@@ -26,6 +26,9 @@ public sealed class BotProfileWizardForm : Form
 
     private readonly CheckedListBox _marketsList = new() { Height = 140, Width = 300, CheckOnClick = true };
     private readonly Button _selectAllButton = new() { Text = "Alles selecteren" };
+    private readonly Button _reloadMarketsButton = new() { Text = "Opnieuw laden" };
+    private readonly Label _marketsErrorLabel = new() { AutoSize = true, ForeColor = Color.Firebrick, MaximumSize = new Size(480, 0), Visible = false };
+    private BitvavoExchangeClient? _liveMarketData;
 
     private readonly NumericUpDown _scrapeInterval = new() { Minimum = 1, Maximum = 3600, Value = 30 };
     private readonly NumericUpDown _buyMargin = new() { Maximum = 100, DecimalPlaces = 2, Value = 1 };
@@ -59,6 +62,7 @@ public sealed class BotProfileWizardForm : Form
 
         _botProfileRepository = botProfileRepository;
         _papertradingProfileRepository = papertradingProfileRepository;
+        _liveMarketData = liveMarketData;
         _existing = existing;
 
         Text = existing is null ? "Nieuw bot profiel" : $"Bot profiel bewerken — {existing.Name}";
@@ -78,6 +82,7 @@ public sealed class BotProfileWizardForm : Form
         {
             for (var i = 0; i < _marketsList.Items.Count; i++) _marketsList.SetItemChecked(i, true);
         };
+        _reloadMarketsButton.Click += async (_, _) => await LoadMarketsAsync();
         _liveRadio.CheckedChanged += (_, _) => _paperProfileCombo.Enabled = _newPaperProfileButton.Enabled = !_liveRadio.Checked;
         _newPaperProfileButton.Click += async (_, _) => await CreatePapertradingProfileAsync();
         _saveButton.Click += async (_, _) => await SaveAsync();
@@ -91,7 +96,7 @@ public sealed class BotProfileWizardForm : Form
 
         Load += async (_, _) =>
         {
-            await LoadMarketsAsync(liveMarketData);
+            await LoadMarketsAsync();
             await LoadPapertradingProfilesAsync();
             if (_existing is not null) await PopulateFromExistingAsync();
         };
@@ -103,7 +108,7 @@ public sealed class BotProfileWizardForm : Form
 
         root.Controls.Add(Section("Naam", _nameBox));
         root.Controls.Add(Section("1. Handelsbedrag", Row(_fixedAmountRadio, _pctAmountRadio, _amountValue)));
-        root.Controls.Add(Section("2. Handelsparen", Column(_marketsList, _selectAllButton)));
+        root.Controls.Add(Section("2. Handelsparen", Column(_marketsList, Row(_selectAllButton, _reloadMarketsButton), _marketsErrorLabel)));
         root.Controls.Add(Section("3. Scrape/analyse-interval (sec)", _scrapeInterval));
         root.Controls.Add(Section("4. Limiet order instellingen", Row(Labeled("Koopmarge %", _buyMargin), Labeled("Verkoopmarge %", _sellMargin))));
         root.Controls.Add(Section("5. Open orders controle", Row(Labeled("Min. open orders %", _minOpenOrdersPct), _autoReplenish)));
@@ -150,21 +155,38 @@ public sealed class BotProfileWizardForm : Form
         return panel;
     }
 
-    private async Task LoadMarketsAsync(BitvavoExchangeClient liveMarketData)
+    private async Task LoadMarketsAsync()
     {
+        _marketsErrorLabel.Visible = false;
+        _reloadMarketsButton.Enabled = false;
+        _marketsList.Items.Clear();
+
         try
         {
-            var markets = await liveMarketData.GetMarketsAsync();
-            _marketsList.Items.Clear();
-            foreach (var market in markets.Where(m => m.TradingAllowed).OrderBy(m => m.Market))
+            var markets = await _liveMarketData!.GetMarketsAsync();
+            var tradable = markets.Where(m => m.TradingAllowed).OrderBy(m => m.Market).ToList();
+
+            foreach (var market in tradable)
             {
                 _marketsList.Items.Add(market.Market);
             }
+
+            if (tradable.Count == 0)
+            {
+                _marketsErrorLabel.Text = $"Bitvavo gaf {markets.Count} markt(en) terug, maar geen enkele met status 'trading'. Controleer de verbinding of probeer opnieuw.";
+                _marketsErrorLabel.Visible = true;
+            }
         }
-        catch
+        catch (Exception ex)
         {
-            _marketsList.Items.Add("BTC-EUR");
-            _marketsList.Items.Add("ETH-EUR");
+            // Surface the real failure instead of silently filling the list with a fake, incomplete
+            // set of markets — that hid genuine connectivity/API errors from the user entirely.
+            _marketsErrorLabel.Text = $"Kon markten niet laden van Bitvavo: {ex.Message}";
+            _marketsErrorLabel.Visible = true;
+        }
+        finally
+        {
+            _reloadMarketsButton.Enabled = true;
         }
     }
 
