@@ -25,8 +25,12 @@ tests/
 ## Prerequisites
 
 - **Windows 10/11** (the app itself; WinForms does not run on Linux/macOS).
-- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) (includes the Windows Desktop
-  workload needed for `BitvavoBot.App`).
+- Any **.NET 8 or .NET 9 SDK** ([download](https://dotnet.microsoft.com/download/dotnet)), with
+  the Windows Desktop workload (included by default on Windows). The solution targets `net8.0` /
+  `net8.0-windows`; a .NET 9 SDK can build it as-is (newer SDKs always support building
+  still-supported older target frameworks), and `RollForward=LatestMajor` is set on the runnable
+  projects (`BitvavoBot.App`, `BitvavoBot.Tests`) so they also *run* on a machine that only has
+  the .NET 9 runtime installed, without needing the .NET 8 runtime side-by-side.
 - A Bitvavo account and API key/secret if you intend to use **Live** mode
   ([Bitvavo API settings](https://account.bitvavo.com/user/api)). Not required for Papertrading.
 

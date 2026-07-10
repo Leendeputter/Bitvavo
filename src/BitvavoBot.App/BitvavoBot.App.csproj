@@ -10,6 +10,9 @@
     <ApplicationIcon />
     <!-- Allows building (not running) this Windows-only project on non-Windows dev/CI machines. -->
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <!-- Lets the app launch on a machine that only has a newer major .NET runtime installed
+         (e.g. only .NET 9) even though this project targets net8.0-windows. -->
+    <RollForward>LatestMajor</RollForward>
   </PropertyGroup>
 
   <ItemGroup>
