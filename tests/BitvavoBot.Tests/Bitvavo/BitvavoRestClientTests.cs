@@ -93,4 +93,25 @@ public sealed class BitvavoRestClientTests
         var market = Assert.Single(markets);
         Assert.Equal(5, market.PricePrecision);
     }
+
+    /// <summary>
+    /// Regression test: Bitvavo returns "pricePrecision": null for at least some markets. That
+    /// must fall back to a safe default rather than throwing (which broke loading markets a
+    /// second time after the decimal/string-form fix) or defaulting to 0 (which would round every
+    /// price for that market down to a whole number).
+    /// </summary>
+    [Fact]
+    public async Task GetMarketsAsync_TreatsNullPricePrecisionAsSafeDefaultInsteadOfThrowing()
+    {
+        const string json = """
+            [{"market":"BTC-EUR","status":"trading","base":"BTC","quote":"EUR","pricePrecision":null,"minOrderInBaseAsset":"0.001","minOrderInQuoteAsset":"5"}]
+            """;
+        var handler = new CapturingHandler(json);
+        var client = new BitvavoRestClient(new HttpClient(handler), new BitvavoOptions { RestBaseUrl = "https://api.bitvavo.com/v2" });
+
+        var markets = await client.GetMarketsAsync(CancellationToken.None);
+
+        var market = Assert.Single(markets);
+        Assert.True(market.PricePrecision > 0);
+    }
 }
