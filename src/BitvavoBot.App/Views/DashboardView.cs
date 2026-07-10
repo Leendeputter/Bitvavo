@@ -41,6 +41,7 @@ public sealed class DashboardView : UserControl
         _exchangeClientFactory = exchangeClientFactory;
 
         BuildLayout();
+        this.ApplyReadableButtonSizing();
 
         _startButton.Click += async (_, _) => await SafeAsync(async () =>
         {

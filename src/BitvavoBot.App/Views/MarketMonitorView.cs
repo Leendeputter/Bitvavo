@@ -33,6 +33,7 @@ public sealed class MarketMonitorView : UserControl
 
         _liveMarketData = liveMarketData;
         BuildLayout();
+        this.ApplyReadableButtonSizing();
 
         _searchBox.TextChanged += (_, _) => RenderGrid();
         _favoritesOnly.CheckedChanged += (_, _) => RenderGrid();

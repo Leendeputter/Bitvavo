@@ -58,6 +58,7 @@ public sealed class LeverageTradingView : UserControl
         _liveMarketData = liveMarketData;
 
         BuildLayout();
+        this.ApplyReadableButtonSizing();
 
         _autoTakeProfit.CheckedChanged += (_, _) => _takeProfitPct.Enabled = _autoTakeProfit.Checked;
         _leverage.ValueChanged += async (_, _) => await UpdateLiquidationPreviewAsync();

@@ -53,6 +53,7 @@ public sealed class OpenOrdersView : UserControl
         Controls.Add(_grid);
         Controls.Add(toolbar);
         Controls.Add(_tabs);
+        this.ApplyReadableButtonSizing();
 
         _refreshButton.Click += async (_, _) => await RefreshAsync();
         _cancelButton.Click += async (_, _) => await CancelSelectedAsync();

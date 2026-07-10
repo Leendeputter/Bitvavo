@@ -59,6 +59,7 @@ public sealed class TradingBotView : UserControl
         Dock = DockStyle.Fill;
         Controls.Add(_grid);
         Controls.Add(toolbar);
+        this.ApplyReadableButtonSizing();
 
         _newButton.Click += async (_, _) => await OpenWizardAsync(null);
         _editButton.Click += async (_, _) => await OpenWizardAsync(SelectedProfileName());

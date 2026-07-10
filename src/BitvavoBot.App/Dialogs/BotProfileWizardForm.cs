@@ -72,6 +72,7 @@ public sealed class BotProfileWizardForm : Form
         _strategyCombo.SelectedIndex = 0;
 
         BuildLayout();
+        this.ApplyReadableButtonSizing();
 
         _selectAllButton.Click += (_, _) =>
         {

@@ -39,6 +39,7 @@ public sealed class PapertradingView : UserControl
         _tradeRepository = tradeRepository;
 
         BuildLayout();
+        this.ApplyReadableButtonSizing();
 
         _profileCombo.SelectedIndexChanged += async (_, _) => await RefreshSummaryAsync();
         _newProfileButton.Click += async (_, _) => await CreateProfileAsync();

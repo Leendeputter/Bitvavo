@@ -31,6 +31,7 @@ public sealed class SettingsView : UserControl
         _credentialProtector = credentialProtector;
 
         BuildLayout();
+        this.ApplyReadableButtonSizing();
 
         _useExchangeFees.CheckedChanged += (_, _) => { _makerFee.Enabled = _takerFee.Enabled = !_useExchangeFees.Checked; };
         _showSecretsBox.CheckedChanged += (_, _) =>

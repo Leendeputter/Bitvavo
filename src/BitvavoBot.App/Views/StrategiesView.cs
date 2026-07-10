@@ -38,6 +38,7 @@ public sealed class StrategiesView : UserControl
         Dock = DockStyle.Fill;
         Controls.Add(_grid);
         Controls.Add(toolbar);
+        this.ApplyReadableButtonSizing();
 
         _refreshButton.Click += async (_, _) => await RefreshAsync();
         VisibleChanged += async (_, _) => { if (Visible) await RefreshAsync(); };

@@ -47,6 +47,7 @@ public sealed class PositionsView : UserControl
         Controls.Add(_grid);
         Controls.Add(toolbar);
         Controls.Add(_tabs);
+        this.ApplyReadableButtonSizing();
 
         _refreshButton.Click += async (_, _) => await RefreshAsync();
         VisibleChanged += async (_, _) => { if (Visible) await RefreshAsync(); };

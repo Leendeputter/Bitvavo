@@ -48,6 +48,7 @@ public sealed class LoggingView : UserControl
         Dock = DockStyle.Fill;
         Controls.Add(_grid);
         Controls.Add(toolbar);
+        this.ApplyReadableButtonSizing();
 
         _refreshButton.Click += async (_, _) => await RefreshAsync();
         _typeFilter.SelectedIndexChanged += async (_, _) => await RefreshAsync();

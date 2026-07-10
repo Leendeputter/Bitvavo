@@ -42,6 +42,7 @@ public sealed class PapertradingProfileEditForm : Form
         layout.Controls.Add(buttons);
 
         Controls.Add(layout);
+        this.ApplyReadableButtonSizing();
 
         _okButton.Click += (_, e) =>
         {
