@@ -1,0 +1,15 @@
+## .NET build output
+bin/
+obj/
+*.user
+
+## Rider / VS
+.vs/
+.idea/
+*.suo
+
+## Local runtime data
+*.db
+*.db-shm
+*.db-wal
+*.log
