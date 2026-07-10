@@ -69,4 +69,28 @@ public sealed class BitvavoRestClientTests
 
         Assert.Equal("https://api.bitvavo.com/v2/BTC-EUR/book?depth=25", handler.CapturedRequestUri?.ToString());
     }
+
+    /// <summary>
+    /// Regression test: Bitvavo's live response for "pricePrecision" is not guaranteed to be a
+    /// plain JSON integer — a decimal-formatted number (5.0) or a numeric string ("5") both make
+    /// the default System.Text.Json int conversion throw ("The JSON value could not be converted
+    /// to System.Int32"), which broke loading markets for the bot wizard entirely.
+    /// </summary>
+    [Theory]
+    [InlineData("5")]
+    [InlineData("5.0")]
+    [InlineData("\"5\"")]
+    public async Task GetMarketsAsync_AcceptsPricePrecisionInAnyReasonableJsonForm(string pricePrecisionJson)
+    {
+        var json = $$"""
+            [{"market":"BTC-EUR","status":"trading","base":"BTC","quote":"EUR","pricePrecision":{{pricePrecisionJson}},"minOrderInBaseAsset":"0.001","minOrderInQuoteAsset":"5"}]
+            """;
+        var handler = new CapturingHandler(json);
+        var client = new BitvavoRestClient(new HttpClient(handler), new BitvavoOptions { RestBaseUrl = "https://api.bitvavo.com/v2" });
+
+        var markets = await client.GetMarketsAsync(CancellationToken.None);
+
+        var market = Assert.Single(markets);
+        Assert.Equal(5, market.PricePrecision);
+    }
 }

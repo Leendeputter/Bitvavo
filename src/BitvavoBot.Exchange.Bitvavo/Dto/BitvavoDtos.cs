@@ -8,7 +8,9 @@ public sealed class MarketDto
     [JsonPropertyName("status")] public string Status { get; set; } = string.Empty;
     [JsonPropertyName("base")] public string Base { get; set; } = string.Empty;
     [JsonPropertyName("quote")] public string Quote { get; set; } = string.Empty;
-    [JsonPropertyName("pricePrecision")] public int PricePrecision { get; set; }
+    [JsonPropertyName("pricePrecision")]
+    [JsonConverter(typeof(FlexibleIntJsonConverter))]
+    public int PricePrecision { get; set; }
     [JsonPropertyName("minOrderInBaseAsset")] public string? MinOrderInBaseAsset { get; set; }
     [JsonPropertyName("minOrderInQuoteAsset")] public string? MinOrderInQuoteAsset { get; set; }
 }
