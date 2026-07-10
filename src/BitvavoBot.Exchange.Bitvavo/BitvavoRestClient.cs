@@ -27,7 +27,6 @@ public sealed class BitvavoRestClient
     public BitvavoRestClient(HttpClient httpClient, BitvavoOptions options)
     {
         _httpClient = httpClient;
-        _httpClient.BaseAddress ??= new Uri(options.RestBaseUrl);
         _options = options;
         _signer = new BitvavoAuthSigner(options);
     }
@@ -72,7 +71,12 @@ public sealed class BitvavoRestClient
     {
         var bodyJson = body is null ? string.Empty : JsonSerializer.Serialize(body, JsonOptions);
 
-        using var request = new HttpRequestMessage(method, pathWithQuery);
+        // Built as an absolute URI by string concatenation rather than HttpClient.BaseAddress +
+        // relative Uri: when a relative path starts with "/" (as all of ours do), standard URI
+        // combination rules treat it as absolute-from-host-root and silently drop the "/v2" base
+        // path segment, sending every request to the wrong URL.
+        var absoluteUri = new Uri($"{_options.RestBaseUrl.TrimEnd('/')}{pathWithQuery}");
+        using var request = new HttpRequestMessage(method, absoluteUri);
         if (body is not null)
         {
             request.Content = new StringContent(bodyJson, Encoding.UTF8, "application/json");

@@ -19,6 +19,7 @@
     <ProjectReference Include="..\..\src\BitvavoBot.Domain\BitvavoBot.Domain.csproj" />
     <ProjectReference Include="..\..\src\BitvavoBot.Trading\BitvavoBot.Trading.csproj" />
     <ProjectReference Include="..\..\src\BitvavoBot.Exchange.Paper\BitvavoBot.Exchange.Paper.csproj" />
+    <ProjectReference Include="..\..\src\BitvavoBot.Exchange.Bitvavo\BitvavoBot.Exchange.Bitvavo.csproj" />
   </ItemGroup>
 
 </Project>
