@@ -14,11 +14,14 @@ public sealed class LoggingView : UserControl
     private readonly DataGridView _grid = new()
     {
         Dock = DockStyle.Fill, AutoGenerateColumns = false, ReadOnly = true,
-        AllowUserToAddRows = false, SelectionMode = DataGridViewSelectionMode.FullRowSelect, RowHeadersVisible = false
+        AllowUserToAddRows = false, SelectionMode = DataGridViewSelectionMode.FullRowSelect, RowHeadersVisible = false,
+        ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize
     };
 
     public LoggingView(ILogRepository logRepository)
     {
+        this.ApplyStandardAutoScale();
+
         _logRepository = logRepository;
 
         _typeFilter.Items.Add("Alle types");

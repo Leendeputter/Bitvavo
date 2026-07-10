@@ -31,6 +31,8 @@ public sealed class DashboardView : UserControl
         IBotProfileRepository botProfileRepository, IOrderRepository orderRepository, IPositionRepository positionRepository,
         ITradeRepository tradeRepository, IBotOrchestrator botOrchestrator, IExchangeClientFactory exchangeClientFactory)
     {
+        this.ApplyStandardAutoScale();
+
         _botProfileRepository = botProfileRepository;
         _orderRepository = orderRepository;
         _positionRepository = positionRepository;

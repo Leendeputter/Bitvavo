@@ -31,6 +31,8 @@ public sealed class PapertradingView : UserControl
         IPapertradingProfileRepository papertradingProfileRepository, IOrderRepository orderRepository,
         IPositionRepository positionRepository, ITradeRepository tradeRepository)
     {
+        this.ApplyStandardAutoScale();
+
         _papertradingProfileRepository = papertradingProfileRepository;
         _orderRepository = orderRepository;
         _positionRepository = positionRepository;

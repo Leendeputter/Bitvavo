@@ -41,7 +41,8 @@ public sealed class LeverageTradingView : UserControl
     private readonly DataGridView _grid = new()
     {
         Dock = DockStyle.Fill, AutoGenerateColumns = false, ReadOnly = true,
-        AllowUserToAddRows = false, SelectionMode = DataGridViewSelectionMode.FullRowSelect, RowHeadersVisible = false
+        AllowUserToAddRows = false, SelectionMode = DataGridViewSelectionMode.FullRowSelect, RowHeadersVisible = false,
+        ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize
     };
     private readonly Button _closeButton = new() { Text = "Sluit positie" };
 
@@ -49,6 +50,8 @@ public sealed class LeverageTradingView : UserControl
         IAppModeService appModeService, ExchangeClientFactory exchangeClientFactory,
         IPapertradingProfileRepository papertradingProfileRepository, BitvavoExchangeClient liveMarketData)
     {
+        this.ApplyStandardAutoScale();
+
         _appModeService = appModeService;
         _exchangeClientFactory = exchangeClientFactory;
         _papertradingProfileRepository = papertradingProfileRepository;

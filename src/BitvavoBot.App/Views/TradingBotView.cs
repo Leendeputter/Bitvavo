@@ -26,7 +26,7 @@ public sealed class TradingBotView : UserControl
     {
         Dock = DockStyle.Fill, AutoGenerateColumns = false, ReadOnly = true,
         AllowUserToAddRows = false, SelectionMode = DataGridViewSelectionMode.FullRowSelect, RowHeadersVisible = false,
-        MultiSelect = false
+        MultiSelect = false, ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize
     };
 
     public TradingBotView(
@@ -34,6 +34,8 @@ public sealed class TradingBotView : UserControl
         IPapertradingProfileRepository papertradingProfileRepository, IBotOrchestrator botOrchestrator,
         IAppModeService appModeService, BitvavoExchangeClient liveMarketData)
     {
+        this.ApplyStandardAutoScale();
+
         _serviceProvider = serviceProvider;
         _botProfileRepository = botProfileRepository;
         _papertradingProfileRepository = papertradingProfileRepository;

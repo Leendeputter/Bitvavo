@@ -15,13 +15,16 @@ public sealed class PositionsView : UserControl
     private readonly DataGridView _grid = new()
     {
         Dock = DockStyle.Fill, AutoGenerateColumns = false, ReadOnly = true,
-        AllowUserToAddRows = false, SelectionMode = DataGridViewSelectionMode.FullRowSelect, RowHeadersVisible = false
+        AllowUserToAddRows = false, SelectionMode = DataGridViewSelectionMode.FullRowSelect, RowHeadersVisible = false,
+        ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize
     };
 
     private TradingMode SelectedMode => _tabs.SelectedIndex == 0 ? TradingMode.Live : TradingMode.Paper;
 
     public PositionsView(IPositionRepository positionRepository, BitvavoExchangeClient liveMarketData)
     {
+        this.ApplyStandardAutoScale();
+
         _positionRepository = positionRepository;
         _liveMarketData = liveMarketData;
 

@@ -43,6 +43,8 @@ public sealed class MainForm : Form
 
     public MainForm(IServiceProvider serviceProvider, IAppModeService appModeService, IBotOrchestrator botOrchestrator, BitvavoExchangeClient liveMarketData)
     {
+        this.ApplyStandardAutoScale();
+
         _serviceProvider = serviceProvider;
         _appModeService = appModeService;
         _botOrchestrator = botOrchestrator;

@@ -13,6 +13,8 @@
     <!-- Lets the app launch on a machine that only has a newer major .NET runtime installed
          (e.g. only .NET 9) even though this project targets net8.0-windows. -->
     <RollForward>LatestMajor</RollForward>
+    <!-- Correct per-monitor DPI awareness so controls scale properly on high-DPI displays. -->
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>
 
   <ItemGroup>

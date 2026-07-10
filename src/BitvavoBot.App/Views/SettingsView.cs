@@ -25,6 +25,8 @@ public sealed class SettingsView : UserControl
 
     public SettingsView(ISettingsService settingsService, ICredentialProtector credentialProtector)
     {
+        this.ApplyStandardAutoScale();
+
         _settingsService = settingsService;
         _credentialProtector = credentialProtector;
 

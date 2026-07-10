@@ -11,11 +11,14 @@ public sealed class StrategiesView : UserControl
     private readonly DataGridView _grid = new()
     {
         Dock = DockStyle.Fill, AutoGenerateColumns = false, ReadOnly = true,
-        AllowUserToAddRows = false, SelectionMode = DataGridViewSelectionMode.FullRowSelect, RowHeadersVisible = false
+        AllowUserToAddRows = false, SelectionMode = DataGridViewSelectionMode.FullRowSelect, RowHeadersVisible = false,
+        ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize
     };
 
     public StrategiesView(IStrategyRunRepository strategyRunRepository)
     {
+        this.ApplyStandardAutoScale();
+
         _strategyRunRepository = strategyRunRepository;
 
         _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Mode", HeaderText = "Mode" });

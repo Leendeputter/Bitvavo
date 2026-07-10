@@ -23,11 +23,14 @@ public sealed class MarketMonitorView : UserControl
         ReadOnly = true,
         AllowUserToAddRows = false,
         SelectionMode = DataGridViewSelectionMode.FullRowSelect,
-        RowHeadersVisible = false
+        RowHeadersVisible = false,
+        ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize
     };
 
     public MarketMonitorView(BitvavoExchangeClient liveMarketData)
     {
+        this.ApplyStandardAutoScale();
+
         _liveMarketData = liveMarketData;
         BuildLayout();
 

@@ -15,6 +15,8 @@ public sealed class PapertradingProfileEditForm : Form
 
     public PapertradingProfileEditForm(string? existingName)
     {
+        this.ApplyStandardAutoScale();
+
         Text = "Nieuw papertrading profiel";
         Width = 320;
         Height = 240;

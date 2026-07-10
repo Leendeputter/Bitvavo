@@ -55,6 +55,8 @@ public sealed class BotProfileWizardForm : Form
         IBotProfileRepository botProfileRepository, IPapertradingProfileRepository papertradingProfileRepository,
         BitvavoExchangeClient liveMarketData, TradingMode currentAppMode, BotProfile? existing)
     {
+        this.ApplyStandardAutoScale();
+
         _botProfileRepository = botProfileRepository;
         _papertradingProfileRepository = papertradingProfileRepository;
         _existing = existing;
