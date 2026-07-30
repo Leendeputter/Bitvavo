@@ -14,6 +14,8 @@ namespace BitvavoBot.Exchange.Bitvavo;
 /// </summary>
 public sealed class BitvavoExchangeClient : IExchangeClient, IAsyncDisposable
 {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
     private readonly BitvavoRestClient _rest;
     private readonly BitvavoWebSocketClient _webSocket;
     private readonly int _pollingIntervalSeconds;
@@ -152,21 +154,40 @@ public sealed class BitvavoExchangeClient : IExchangeClient, IAsyncDisposable
 
     private void OnWebSocketMessage(object? sender, JsonElement message)
     {
-        if (!message.TryGetProperty("event", out var eventProp)) return;
-        var eventName = eventProp.GetString();
-
-        switch (eventName)
+        // A single malformed/unexpected ticker payload must never escape this handler: an
+        // exception here propagates out of the WebSocket receive loop, which tears down and
+        // reconnects the *entire* connection. If the same bad message reappears after every
+        // reconnect, TickerUpdated stops firing for every market indefinitely — which silently
+        // starves Papertrading limit orders of the price updates they need to ever fill.
+        try
         {
-            case "ticker24h" when message.TryGetProperty("data", out var tickerData):
-                foreach (var item in tickerData.EnumerateArray())
-                {
-                    var dto = JsonSerializer.Deserialize<Ticker24hDto>(item.GetRawText(), new JsonSerializerOptions(JsonSerializerDefaults.Web));
-                    if (dto is not null) TickerUpdated?.Invoke(this, MapTicker(dto));
-                }
-                break;
-            case "book" when message.TryGetProperty("market", out var marketProp):
-                // Incremental book diffs are out of scope for v1; full snapshots are fetched via REST when needed.
-                break;
+            if (!message.TryGetProperty("event", out var eventProp)) return;
+            var eventName = eventProp.GetString();
+
+            switch (eventName)
+            {
+                case "ticker24h" when message.TryGetProperty("data", out var tickerData):
+                    foreach (var item in tickerData.EnumerateArray())
+                    {
+                        try
+                        {
+                            var dto = JsonSerializer.Deserialize<Ticker24hDto>(item.GetRawText(), JsonOptions);
+                            if (dto is not null) TickerUpdated?.Invoke(this, MapTicker(dto));
+                        }
+                        catch (JsonException)
+                        {
+                            // Skip this one ticker item; the rest of the batch (and the connection) is still good.
+                        }
+                    }
+                    break;
+                case "book" when message.TryGetProperty("market", out var marketProp):
+                    // Incremental book diffs are out of scope for v1; full snapshots are fetched via REST when needed.
+                    break;
+            }
+        }
+        catch (Exception)
+        {
+            // Never let a message-parsing failure kill the socket — worst case we drop one update.
         }
     }
 

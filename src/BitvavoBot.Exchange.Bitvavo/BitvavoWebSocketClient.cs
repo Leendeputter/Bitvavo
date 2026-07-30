@@ -137,8 +137,21 @@ public sealed class BitvavoWebSocketClient : IAsyncDisposable
             } while (!result.EndOfMessage);
 
             messageStream.Position = 0;
-            using var document = await JsonDocument.ParseAsync(messageStream, cancellationToken: cancellationToken);
-            MessageReceived?.Invoke(this, document.RootElement.Clone());
+            try
+            {
+                using var document = await JsonDocument.ParseAsync(messageStream, cancellationToken: cancellationToken);
+                // A subscriber throwing here must never tear down this receive loop/reconnect the
+                // whole socket over one bad message — callers are expected to guard their own
+                // parsing, but this is cheap defense-in-depth against a future regression there.
+                MessageReceived?.Invoke(this, document.RootElement.Clone());
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception)
+            {
+            }
         }
     }
 
