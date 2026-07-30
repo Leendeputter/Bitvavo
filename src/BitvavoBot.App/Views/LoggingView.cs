@@ -53,6 +53,7 @@ public sealed class LoggingView : UserControl
         _refreshButton.Click += async (_, _) => await RefreshAsync();
         _typeFilter.SelectedIndexChanged += async (_, _) => await RefreshAsync();
         _modeFilter.SelectedIndexChanged += async (_, _) => await RefreshAsync();
+        Load += async (_, _) => await RefreshAsync();
         VisibleChanged += async (_, _) => { if (Visible) await RefreshAsync(); };
     }
 

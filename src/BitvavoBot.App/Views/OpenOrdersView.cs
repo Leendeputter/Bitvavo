@@ -59,6 +59,7 @@ public sealed class OpenOrdersView : UserControl
         _cancelButton.Click += async (_, _) => await CancelSelectedAsync();
         _cancelAllButton.Click += async (_, _) => await CancelAllAsync();
 
+        Load += async (_, _) => await RefreshAsync();
         VisibleChanged += async (_, _) => { if (Visible) await RefreshAsync(); };
     }
 

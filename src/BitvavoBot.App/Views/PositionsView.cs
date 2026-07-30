@@ -50,6 +50,7 @@ public sealed class PositionsView : UserControl
         this.ApplyReadableButtonSizing();
 
         _refreshButton.Click += async (_, _) => await RefreshAsync();
+        Load += async (_, _) => await RefreshAsync();
         VisibleChanged += async (_, _) => { if (Visible) await RefreshAsync(); };
     }
 
