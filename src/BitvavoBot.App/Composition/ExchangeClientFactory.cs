@@ -20,18 +20,21 @@ public sealed class ExchangeClientFactory : IExchangeClientFactory
     private readonly ITradeRepository _tradeRepository;
     private readonly IPositionRepository _positionRepository;
     private readonly IPapertradingProfileRepository _papertradingProfileRepository;
+    private readonly ILogRepository _logRepository;
     private readonly ConcurrentDictionary<string, PaperExchangeClient> _paperClients = new();
     private readonly ConcurrentDictionary<string, PaperLeverageClient> _paperLeverageClients = new();
 
     public ExchangeClientFactory(
         BitvavoExchangeClient liveClient, IOrderRepository orderRepository, ITradeRepository tradeRepository,
-        IPositionRepository positionRepository, IPapertradingProfileRepository papertradingProfileRepository)
+        IPositionRepository positionRepository, IPapertradingProfileRepository papertradingProfileRepository,
+        ILogRepository logRepository)
     {
         _liveClient = liveClient;
         _orderRepository = orderRepository;
         _tradeRepository = tradeRepository;
         _positionRepository = positionRepository;
         _papertradingProfileRepository = papertradingProfileRepository;
+        _logRepository = logRepository;
     }
 
     public IExchangeClient GetClient(TradingMode mode, string? papertradingProfileName)
@@ -44,7 +47,7 @@ public sealed class ExchangeClientFactory : IExchangeClientFactory
         }
 
         return _paperClients.GetOrAdd(papertradingProfileName, name => new PaperExchangeClient(
-            _liveClient, _orderRepository, _tradeRepository, _positionRepository, _papertradingProfileRepository, name));
+            _liveClient, _orderRepository, _tradeRepository, _positionRepository, _papertradingProfileRepository, _logRepository, name));
     }
 
     /// <summary>

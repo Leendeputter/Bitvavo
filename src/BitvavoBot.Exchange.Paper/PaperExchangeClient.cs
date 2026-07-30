@@ -20,6 +20,7 @@ public sealed class PaperExchangeClient : IExchangeClient, IAsyncDisposable
     private readonly ITradeRepository _tradeRepository;
     private readonly IPositionRepository _positionRepository;
     private readonly IPapertradingProfileRepository _profileRepository;
+    private readonly ILogRepository _logRepository;
     private readonly string _papertradingProfileName;
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<long, Order>> _pendingByMarket = new();
     private readonly SemaphoreSlim _lock = new(1, 1);
@@ -50,6 +51,7 @@ public sealed class PaperExchangeClient : IExchangeClient, IAsyncDisposable
         ITradeRepository tradeRepository,
         IPositionRepository positionRepository,
         IPapertradingProfileRepository profileRepository,
+        ILogRepository logRepository,
         string papertradingProfileName)
     {
         _marketData = marketData;
@@ -57,6 +59,7 @@ public sealed class PaperExchangeClient : IExchangeClient, IAsyncDisposable
         _tradeRepository = tradeRepository;
         _positionRepository = positionRepository;
         _profileRepository = profileRepository;
+        _logRepository = logRepository;
         _papertradingProfileName = papertradingProfileName;
         _marketData.TickerUpdated += OnTickerUpdated;
     }
@@ -226,6 +229,8 @@ public sealed class PaperExchangeClient : IExchangeClient, IAsyncDisposable
         {
             orders.TryRemove(order.Id, out _);
         }
+
+        await LogAsync($"{order.Market}: {order.Side} order cancelled (amount {order.Amount:N8}, was {order.FilledAmount:N8} filled).", cancellationToken);
     }
 
     private void OnTickerUpdated(object? sender, Ticker ticker) => _ = HandleTickerUpdateAsync(ticker);
@@ -328,12 +333,24 @@ public sealed class PaperExchangeClient : IExchangeClient, IAsyncDisposable
             orders.TryRemove(order.Id, out _);
         }
 
+        var pnlText = realizedPnl.HasValue ? $", P&L {realizedPnl.Value:N2}" : string.Empty;
+        await LogAsync($"{order.Market}: {order.Side} order FILLED — {order.Amount:N8} @ {fillPrice:N8} (fee {fee:N2}{pnlText}).", cancellationToken);
+
         OrderUpdated?.Invoke(this, new OrderResult(order.ExternalId, order.Status, order.FilledAmount, order.AverageFillPrice, order.FeePaid));
     }
 
     private async Task<PapertradingProfile> GetProfileAsync(CancellationToken cancellationToken) =>
         await _profileRepository.GetByNameAsync(_papertradingProfileName, cancellationToken)
         ?? throw new InvalidOperationException($"Papertrading profile '{_papertradingProfileName}' not found.");
+
+    private Task LogAsync(string message, CancellationToken cancellationToken) => _logRepository.AddAsync(new LogEntry
+    {
+        Timestamp = DateTimeOffset.UtcNow,
+        Type = LogEntryType.Trade,
+        Message = message,
+        Mode = TradingMode.Paper,
+        Source = _papertradingProfileName
+    }, cancellationToken);
 
     public ValueTask DisposeAsync()
     {

@@ -125,3 +125,23 @@ public sealed class InMemoryPapertradingProfileRepository : IPapertradingProfile
         return Task.CompletedTask;
     }
 }
+
+public sealed class InMemoryLogRepository : ILogRepository
+{
+    private long _nextId = 1;
+    public List<LogEntry> Entries { get; } = new();
+
+    public Task AddAsync(LogEntry entry, CancellationToken cancellationToken = default)
+    {
+        entry.Id = _nextId++;
+        Entries.Add(entry);
+        return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyList<LogEntry>> GetRecentAsync(int count = 500, LogEntryType? type = null, TradingMode? mode = null, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<LogEntry>>(Entries
+            .Where(e => (!type.HasValue || e.Type == type.Value) && (!mode.HasValue || e.Mode == mode.Value))
+            .OrderByDescending(e => e.Timestamp)
+            .Take(count)
+            .ToList());
+}
