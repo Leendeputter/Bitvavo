@@ -11,6 +11,7 @@ public sealed class MarketMonitorView : UserControl
     private readonly BitvavoExchangeClient _liveMarketData;
     private readonly Dictionary<string, Ticker> _tickers = new();
     private readonly HashSet<string> _favorites = new();
+    private readonly Dictionary<string, DataGridViewRow> _rowsByMarket = new();
 
     private readonly TextBox _searchBox = new() { Width = 220, PlaceholderText = "Filter op marktnaam (bv. BTC)" };
     private readonly CheckBox _favoritesOnly = new() { Text = "Toon alleen favorieten", AutoSize = true };
@@ -41,7 +42,7 @@ public sealed class MarketMonitorView : UserControl
         _grid.ColumnHeaderMouseClick += (_, e) => SortByColumn(e.ColumnIndex);
         _grid.CellClick += OnCellClick;
 
-        _liveMarketData.TickerUpdated += (_, ticker) => this.SafeBeginInvoke(() => { _tickers[ticker.Market] = ticker; RenderGrid(); });
+        _liveMarketData.TickerUpdated += (_, ticker) => this.SafeBeginInvoke(() => { _tickers[ticker.Market] = ticker; ApplyTickerUpdate(ticker); });
         _liveMarketData.ConnectionStatusChanged += (_, status) => this.SafeBeginInvoke(() => UpdateFallbackLabel(status));
 
         Load += async (_, _) => await LoadInitialAsync();
@@ -146,37 +147,58 @@ public sealed class MarketMonitorView : UserControl
         return query;
     }
 
+    /// <summary>
+    /// Full rebuild: only used for actions that genuinely change which rows should be visible or
+    /// their order (initial load, sort, filter/search, favorites toggle). A live ticker tick must
+    /// NOT go through here — rebuilding all ~100+ rows on every single price update (which,
+    /// correctly, now arrives continuously once subscribed) reset the scroll position and
+    /// hammered the UI thread on every tick, making the grid feel like it hung whenever the user
+    /// tried to scroll or click (functional spec 3.1 also requires sort order/rows not to "jump"
+    /// on incoming data). See <see cref="ApplyTickerUpdate"/> for the per-tick path.
+    /// </summary>
     private void RenderGrid()
     {
         _grid.SuspendLayout();
         _grid.Rows.Clear();
+        _rowsByMarket.Clear();
 
         foreach (var ticker in GetFilteredSorted())
         {
-            var isFavorite = _favorites.Contains(ticker.Market);
-            var rowIndex = _grid.Rows.Add(
-                isFavorite ? "★" : "☆",
-                ticker.Market,
-                ticker.Bid.ToString("N8"),
-                ticker.Ask.ToString("N8"),
-                ticker.SpreadPercentage.ToString("N2"),
-                ticker.Last.ToString("N8"),
-                ticker.Change24hPercentage.ToString("N2"),
-                ticker.Volume24h.ToString("N2"),
-                ticker.High24h.ToString("N8"),
-                ticker.Low24h.ToString("N8"));
-
-            if (ticker.Change24hPercentage < 0)
-            {
-                _grid.Rows[rowIndex].Cells["Change"].Style.ForeColor = Color.Firebrick;
-            }
-            else if (ticker.Change24hPercentage > 0)
-            {
-                _grid.Rows[rowIndex].Cells["Change"].Style.ForeColor = Color.SeaGreen;
-            }
+            var rowIndex = _grid.Rows.Add();
+            var row = _grid.Rows[rowIndex];
+            _rowsByMarket[ticker.Market] = row;
+            row.Cells["Market"].Value = ticker.Market;
+            UpdateRowCells(row, ticker);
         }
 
         _grid.ResumeLayout();
+    }
+
+    /// <summary>Updates one market's row in place — no re-sort, no Rows.Clear(), scroll position untouched.</summary>
+    private void ApplyTickerUpdate(Ticker ticker)
+    {
+        if (!_rowsByMarket.TryGetValue(ticker.Market, out var row)) return;
+        UpdateRowCells(row, ticker);
+    }
+
+    private void UpdateRowCells(DataGridViewRow row, Ticker ticker)
+    {
+        row.Cells["Fav"].Value = _favorites.Contains(ticker.Market) ? "★" : "☆";
+        row.Cells["Bid"].Value = ticker.Bid.ToString("N8");
+        row.Cells["Ask"].Value = ticker.Ask.ToString("N8");
+        row.Cells["Spread"].Value = ticker.SpreadPercentage.ToString("N2");
+        row.Cells["Last"].Value = ticker.Last.ToString("N8");
+        row.Cells["Change"].Value = ticker.Change24hPercentage.ToString("N2");
+        row.Cells["Volume"].Value = ticker.Volume24h.ToString("N2");
+        row.Cells["High"].Value = ticker.High24h.ToString("N8");
+        row.Cells["Low"].Value = ticker.Low24h.ToString("N8");
+
+        row.Cells["Change"].Style.ForeColor = ticker.Change24hPercentage switch
+        {
+            < 0 => Color.Firebrick,
+            > 0 => Color.SeaGreen,
+            _ => _grid.DefaultCellStyle.ForeColor
+        };
     }
 
     private void ExportCsv()
