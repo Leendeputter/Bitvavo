@@ -218,6 +218,9 @@ public sealed class PaperExchangeClient : IExchangeClient, IAsyncDisposable
         return filtered.Select(o => new OrderResult(o.ExternalId, o.Status, o.FilledAmount, o.AverageFillPrice, o.FeePaid)).ToList();
     }
 
+    /// <summary>No-op: Papertrading fills are already fully event-driven via ticker updates, so there is nothing to reconcile.</summary>
+    public Task ReconcileOpenOrdersAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
     private async Task CancelPendingOrderAsync(Order order, CancellationToken cancellationToken)
     {
         order.Status = OrderStatus.Cancelled;

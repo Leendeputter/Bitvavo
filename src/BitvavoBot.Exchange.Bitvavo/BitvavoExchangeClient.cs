@@ -18,6 +18,9 @@ public sealed class BitvavoExchangeClient : IExchangeClient, IAsyncDisposable
 
     private readonly BitvavoRestClient _rest;
     private readonly BitvavoWebSocketClient _webSocket;
+    private readonly IOrderRepository _orderRepository;
+    private readonly ITradeRepository _tradeRepository;
+    private readonly IPositionRepository _positionRepository;
     private readonly int _pollingIntervalSeconds;
     private readonly HashSet<string> _subscribedMarkets = new();
     private CancellationTokenSource? _pollingCts;
@@ -31,10 +34,16 @@ public sealed class BitvavoExchangeClient : IExchangeClient, IAsyncDisposable
     public event EventHandler<OrderBookSnapshot>? OrderBookUpdated;
     public event EventHandler<Domain.Interfaces.OrderResult>? OrderUpdated;
 
-    public BitvavoExchangeClient(BitvavoRestClient restClient, BitvavoWebSocketClient webSocketClient, int pollingIntervalSeconds = 5)
+    public BitvavoExchangeClient(
+        BitvavoRestClient restClient, BitvavoWebSocketClient webSocketClient,
+        IOrderRepository orderRepository, ITradeRepository tradeRepository, IPositionRepository positionRepository,
+        int pollingIntervalSeconds = 5)
     {
         _rest = restClient;
         _webSocket = webSocketClient;
+        _orderRepository = orderRepository;
+        _tradeRepository = tradeRepository;
+        _positionRepository = positionRepository;
         _pollingIntervalSeconds = pollingIntervalSeconds;
         _webSocket.ConnectionStatusChanged += OnWebSocketStatusChanged;
         _webSocket.MessageReceived += OnWebSocketMessage;
@@ -116,18 +125,49 @@ public sealed class BitvavoExchangeClient : IExchangeClient, IAsyncDisposable
         };
 
         var dto = await _rest.PlaceOrderAsync(body, cancellationToken);
+
+        var now = DateTimeOffset.UtcNow;
+        var order = new Order
+        {
+            ExternalId = dto.OrderId,
+            Mode = TradingMode.Live,
+            Market = request.Market,
+            Side = request.Side,
+            Type = request.Type,
+            Status = MapStatus(dto.Status),
+            Price = request.LimitPrice,
+            Amount = request.Amount,
+            FilledAmount = ParseOrZero(dto.FilledAmount),
+            FeeCurrency = "EUR",
+            BotProfileName = request.BotProfileName,
+            StrategyName = request.StrategyName,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        await _orderRepository.AddAsync(order, cancellationToken);
+
+        if (order.Status == OrderStatus.Filled)
+        {
+            await RecordFillAsync(order, ParseOrZero(dto.Price), ParseOrZero(dto.FeePaid), cancellationToken);
+        }
+
         return MapOrderResult(dto);
     }
 
     public async Task<Domain.Interfaces.OrderResult> CancelOrderAsync(string market, string externalOrderId, CancellationToken cancellationToken = default)
     {
         var dto = await _rest.CancelOrderAsync(market, externalOrderId, cancellationToken);
+        await MarkCancelledAsync(externalOrderId, cancellationToken);
         return MapOrderResult(dto);
     }
 
     public async Task<IReadOnlyList<Domain.Interfaces.OrderResult>> CancelAllOrdersAsync(string? market = null, CancellationToken cancellationToken = default)
     {
         var dtos = await _rest.CancelAllOrdersAsync(market, cancellationToken);
+        foreach (var dto in dtos)
+        {
+            await MarkCancelledAsync(dto.OrderId, cancellationToken);
+        }
         return dtos.Select(MapOrderResult).ToList();
     }
 
@@ -135,6 +175,105 @@ public sealed class BitvavoExchangeClient : IExchangeClient, IAsyncDisposable
     {
         var dtos = await _rest.GetOpenOrdersAsync(market, cancellationToken);
         return dtos.Select(MapOrderResult).ToList();
+    }
+
+    /// <summary>
+    /// Bitvavo has no authenticated push channel wired up in this app for order/fill updates, so a
+    /// resting limit order's eventual fill is only ever discovered by asking Bitvavo directly.
+    /// Call this periodically (BotRunner does, once per scrape tick) for every locally open Live
+    /// order to detect and record fills that happened since the order was placed — without this,
+    /// Live positions/trades only ever reflect orders that filled instantly (market orders, or a
+    /// limit order that happened to already be crossed at placement time).
+    /// </summary>
+    public async Task ReconcileOpenOrdersAsync(CancellationToken cancellationToken = default)
+    {
+        var openOrders = await _orderRepository.GetOpenOrdersAsync(TradingMode.Live, cancellationToken: cancellationToken);
+        foreach (var order in openOrders)
+        {
+            OrderDto dto;
+            try
+            {
+                dto = await _rest.GetOrderAsync(order.Market, order.ExternalId, cancellationToken);
+            }
+            catch (BitvavoApiException)
+            {
+                continue;
+            }
+
+            var status = MapStatus(dto.Status);
+            if (status == order.Status) continue;
+
+            order.Status = status;
+            order.FilledAmount = ParseOrZero(dto.FilledAmount);
+            order.UpdatedAt = DateTimeOffset.UtcNow;
+            await _orderRepository.UpdateAsync(order, cancellationToken);
+
+            if (status == OrderStatus.Filled)
+            {
+                await RecordFillAsync(order, ParseOrZero(dto.Price), ParseOrZero(dto.FeePaid), cancellationToken);
+            }
+            else if (status == OrderStatus.Cancelled)
+            {
+                order.CancelledAt = order.UpdatedAt;
+                await _orderRepository.UpdateAsync(order, cancellationToken);
+            }
+        }
+    }
+
+    private async Task MarkCancelledAsync(string externalOrderId, CancellationToken cancellationToken)
+    {
+        var order = await _orderRepository.GetByExternalIdAsync(TradingMode.Live, externalOrderId, cancellationToken);
+        if (order is null) return;
+
+        order.Status = OrderStatus.Cancelled;
+        order.CancelledAt = DateTimeOffset.UtcNow;
+        order.UpdatedAt = order.CancelledAt.Value;
+        await _orderRepository.UpdateAsync(order, cancellationToken);
+    }
+
+    private async Task RecordFillAsync(Order order, decimal fillPrice, decimal fee, CancellationToken cancellationToken)
+    {
+        order.AverageFillPrice = fillPrice;
+        order.FeePaid = fee;
+        order.FilledAt = DateTimeOffset.UtcNow;
+        order.UpdatedAt = order.FilledAt.Value;
+        await _orderRepository.UpdateAsync(order, cancellationToken);
+
+        var asset = order.Market.Split('-')[0];
+        decimal? realizedPnl = null;
+
+        if (order.Side == OrderSide.Buy)
+        {
+            var position = await _positionRepository.GetOpenPositionAsync(TradingMode.Live, asset, cancellationToken: cancellationToken)
+                ?? new Position { Mode = TradingMode.Live, Market = order.Market, Asset = asset, OpenedAt = order.FilledAt.Value };
+
+            position.ApplyBuy(order.Amount, fillPrice);
+            await _positionRepository.UpsertAsync(position, cancellationToken);
+        }
+        else
+        {
+            var position = await _positionRepository.GetOpenPositionAsync(TradingMode.Live, asset, cancellationToken: cancellationToken);
+            if (position is not null)
+            {
+                realizedPnl = (fillPrice - position.AverageEntryPrice) * order.Amount - fee;
+                position.ApplySell(order.Amount);
+                await _positionRepository.UpsertAsync(position, cancellationToken);
+            }
+        }
+
+        await _tradeRepository.AddAsync(new Trade
+        {
+            OrderId = order.Id,
+            Mode = TradingMode.Live,
+            Market = order.Market,
+            Side = order.Side,
+            Price = fillPrice,
+            Amount = order.Amount,
+            Fee = fee,
+            FeeCurrency = "EUR",
+            ProfitLoss = realizedPnl,
+            Timestamp = order.FilledAt.Value
+        }, cancellationToken);
     }
 
     private void OnWebSocketStatusChanged(object? sender, ConnectionStatus status)

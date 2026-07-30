@@ -67,6 +67,9 @@ public sealed class BitvavoRestClient
         return SendAsync<List<OrderDto>>(HttpMethod.Get, path, authenticated: true, cancellationToken: cancellationToken);
     }
 
+    public Task<OrderDto> GetOrderAsync(string market, string orderId, CancellationToken cancellationToken) =>
+        SendAsync<OrderDto>(HttpMethod.Get, $"/order?market={Uri.EscapeDataString(market)}&orderId={Uri.EscapeDataString(orderId)}", authenticated: true, cancellationToken: cancellationToken);
+
     private async Task<T> SendAsync<T>(HttpMethod method, string pathWithQuery, bool authenticated, object? body = null, CancellationToken cancellationToken = default)
     {
         var bodyJson = body is null ? string.Empty : JsonSerializer.Serialize(body, JsonOptions);

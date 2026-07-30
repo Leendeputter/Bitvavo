@@ -142,6 +142,10 @@ internal sealed class BotRunner : IAsyncDisposable
             return;
         }
 
+        // Discovers fills that happened asynchronously since an order was placed (Live only;
+        // Papertrading's implementation is a no-op since its fills are already event-driven).
+        await _exchangeClient.ReconcileOpenOrdersAsync(cancellationToken);
+
         foreach (var (market, (assignment, strategy, _)) in _assignmentsByMarket)
         {
             if (!_marketInfoByMarket.TryGetValue(market, out var marketInfo)) continue;

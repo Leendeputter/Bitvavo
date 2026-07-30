@@ -57,4 +57,13 @@ public interface IExchangeClient : IMarketDataFeed
     Task<OrderResult> CancelOrderAsync(string market, string externalOrderId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<OrderResult>> CancelAllOrdersAsync(string? market = null, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<OrderResult>> GetOpenOrdersAsync(string? market = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Checks locally-open orders against the exchange for fills that happened asynchronously
+    /// since they were placed, recording any new trades/position changes found. Live has no
+    /// authenticated push channel wired up for order updates, so BotRunner calls this once per
+    /// tick to discover fills; Papertrading fills are already fully event-driven, so its
+    /// implementation is a no-op.
+    /// </summary>
+    Task ReconcileOpenOrdersAsync(CancellationToken cancellationToken = default);
 }

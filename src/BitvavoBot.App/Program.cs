@@ -57,6 +57,7 @@ internal static class Program
         services.AddSingleton(sp => new BitvavoWebSocketClient(sp.GetRequiredService<BitvavoOptions>()));
         services.AddSingleton(sp => new BitvavoExchangeClient(
             sp.GetRequiredService<BitvavoRestClient>(), sp.GetRequiredService<BitvavoWebSocketClient>(),
+            sp.GetRequiredService<IOrderRepository>(), sp.GetRequiredService<ITradeRepository>(), sp.GetRequiredService<IPositionRepository>(),
             settings.MarketMonitorPollingIntervalSeconds));
 
         services.AddSingleton<ExchangeClientFactory>();
