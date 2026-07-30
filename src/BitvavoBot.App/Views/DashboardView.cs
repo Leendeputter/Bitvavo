@@ -56,7 +56,7 @@ public sealed class DashboardView : UserControl
             if (_profileCombo.SelectedItem is string name) await _botOrchestrator.StopAsync(name);
         });
         _profileCombo.SelectedIndexChanged += (_, _) => RefreshStateLabel();
-        _botOrchestrator.StateChanged += (_, _) => BeginInvoke(new MethodInvoker(RefreshStateLabel));
+        _botOrchestrator.StateChanged += (_, _) => this.SafeBeginInvoke(RefreshStateLabel);
 
         Load += async (_, _) => await RefreshAsync();
         VisibleChanged += async (_, _) => { if (Visible) await RefreshAsync(); };

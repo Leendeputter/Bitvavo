@@ -68,7 +68,7 @@ public sealed class TradingBotView : UserControl
         _stopButton.Click += async (_, _) => await SafeAsync(async name => await _botOrchestrator.StopAsync(name));
         _promoteButton.Click += async (_, _) => await PromoteToLiveAsync();
 
-        _botOrchestrator.StateChanged += (_, _) => BeginInvoke(new MethodInvoker(async () => await RefreshAsync()));
+        _botOrchestrator.StateChanged += (_, _) => this.SafeBeginInvoke(async () => await RefreshAsync());
         VisibleChanged += async (_, _) => { if (Visible) await RefreshAsync(); };
     }
 

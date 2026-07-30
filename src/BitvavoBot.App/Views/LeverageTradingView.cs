@@ -68,7 +68,7 @@ public sealed class LeverageTradingView : UserControl
         _openButton.Click += async (_, _) => await OpenPositionAsync();
         _closeButton.Click += async (_, _) => await ClosePositionAsync();
 
-        _appModeService.ModeChanged += (_, mode) => BeginInvoke(new MethodInvoker(UpdateModeVisibility));
+        _appModeService.ModeChanged += (_, mode) => this.SafeBeginInvoke(UpdateModeVisibility);
         Load += async (_, _) => { await LoadDataAsync(); UpdateModeVisibility(); await UpdateLiquidationPreviewAsync(); };
         VisibleChanged += async (_, _) => { if (Visible) await RefreshPositionsAsync(); };
     }

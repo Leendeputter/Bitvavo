@@ -41,8 +41,8 @@ public sealed class MarketMonitorView : UserControl
         _grid.ColumnHeaderMouseClick += (_, e) => SortByColumn(e.ColumnIndex);
         _grid.CellClick += OnCellClick;
 
-        _liveMarketData.TickerUpdated += (_, ticker) => BeginInvoke(new MethodInvoker(() => { _tickers[ticker.Market] = ticker; RenderGrid(); }));
-        _liveMarketData.ConnectionStatusChanged += (_, status) => BeginInvoke(new MethodInvoker(() => UpdateFallbackLabel(status)));
+        _liveMarketData.TickerUpdated += (_, ticker) => this.SafeBeginInvoke(() => { _tickers[ticker.Market] = ticker; RenderGrid(); });
+        _liveMarketData.ConnectionStatusChanged += (_, status) => this.SafeBeginInvoke(() => UpdateFallbackLabel(status));
 
         Load += async (_, _) => await LoadInitialAsync();
     }

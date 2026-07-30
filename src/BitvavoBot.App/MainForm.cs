@@ -59,7 +59,7 @@ public sealed class MainForm : Form
         BuildStatusBar();
 
         _appModeService.ModeChanged += (_, mode) => UpdateModeLabel(mode);
-        _liveMarketData.ConnectionStatusChanged += (_, status) => BeginInvoke(new MethodInvoker(() => UpdateConnectionLabel(status)));
+        _liveMarketData.ConnectionStatusChanged += (_, status) => this.SafeBeginInvoke(() => UpdateConnectionLabel(status));
         UpdateModeLabel(_appModeService.CurrentMode);
         UpdateConnectionLabel(_liveMarketData.ConnectionStatus);
 
@@ -96,7 +96,7 @@ public sealed class MainForm : Form
         _statusStrip.Items.Add(new ToolStripSeparator());
         _statusStrip.Items.Add(_lastSyncLabel);
 
-        _botOrchestrator.StateChanged += (_, e) => BeginInvoke(new MethodInvoker(UpdateActiveProfileLabel));
+        _botOrchestrator.StateChanged += (_, e) => this.SafeBeginInvoke(UpdateActiveProfileLabel);
         UpdateActiveProfileLabel();
 
         var syncTimer = new System.Windows.Forms.Timer { Interval = 1000 };
