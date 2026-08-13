@@ -10,9 +10,11 @@ using Procurement.Data.Configurations;
 namespace Procurement.Data
 {
     /// <summary>
-    /// EF6 Code First context for the procurement prototype. Connection string name/key is
-    /// "ProcurementDbContext" (see App.config in Procurement.UI); LocalDB by default for
-    /// development, SQL Server for anything beyond that.
+    /// EF6 Code First context for the procurement prototype. The real connection string is
+    /// resolved at login time (Windows identity + MAX company selection -> the "Unitron"
+    /// database) and passed explicitly via the <see cref="ProcurementDbContext(string)"/>
+    /// constructor from Procurement.UI's CompositionRoot — see that constructor's remarks for
+    /// why the parameterless constructor still exists and what it's for.
     ///
     /// This app keeps a single long-lived instance for the whole run (see CompositionRoot), which
     /// is simple but not thread/reentrancy-safe on its own: EF6 throws NotSupportedException if a
@@ -25,13 +27,24 @@ namespace Procurement.Data
     {
         private readonly SemaphoreSlim _gate = new SemaphoreSlim(1, 1);
 
-        public ProcurementDbContext() : base("name=ProcurementDbContext")
+        // EF6's migration tooling (DbMigrator) constructs a context via this parameterless
+        // constructor purely to compute the current Code First model — for diffing against
+        // migration history — regardless of Configuration.TargetDatabase (which only supplies
+        // the connection actually used for the real database work in Program.cs). This instance
+        // is never opened/queried for real, so the connection string just needs to be
+        // syntactically valid, not a working one — a "name=X" config lookup throws immediately
+        // during construction if that name doesn't exist, which is exactly what broke here once
+        // the static App.config connection string was removed in favor of a runtime-resolved one.
+        public ProcurementDbContext() : base(DesignTimeOnlyConnectionString)
         {
         }
 
         public ProcurementDbContext(string nameOrConnectionString) : base(nameOrConnectionString)
         {
         }
+
+        private const string DesignTimeOnlyConnectionString =
+            "Data Source=.;Initial Catalog=Procurement_DesignTimeOnly;Integrated Security=True";
 
         public async Task<T> RunGuardedAsync<T>(Func<Task<T>> operation)
         {
