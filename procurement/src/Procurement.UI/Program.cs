@@ -28,6 +28,15 @@ namespace Procurement.UI
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
 
+            // Mirrors UniPro2026's Program.cs: login (which resolves the MAX company + this
+            // app's own "Unitron" connection string into ProcurementSession) runs before
+            // anything that needs a database connection.
+            using (var login = new LoginForm())
+            {
+                if (login.ShowDialog() != DialogResult.OK)
+                    return;
+            }
+
             // EF6 automatic migrations (Migrations/Configuration.cs) create/update the schema and
             // seed the business-rule tables on first run — no design-time Add-Migration needed.
             Database.SetInitializer(new MigrateDatabaseToLatestVersion<ProcurementDbContext, Configuration>());
@@ -41,7 +50,7 @@ namespace Procurement.UI
             catch (Exception ex)
             {
                 MessageBox.Show(
-                    $"Kan geen verbinding maken met de database. Controleer de connection string in App.config.\n\n{ex.Message}",
+                    $"Kan geen verbinding maken met de Unitron-database. Controleer de connection string die is opgebouwd na het inloggen.\n\n{ex.Message}",
                     "Database-fout", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }

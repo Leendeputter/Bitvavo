@@ -14,6 +14,25 @@
   <ItemGroup>
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Drawing" />
+    <Reference Include="System.Data" />
+  </ItemGroup>
+
+  <!--
+    Same MAX50 (Exact MAX ERP .NET Update SDK) references as UniPro2026.csproj, needed for
+    LoginForm's MaxSQL.GetPrimaryConnection/GetConnection calls (company list + admin
+    connection). Copied verbatim from UniPro2026's working project — TODO: confirm these
+    HintPaths are correct on this build machine; not independently verified here.
+  -->
+  <ItemGroup>
+    <Reference Include="MAXCore">
+      <HintPath>F:\Software\MAX\MAX Update\MAXUpdateNet VB.NET Sample Code\bin\MAXCore.dll</HintPath>
+    </Reference>
+    <Reference Include="MaxOrderNET">
+      <HintPath>F:\Software\MAX\MAX Update\MAXUpdateNet VB.NET Sample Code\bin\MaxOrderNET.dll</HintPath>
+    </Reference>
+    <Reference Include="MaxTransNET">
+      <HintPath>F:\Software\MAX\MAX Update\MAXUpdateNet VB.NET Sample Code\bin\MaxTransNET.dll</HintPath>
+    </Reference>
   </ItemGroup>
 
   <ItemGroup>

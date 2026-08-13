@@ -31,7 +31,8 @@ namespace Procurement.UI.Forms
 
         private void InitializeComponent()
         {
-            Text = "Componenteninkoop – Purchase Requests";
+            Text = $"Componenteninkoop – {_composition.Session.CompanyName} ({_composition.Session.UserName})"
+                 + (_composition.Session.TestMode ? " – TESTMODUS" : string.Empty);
             Width = 1200;
             Height = 800;
             StartPosition = FormStartPosition.CenterScreen;

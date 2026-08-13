@@ -7,6 +7,10 @@ namespace Procurement.Core.Entities
     public class PurchaseRequest
     {
         public int Id { get; set; }
+
+        /// <summary>MAX company (ExactRMCompanies.CompanyID) this request belongs to — set from the login screen's company selection, never editable afterwards.</summary>
+        public long CompanyId { get; set; }
+
         public string ErpRequestNumber { get; set; }
         public DateTime RequestDate { get; set; }
         public DateTime? RequiredDate { get; set; }

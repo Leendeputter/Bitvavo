@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Procurement.Core.Interfaces;
+using Procurement.Core.Session;
 using Procurement.Data;
 using Procurement.Data.Repositories;
 using Procurement.Engine;
@@ -13,10 +14,13 @@ namespace Procurement.UI.Composition
     /// Manual composition root — this prototype is small enough that a DI container would only
     /// add ceremony. One ProcurementDbContext per application run keeps EF6 change tracking
     /// simple for a single-user WinForms prototype (spec §15: single user, no roles model).
+    /// Built only after LoginForm has populated ProcurementSession (see Program.cs) — the
+    /// database connection string itself depends on the company chosen at login.
     /// </summary>
     public class CompositionRoot
     {
         public ProcurementDbContext DbContext { get; }
+        public ISessionContext Session { get; }
         public ProcurementEngine Engine { get; }
         public PurchaseRequestRepository PurchaseRequestRepository { get; }
         public SupplierProductMappingRepository SupplierProductMappingRepository { get; }
@@ -29,11 +33,12 @@ namespace Procurement.UI.Composition
 
         public CompositionRoot()
         {
-            DbContext = new ProcurementDbContext();
+            Session = new ProcurementSessionContext();
+            DbContext = new ProcurementDbContext(ProcurementSession.SharedConnectionString);
 
             var auditLogger = new DbAuditLogger(DbContext);
 
-            PurchaseRequestRepository = new PurchaseRequestRepository(DbContext);
+            PurchaseRequestRepository = new PurchaseRequestRepository(DbContext, Session);
             SupplierProductMappingRepository = new SupplierProductMappingRepository(DbContext);
             var offerRepository = new SupplierOfferRepository(DbContext);
             var selectionRepository = new SupplierSelectionRepository(DbContext);

@@ -2,32 +2,81 @@
 
 Windows Forms (.NET Framework 4.8) prototype voor geautomatiseerde componenteninkoop bij DigiKey
 en Farnell, volgens [`docs/functionele-specificatie-procurement.md`](docs/functionele-specificatie-procurement.md).
-Dit is een op zichzelf staande solution, los van de Bitvavo trading bot elders in deze repository.
+Dit is een **zelfstandig programma** (eigen .exe, geen UniPro-module) dat zijn eigen tabellen in de
+gedeelde `Unitron`-database heeft, los van de Bitvavo trading bot elders in deze repository.
 
-Er is nog geen live koppeling met UniPro en geen echte DigiKey/Farnell API-credentials — de
-ERP-kant en de supplier-kant draaien beide in mock-modus, zodat de volledige workflow (Purchase
-Request → Sourcing → Selectie → ERP PO → Supplier Order → Confirmation) end-to-end te doorlopen is
-met testdata.
+Er is nog geen live koppeling met UniPro voor purchase-request-data en geen echte DigiKey/Farnell
+API-credentials — de ERP-kant (purchase requests) en de supplier-kant draaien beide in mock-modus,
+zodat de volledige workflow (Purchase Request → Sourcing → Selectie → ERP PO → Supplier Order →
+Confirmation) end-to-end te doorlopen is met testdata. **Inloggen en company-selectie zijn wél
+echt**: die gebruiken dezelfde MAX-infrastructuur (`MaxSQL`, `ExactRMCompanies`) als UniPro zelf —
+zie [Inloggen en company-selectie](#inloggen-en-company-selectie) hieronder.
 
 ## Solution-structuur
 
 ```
 Procurement.sln
 src/
-  Procurement.Core                POCO's, interfaces, business rules — geen UI/DB-afhankelijkheid
+  Procurement.Core                POCO's, interfaces, business rules, sessie-abstractie — geen UI/DB-afhankelijkheid
   Procurement.Data                EF6 Code First DbContext, mappings, migrations, repositories
   Procurement.Suppliers.DigiKey   ISupplierAdapter-implementatie voor DigiKey (mock-modus)
   Procurement.Suppliers.Farnell   ISupplierAdapter-implementatie voor Farnell (mock-modus)
   Procurement.Erp                 IErpConnector + MockErpConnector
   Procurement.Engine              ProcurementEngine: orkestreert sourcing/selectie/order
-  Procurement.UI                  WinForms-app (startproject)
+  Procurement.UI                  WinForms-app (startproject) — login, MAX-koppeling, security-stub
 tests/
   Procurement.Tests               xUnit-tests, inclusief de rekenvoorbeeld-casus uit spec §7
 ```
 
-`Procurement.Core`, `Procurement.Data` en `Procurement.Engine` zijn bewust vrij van UI/ERP-specifieke
-code, zodat ze later grotendeels 1-op-1 als UniPro-module kunnen worden hergebruikt — alleen
-`Procurement.UI` en `Procurement.Erp` zouden dan wezenlijk veranderen.
+`Procurement.Core`, `Procurement.Data` en `Procurement.Engine` blijven vrij van UI/MAX-specifieke
+code (ze kennen alleen `ISessionContext`, niet MAX zelf) — alle MAX50-afhankelijkheid
+(`LoginForm`, `SecurityHelper`) zit uitsluitend in `Procurement.UI`.
+
+## Inloggen en company-selectie
+
+`Procurement.UI/Forms/LoginForm.cs` is bewust zo dicht mogelijk tegen UniPro2026's eigen
+`UI/Forms/Login.cs` aan gebouwd (zelfde gedrag, niet alleen zelfde look):
+
+1. **Geen wachtwoord** — de gebruikersnaam komt uit de Windows-login (`WindowsIdentity.GetCurrent()`).
+2. **Administratie-dropdown**, gevuld vanuit `ExactRMCompanies` via `MaxSQL.GetPrimaryConnection`/
+   `GetConnection` (MAX50) — exact dezelfde tabel en bibliotheek als UniPro, maar zonder de
+   `WHERE CompanyID IN (...)`-filter die UniPro's eigen `CompanyRepository` gebruikt (die filtert op
+   twee specifieke UniPro-companies; hier staan standaard **alle** administraties in de lijst — pas
+   `LoginForm.LoadCompanies` aan als dat niet gewenst is).
+3. **Testmodus-checkbox**: zet, net als UniPro (`ConnectionStringHelper.WithTestSuffix`), de
+   catalog-naam van dit programma's eigen database om naar `Unitron_test` in plaats van `Unitron`.
+   Verder verandert er niets.
+4. Na een geslaagde login staat alles in `Procurement.Core.Session.ProcurementSession`
+   (mirrors UniPro's `AppSession`) en het bijbehorende read-only `ISessionContext`
+   (mirrors UniPro's `ISessionContext`/`AppSessionContext`) — inclusief de `AdminConnectionString`
+   (per-company MAX-administratie), gereserveerd voor toekomstige `MaxSecurity`-rechtencontroles.
+
+**Company-scoping**: elke `PurchaseRequest` krijgt bij het aanmaken de `CompanyId` van de ingelogde
+sessie; het overzichtsscherm en alle lookups filteren daarop (`PurchaseRequestRepository`). Regels,
+offers, PO's en supplier-orders zelf hebben géén eigen `CompanyId` — die worden altijd via hun
+`PurchaseRequest`/`PurchaseRequestLineId` bereikt, dus scoping loopt daar automatisch mee.
+`SupplierPreference`/`PackagingPolicy`/`ApprovalPolicy` blijven **niet** per company gescoped
+(gedeelde configuratie) — zeg het als dat wel zou moeten.
+
+**Rechten (nog niet actief)**: `Procurement.UI/Security/SecurityHelper.cs` mirrort UniPro's
+`Security/SecurityHelper.cs` (`HasAccess`/`DemandAccess` tegen `MaxSecurity.GetAccess`) zodat een
+echte per-scherm/knop rechtencontrole later een kleine wijziging is in plaats van een verbouwing —
+maar wordt momenteel nergens aangeroepen; elk scherm is nu nog open voor iedereen die inlogt.
+
+### Niet-geverifieerde aannames — controleer dit voor je build/start
+
+Dit is gebouwd op basis van UniPro2026's brongoede (die is meegeleverd), maar zonder toegang tot de
+MAX50-bibliotheek zelf of de echte database, dus het volgende is **aangenomen, niet geverifieerd**:
+
+- **`LicPath`** in `LoginForm.cs` (`\\192.168.0.12\Exact Max\RMServer\LIC`) — 1-op-1 overgenomen
+  van UniPro2026's `Login.licPath`. Klopt dit nog?
+- **MAXCore/MaxOrderNET/MaxTransNET HintPaths** in `Procurement.UI.csproj` — 1-op-1 overgenomen van
+  UniPro2026.csproj (`F:\Software\MAX\MAX Update\...\bin\*.dll`). Moeten op de buildmachine bestaan.
+- **Catalog-naam `"Unitron"`** (`ProcurementConnectionStringHelper.SharedCatalogName`) — UniPro's
+  eigen equivalent-constante was al geredigeerd/verwijderd in de aangeleverde broncode, dus dit is
+  een aanname op basis van hoe je zelf naar de database verwijst, niet uit UniPro's code gehaald.
+- **`ExactRMCompanies`-filter**: geen filter (zie boven) — UniPro's eigen `'1001','1012'`-filter is
+  bewust *niet* overgenomen.
 
 ## Bouwen en draaien
 
@@ -46,22 +95,24 @@ Of open `Procurement.sln` in Visual Studio en bouw vanuit daar.
 ### Database
 
 `Procurement.UI` gebruikt EF6 **automatic migrations** (`src/Procurement.Data/Migrations/Configuration.cs`)
-— er is geen losse `Add-Migration`-stap nodig. Bij de eerste start:
+— er is geen losse `Add-Migration`-stap nodig. Er staat geen statische connection string meer in
+`App.config`: die wordt na het inloggen opgebouwd door `ProcurementConnectionStringHelper` uit de
+MAX-adminconnectie (zelfde server/auth, andere catalog: `Unitron` of `Unitron_test`). Bij de eerste
+start op een lege `Unitron`-database:
 
-1. Wordt de database aangemaakt op basis van de connection string `ProcurementDbContext` in
-   `src/Procurement.UI/App.config` (standaard: LocalDB, `(localdb)\MSSQLLocalDB`).
+1. Wordt het schema aangemaakt op basis van de na het inloggen opgebouwde connection string.
 2. Worden de policy-tabellen geseed: `Supplier`/`SupplierCapability` (DigiKey + Farnell, conform
    spec §5), een standaard `SupplierPreference` per leverancier, een default `PackagingPolicy` en
    een default `ApprovalPolicy`.
 
-Pas de connection string aan in `App.config` om een andere (LocalDB of volwaardige) SQL
-Server-instantie te gebruiken.
-
 ### Starten
 
-Zet `Procurement.UI` als startproject en start (F5). Het hoofdscherm (`MainForm`,
-Purchase Requests-overzicht) verschijnt; via "Nieuwe testaanvraag toevoegen" kan een testmatige
-aanvraag worden ingevoerd, waarna "Sourcing starten" de volledige workflow doorloopt.
+Zet `Procurement.UI` als startproject en start (F5). Eerst verschijnt het inlogscherm
+(Windows-gebruiker, administratie-keuze, testmodus — zie
+[Inloggen en company-selectie](#inloggen-en-company-selectie)); na een geslaagde login verschijnt
+het hoofdscherm (`MainForm`, Purchase Requests-overzicht) met de gekozen administratie in de
+titelbalk. Via "Nieuwe testaanvraag toevoegen" kan een testmatige aanvraag worden ingevoerd,
+waarna "Sourcing starten" de volledige workflow doorloopt.
 
 ### Tests
 
@@ -100,9 +151,16 @@ Supplier C re-reel 4.000 @ €0,105) letterlijk reproduceert, inclusief de twee 
   gegenereerd** (Linux-container zonder `dotnet`/MSBuild/Mono) — de code is met zorg geschreven
   tegen de EF6/WinForms/.NET Framework 4.8 API's, maar is **niet gecompileerd of getest** in deze
   sessie. Doe een eerste `msbuild`/`dotnet test`-run op een Windows-machine met Visual Studio voor
-  je verder bouwt, en verwacht een enkele kleine build-fix (bv. een ontbrekende `using`).
-- Eén gebruiker, geen rollen-/rechtenmodel (spec §15-aanname).
+  je verder bouwt.
+- **`LoginForm`/`SecurityHelper` roepen `MaxSQL`/`MaxSecurity` (MAX50) aan met signaturen die zijn
+  afgeleid uit hoe UniPro2026 ze gebruikt** (zelfde aanroepen, zelfde argumenten) — niet
+  gecontroleerd tegen de daadwerkelijke MAX50-bibliotheek, die hier niet beschikbaar is. Zie
+  [Niet-geverifieerde aannames](#niet-geverifieerde-aannames--controleer-dit-voor-je-buildstart)
+  hierboven.
+- Rechten (`SecurityHelper.HasAccess`/`DemandAccess`) zijn gebouwd maar nog nergens aangeroepen —
+  elk scherm is nu nog open voor iedereen die inlogt.
 - Valuta: EUR als standaard; het `Currency`-veld is aanwezig maar meerdere valuta's zijn niet
   volledig uitgewerkt (spec §15-aanname).
-- Shipment tracking, invoice-verwerking en de echte UniPro-koppeling zijn expliciet fase 2 /
-  buiten scope (spec §13).
+- Shipment tracking, invoice-verwerking en de echte UniPro-koppeling voor purchase-request-data
+  zijn expliciet fase 2 / buiten scope (spec §13) — dat blijft mock, alleen login/company-selectie
+  is nu echt.
