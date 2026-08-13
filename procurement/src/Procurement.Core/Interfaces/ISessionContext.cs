@@ -15,6 +15,9 @@ namespace Procurement.Core.Interfaces
         /// <summary>Connection string for this app's own tables (the "Unitron" database, or "Unitron_test" when TestMode is on).</summary>
         string SharedConnectionString { get; }
 
+        /// <summary>Per-company MAX administration connection — used to read real MAX tables (e.g. Order_Master/Part_Master), not this app's own tables.</summary>
+        string AdminConnectionString { get; }
+
         bool TestMode { get; }
     }
 }

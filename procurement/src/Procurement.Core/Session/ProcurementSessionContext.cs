@@ -14,6 +14,7 @@ namespace Procurement.Core.Session
         public long CompanyId => ProcurementSession.CompanyId;
         public string CompanyName => ProcurementSession.CompanyName;
         public string SharedConnectionString => ProcurementSession.SharedConnectionString;
+        public string AdminConnectionString => ProcurementSession.AdminConnectionString;
         public bool TestMode => ProcurementSession.TestMode;
     }
 }

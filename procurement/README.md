@@ -5,12 +5,14 @@ en Farnell, volgens [`docs/functionele-specificatie-procurement.md`](docs/functi
 Dit is een **zelfstandig programma** (eigen .exe, geen UniPro-module) dat zijn eigen tabellen in de
 gedeelde `Unitron`-database heeft, los van de Bitvavo trading bot elders in deze repository.
 
-Er is nog geen live koppeling met UniPro voor purchase-request-data en geen echte DigiKey/Farnell
-API-credentials — de ERP-kant (purchase requests) en de supplier-kant draaien beide in mock-modus,
-zodat de volledige workflow (Purchase Request → Sourcing → Selectie → ERP PO → Supplier Order →
-Confirmation) end-to-end te doorlopen is met testdata. **Inloggen en company-selectie zijn wél
-echt**: die gebruiken dezelfde MAX-infrastructuur (`MaxSQL`, `ExactRMCompanies`) als UniPro zelf —
-zie [Inloggen en company-selectie](#inloggen-en-company-selectie) hieronder.
+Er zijn nog geen echte DigiKey/Farnell API-credentials — de supplier-kant draait in mock-modus,
+zodat de rest van de workflow (Sourcing → Selectie → ERP PO → Supplier Order → Confirmation)
+end-to-end te doorlopen is. **Inloggen, company-selectie én de purchase requests zelf zijn wél
+echt**: login gebruikt dezelfde MAX-infrastructuur (`MaxSQL`, `ExactRMCompanies`) als UniPro, en
+open purchase requests komen standaard uit MAX's eigen `Order_Master`/`Part_Master` — zie
+[Inloggen en company-selectie](#inloggen-en-company-selectie) en
+[Purchase requests uit MAX](#purchase-requests-uit-max) hieronder. Handmatig een testaanvraag
+toevoegen (§8.1) blijft ook werken, als aanvulling op de echte MAX-orders.
 
 ## Solution-structuur
 
@@ -77,6 +79,31 @@ MAX50-bibliotheek zelf of de echte database, dus het volgende is **aangenomen, n
   een aanname op basis van hoe je zelf naar de database verwijst, niet uit UniPro's code gehaald.
 - **`ExactRMCompanies`-filter**: geen filter (zie boven) — UniPro's eigen `'1001','1012'`-filter is
   bewust *niet* overgenomen.
+
+## Purchase requests uit MAX
+
+`MaxErpConnector` (`Procurement.Erp`) is de standaard `IErpConnector` en haalt open purchase
+requests op uit MAX's eigen `Order_Master`/`Part_Master` (via `AdminConnectionString`, de
+per-company MAX-administratie die bij het inloggen is opgehaald) — de door de gebruiker aangeleverde
+query, met `Part_Master.TYPE_01 IN ('B','D','Y')` vast en `Order_Master.STATUS_10` filterbaar via
+de checkboxes "Planned (1)" / "Approved (2)" op het hoofdscherm (standaard: alleen Approved).
+
+**Hoe dit samenwerkt met de rest van de engine**: `ProcurementEngine`, de approval-flow en het
+plaatsen van orders werken volledig in termen van dit prototype's eigen `PurchaseRequest`-tabel
+(`CompanyId`-gescheiden, zie boven). In plaats van MAX-orders los daarvan te verwerken, worden ze
+bij elke `GetOpenPurchaseRequestsAsync()`-aanroep **gesynchroniseerd**: elke MAX-order zonder
+bestaande `PurchaseRequest` (gededupliceerd op `ErpRequestNumber` = `Order_Master.ORDNUM_10`) wordt
+één keer aangemaakt; bestaat 'm al, dan gebeurt er niets (geen update van hoeveelheid/status bij
+wijzigingen in MAX — buiten scope voor dit prototype). Handmatig toegevoegde testaanvragen
+(§8.1) staan gewoon naast de gesynchroniseerde MAX-orders in dezelfde tabel/lijst.
+
+**Bekende datamapping-aanname, graag controleren**: de aangeleverde query heeft geen apart
+fabrikant-veld, alleen `Part_Master.VIEWER_01 AS ManufacturingPart` — die wordt gebruikt als
+`ManufacturerPartNumber`, met `Manufacturer` leeg. Zonder fabrikantnaam matchen de DigiKey/Farnell
+mock-adapters op `Medium` in plaats van `Exact` confidence, wat betekent dat **elke** MAX-order via
+het goedkeuringsscherm moet in plaats van automatisch te worden besteld (spec §6 stap 7 filtert op
+Exact/Verified). Staat er ergens in `Part_Master` een echt fabrikantveld, laat het weten dan voeg ik
+dat toe aan de query/mapping (`MaxOrderRepository`/`MaxErpConnector`).
 
 ## Bouwen en draaien
 

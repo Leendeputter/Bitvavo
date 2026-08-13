@@ -12,6 +12,8 @@ namespace Procurement.UI.Forms
 
         private DataGridView _requestsGrid;
         private DataGridView _linesGrid;
+        private CheckBox _statusPlannedCheckBox;
+        private CheckBox _statusApprovedCheckBox;
         private Button _newRequestButton;
         private Button _startSourcingButton;
         private Button _viewOffersButton;
@@ -53,10 +55,19 @@ namespace Procurement.UI.Forms
             _auditLogButton = new Button { Text = "Audit-log...", AutoSize = true };
             _auditLogButton.Click += (s, e) => ShowAuditLog();
 
+            // MAX Order_Master.STATUS_10 filter (user-supplied query): 1 = Planned, 2 = Approved.
+            // Default: only Approved, matching what should auto-source without review.
+            _statusPlannedCheckBox = new CheckBox { Text = "Planned (1)", AutoSize = true, Checked = false, Margin = new Padding(12, 12, 3, 3) };
+            _statusApprovedCheckBox = new CheckBox { Text = "Approved (2)", AutoSize = true, Checked = true, Margin = new Padding(3, 12, 3, 3) };
+            _statusPlannedCheckBox.CheckedChanged += async (s, e) => await OrderStatusFilterChangedAsync();
+            _statusApprovedCheckBox.CheckedChanged += async (s, e) => await OrderStatusFilterChangedAsync();
+            UpdateIncludedOrderStatuses();
+
             toolPanel.Controls.AddRange(new Control[]
             {
                 _newRequestButton, _startSourcingButton, _orderDetailButton,
-                _approvalsButton, _supplierMappingButton, _settingsButton, _auditLogButton
+                _approvalsButton, _supplierMappingButton, _settingsButton, _auditLogButton,
+                _statusPlannedCheckBox, _statusApprovedCheckBox
             });
 
             _requestsGrid = new DataGridView
@@ -95,6 +106,27 @@ namespace Procurement.UI.Forms
             Controls.Add(_requestsGrid);
             Controls.Add(toolPanel);
             Controls.Add(_statusLabel);
+        }
+
+        private void UpdateIncludedOrderStatuses()
+        {
+            var statuses = new System.Collections.Generic.HashSet<string>();
+            if (_statusPlannedCheckBox.Checked) statuses.Add("1");
+            if (_statusApprovedCheckBox.Checked) statuses.Add("2");
+            _composition.ErpConnector.IncludedOrderStatuses = statuses;
+        }
+
+        private async System.Threading.Tasks.Task OrderStatusFilterChangedAsync()
+        {
+            UpdateIncludedOrderStatuses();
+            try
+            {
+                await RefreshRequestsAsync();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message, "Fout bij laden van aanvragen", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
 
         private async System.Threading.Tasks.Task RefreshRequestsAsync()

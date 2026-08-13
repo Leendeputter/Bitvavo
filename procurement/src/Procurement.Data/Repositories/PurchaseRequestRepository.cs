@@ -52,6 +52,12 @@ namespace Procurement.Data.Repositories
                 .Include(pr => pr.Lines)
                 .FirstOrDefaultAsync(pr => pr.Id == id && pr.CompanyId == _session.CompanyId));
 
+        /// <summary>Used to dedup when syncing an external feed (e.g. MaxErpConnector) — avoids re-inserting a request that's already been synced for this company.</summary>
+        public Task<PurchaseRequest> FindByErpRequestNumberAsync(string erpRequestNumber) => _context.RunGuardedAsync(() =>
+            _context.PurchaseRequests
+                .Include(pr => pr.Lines)
+                .FirstOrDefaultAsync(pr => pr.CompanyId == _session.CompanyId && pr.ErpRequestNumber == erpRequestNumber));
+
         public Task<PurchaseRequest> AddAsync(PurchaseRequest request) => _context.RunGuardedAsync(async () =>
         {
             request.CompanyId = _session.CompanyId;

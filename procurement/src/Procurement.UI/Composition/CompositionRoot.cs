@@ -30,6 +30,7 @@ namespace Procurement.UI.Composition
         public SupplierRepository SupplierRepository { get; }
         public ProcurementEventRepository ProcurementEventRepository { get; }
         public IReadOnlyList<ISupplierAdapter> Adapters { get; }
+        public MaxErpConnector ErpConnector { get; }
 
         public CompositionRoot()
         {
@@ -53,10 +54,11 @@ namespace Procurement.UI.Composition
             var farnellAdapter = new FarnellAdapter(new FarnellOptions { UseMockData = true, IsSandbox = true });
             Adapters = new List<ISupplierAdapter> { digiKeyAdapter, farnellAdapter };
 
-            var erpConnector = new MockErpConnector(PurchaseRequestRepository, PurchaseOrderRepository);
+            var maxOrderRepository = new MaxOrderRepository(Session);
+            ErpConnector = new MaxErpConnector(PurchaseRequestRepository, PurchaseOrderRepository, maxOrderRepository);
 
             Engine = new ProcurementEngine(
-                erpConnector,
+                ErpConnector,
                 Adapters,
                 auditLogger,
                 PurchaseRequestRepository,
