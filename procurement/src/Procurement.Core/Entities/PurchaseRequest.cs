@@ -19,6 +19,9 @@ namespace Procurement.Core.Entities
         public int Priority { get; set; }
         public PurchaseRequestStatus Status { get; set; }
 
+        /// <summary>Raw MAX Order_Master.STATUS_10 value ("1" = Planned, "2" = Approved) at the time of sync — distinct from <see cref="Status"/>, which tracks this prototype's own workflow. Display-only (MainForm's requests grid), never used for filtering logic.</summary>
+        public string MaxOrderStatus { get; set; }
+
         public virtual List<PurchaseRequestLine> Lines { get; set; } = new List<PurchaseRequestLine>();
 
         public PurchaseRequest()

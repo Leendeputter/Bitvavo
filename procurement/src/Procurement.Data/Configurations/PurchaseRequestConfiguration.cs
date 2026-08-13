@@ -15,6 +15,7 @@ namespace Procurement.Data.Configurations
             Property(pr => pr.ErpRequestNumber).HasMaxLength(50);
             Property(pr => pr.Warehouse).HasMaxLength(50);
             Property(pr => pr.Project).HasMaxLength(100);
+            Property(pr => pr.MaxOrderStatus).HasMaxLength(10);
 
             // Every query filters by CompanyId (spec §15 follow-up: data is now scoped per MAX company).
             Property(pr => pr.CompanyId)
@@ -40,6 +41,12 @@ namespace Procurement.Data.Configurations
             Property(l => l.ManufacturerPartNumber).HasMaxLength(100);
             Property(l => l.Description).HasMaxLength(500);
             Property(l => l.PreferredSuppliersCsv).HasMaxLength(200).HasColumnName("PreferredSuppliers");
+            Property(l => l.PartType).HasMaxLength(10);
+            Property(l => l.Revision).HasMaxLength(20);
+            Property(l => l.Customer).HasMaxLength(50);
+            Property(l => l.StockId).HasMaxLength(50);
+            Property(l => l.Desc1).HasMaxLength(250);
+            Property(l => l.Desc2).HasMaxLength(250);
         }
     }
 }

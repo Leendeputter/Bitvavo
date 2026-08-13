@@ -86,14 +86,28 @@ MAX50-bibliotheek zelf of de echte database, dus het volgende is **aangenomen, n
 requests op uit MAX's eigen `Order_Master`/`Part_Master` (via `AdminConnectionString`, de
 per-company MAX-administratie die bij het inloggen is opgehaald) — de door de gebruiker aangeleverde
 query, met `Part_Master.TYPE_01 IN ('B','D','Y')` vast en `Order_Master.STATUS_10` filterbaar via
-de checkboxes "Planned (1)" / "Approved (2)" op het hoofdscherm (standaard: alleen Approved).
+de checkboxes "1 - Planned" / "2 - Approved" op het hoofdscherm (standaard: alleen Approved).
 
-**Handmatig opvragen, niet automatisch**: het hoofdscherm haalt bij het openen enkel de al lokaal
-gesynchroniseerde aanvragen op (`PurchaseRequestRepository.GetOpenAsync`, raakt MAX niet aan) — pas
-een klik op de knop **"Query"** start de echte MAX-query (met een busy-cursor tijdens het laden). De
-checkboxes voor Planned/Approved passen alleen aan wat de *volgende* keer Query wordt opgehaald; ze
-herladen niet automatisch. Na lokale acties (nieuwe testaanvraag, sourcing starten, een
-goedkeuring) wordt het scherm ook enkel lokaal ververst, zonder impliciete MAX-query.
+**Handmatig opvragen, niet automatisch**: het hoofdscherm laadt bij het openen helemaal niets — pas
+een klik op de knop **"Query"** (in het groepsvak "Orders ophalen uit MAX", samen met de status-
+checkboxes) start de MAX-query, met een busy-cursor tijdens het laden. Na lokale acties (nieuwe
+testaanvraag, sourcing starten, een goedkeuring) wordt het scherm wel ververst, maar enkel met de al
+lokaal gesynchroniseerde aanvragen (`PurchaseRequestRepository.GetOpenAsync`) — zonder MAX te raken.
+
+**Extra filters**: naast de status-checkboxes staan twee losse groepsvakken, apart van de overige
+actieknoppen. "Due Date Range" filtert op `Order_Master.CURDUE_10` (enkel actief als "Enable" is
+aangevinkt). "Filter" is een generieke "Select By"-range (Order Number/Customer/Part) die een
+`BETWEEN`-achtige `>=`/`<=` toevoegt op `ORDNUM_10`, `Part_Master.COMCDE_01` resp. `PRTNUM_10` —
+Start en/of End mogen leeg blijven voor een open-einde range. Beide filters worden pas toegepast bij
+de volgende klik op "Query" (`MaxOrderQueryFilter`, opgebouwd in `MainForm.ApplyFiltersToErpConnector`).
+
+**Kolommen van het hoofdscherm**: Order, Status, Firm, Type, PartID, Rev, Desc1, Desc2, Quantity,
+Cost, Cnv, DueDate, Reference, Manufacturing Part, Customer, StockID — 1-op-1 de velden uit de
+Order_Master/Part_Master-query (`FRMPLN_10`, `REVLEV_10`, `COST_10`, `CSTCNV_10`, `STK_10`,
+`COMCDE_01`, ...). Deze velden zijn puur informatief en worden meegesynchroniseerd naar
+`PurchaseRequestLine` (niet gebruikt door de sourcing/matching-logica). `Status` toont hier het ruwe
+`Order_Master.STATUS_10` (`PurchaseRequest.MaxOrderStatus`), niet dit prototype's eigen workflow-
+status (`PurchaseRequest.Status`, zichtbaar via Order details/Goedkeuringen).
 
 **Hoe dit samenwerkt met de rest van de engine**: `ProcurementEngine`, de approval-flow en het
 plaatsen van orders werken volledig in termen van dit prototype's eigen `PurchaseRequest`-tabel

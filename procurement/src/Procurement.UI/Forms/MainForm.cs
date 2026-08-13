@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
 using Procurement.Core.Entities;
+using Procurement.Erp;
 using Procurement.UI.Composition;
 
 namespace Procurement.UI.Forms
@@ -14,9 +16,23 @@ namespace Procurement.UI.Forms
 
         private DataGridView _requestsGrid;
         private DataGridView _linesGrid;
+
+        // "Orders ophalen uit MAX" group — status filter + the Query button that actually triggers
+        // the MAX round-trip (nothing here runs automatically, only on Query click).
         private CheckBox _statusPlannedCheckBox;
         private CheckBox _statusApprovedCheckBox;
         private Button _queryButton;
+
+        // "Due Date Range" group.
+        private CheckBox _dueDateEnableCheckBox;
+        private DateTimePicker _dueDateStartPicker;
+        private DateTimePicker _dueDateEndPicker;
+
+        // "Filter" group — generic range filter, applied to whichever column "Select By" picks.
+        private ComboBox _rangeFieldCombo;
+        private TextBox _rangeStartBox;
+        private TextBox _rangeEndBox;
+
         private Button _newRequestButton;
         private Button _startSourcingButton;
         private Button _viewOffersButton;
@@ -31,23 +47,20 @@ namespace Procurement.UI.Forms
         {
             _composition = composition ?? throw new ArgumentNullException(nameof(composition));
             InitializeComponent();
-            // Orders worden niet meer automatisch bij het openen uit MAX opgehaald (dat kan een
-            // trage query zijn) — enkel al lokaal gesynchroniseerde aanvragen worden getoond, tot
-            // de gebruiker zelf op "Query" klikt.
-            Load += async (s, e) => await LoadLocalRequestsAsync();
+            // Niets wordt automatisch geladen bij het openen — de grid blijft leeg tot de
+            // gebruiker zelf op "Query" klikt (dat geldt ook voor de al lokaal gesynchroniseerde
+            // aanvragen, die enkel na een expliciete actie opnieuw worden getoond).
         }
 
         private void InitializeComponent()
         {
             Text = $"Componenteninkoop – {_composition.Session.CompanyName} ({_composition.Session.UserName})"
                  + (_composition.Session.TestMode ? " – TESTMODUS" : string.Empty);
-            Width = 1200;
-            Height = 800;
+            Width = 1300;
+            Height = 860;
             StartPosition = FormStartPosition.CenterScreen;
 
             var toolPanel = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 40, FlowDirection = FlowDirection.LeftToRight };
-            _queryButton = new Button { Text = "Query", AutoSize = true };
-            _queryButton.Click += async (s, e) => await QueryOrdersAsync();
             _newRequestButton = new Button { Text = "Nieuwe testaanvraag toevoegen", AutoSize = true };
             _newRequestButton.Click += async (s, e) => await NewRequestAsync();
             _startSourcingButton = new Button { Text = "Sourcing starten", AutoSize = true };
@@ -63,25 +76,30 @@ namespace Procurement.UI.Forms
             _auditLogButton = new Button { Text = "Audit-log...", AutoSize = true };
             _auditLogButton.Click += (s, e) => ShowAuditLog();
 
-            // MAX Order_Master.STATUS_10 filter (user-supplied query): 1 = Planned, 2 = Approved.
-            // Default: only Approved, matching what should auto-source without review.
-            _statusPlannedCheckBox = new CheckBox { Text = "Planned (1)", AutoSize = true, Checked = false, Margin = new Padding(12, 12, 3, 3) };
-            _statusApprovedCheckBox = new CheckBox { Text = "Approved (2)", AutoSize = true, Checked = true, Margin = new Padding(3, 12, 3, 3) };
-            _statusPlannedCheckBox.CheckedChanged += async (s, e) => await OrderStatusFilterChangedAsync();
-            _statusApprovedCheckBox.CheckedChanged += async (s, e) => await OrderStatusFilterChangedAsync();
-            UpdateIncludedOrderStatuses();
-
             toolPanel.Controls.AddRange(new Control[]
             {
-                _queryButton, _newRequestButton, _startSourcingButton, _orderDetailButton,
-                _approvalsButton, _supplierMappingButton, _settingsButton, _auditLogButton,
-                _statusPlannedCheckBox, _statusApprovedCheckBox
+                _newRequestButton, _startSourcingButton, _orderDetailButton,
+                _approvalsButton, _supplierMappingButton, _settingsButton, _auditLogButton
             });
+
+            // Apart van de actieknoppen hierboven: het ophalen/filteren van MAX-orders krijgt een
+            // eigen rij met groepsvakken (Query + status-filter, Due Date Range, en de generieke
+            // "Select By"-filter).
+            var filterPanel = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Top,
+                AutoSize = true,
+                FlowDirection = FlowDirection.LeftToRight,
+                Padding = new Padding(4)
+            };
+            filterPanel.Controls.Add(BuildQueryGroup());
+            filterPanel.Controls.Add(BuildDueDateRangeGroup());
+            filterPanel.Controls.Add(BuildRangeFilterGroup());
 
             _requestsGrid = new DataGridView
             {
                 Dock = DockStyle.Top,
-                Height = 350,
+                Height = 300,
                 ReadOnly = true,
                 AllowUserToAddRows = false,
                 AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.AllCells,
@@ -106,35 +124,106 @@ namespace Procurement.UI.Forms
             _viewOffersButton = new Button { Text = "Offers bekijken (dubbelklik ook mogelijk)", Dock = DockStyle.Bottom, AutoSize = true };
             _viewOffersButton.Click += (s, e) => ShowOffersForSelectedLine();
 
-            _statusLabel = new Label { Dock = DockStyle.Bottom, Height = 24, Text = "Gereed.", Padding = new Padding(4) };
+            _statusLabel = new Label { Dock = DockStyle.Bottom, Height = 24, Text = "Gereed. Klik op \"Query\" om orders op te halen uit MAX.", Padding = new Padding(4) };
 
+            // Volgorde bepaalt de docking-stapeling (laatst toegevoegde Top-control komt bovenaan):
+            // toolPanel (buitenste rand), dan filterPanel, dan requestsGrid.
             Controls.Add(_linesGrid);
             Controls.Add(linesLabel);
             Controls.Add(_viewOffersButton);
             Controls.Add(_requestsGrid);
+            Controls.Add(filterPanel);
             Controls.Add(toolPanel);
             Controls.Add(_statusLabel);
         }
 
+        private GroupBox BuildQueryGroup()
+        {
+            var group = new GroupBox { Text = "Orders ophalen uit MAX", AutoSize = true, Padding = new Padding(8), Margin = new Padding(4) };
+            var layout = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true };
+
+            // MAX Order_Master.STATUS_10 filter (user-supplied query): 1 = Planned, 2 = Approved.
+            // Default: only Approved, matching what should auto-source without review. Alleen van
+            // invloed op de *volgende* keer dat op Query wordt geklikt.
+            _statusPlannedCheckBox = new CheckBox { Text = "1 - Planned", AutoSize = true, Checked = false };
+            _statusApprovedCheckBox = new CheckBox { Text = "2 - Approved", AutoSize = true, Checked = true };
+            UpdateIncludedOrderStatuses();
+
+            _queryButton = new Button { Text = "Query", AutoSize = true, Margin = new Padding(0, 10, 0, 0) };
+            _queryButton.Click += async (s, e) => await QueryOrdersAsync();
+
+            layout.Controls.Add(_statusPlannedCheckBox);
+            layout.Controls.Add(_statusApprovedCheckBox);
+            layout.Controls.Add(_queryButton);
+            group.Controls.Add(layout);
+            return group;
+        }
+
+        private GroupBox BuildDueDateRangeGroup()
+        {
+            var group = new GroupBox { Text = "Due Date Range", AutoSize = true, Padding = new Padding(8), Margin = new Padding(4) };
+            var layout = new TableLayoutPanel { ColumnCount = 2, AutoSize = true };
+
+            _dueDateEnableCheckBox = new CheckBox { Text = "Enable", AutoSize = true };
+            _dueDateStartPicker = new DateTimePicker { Format = DateTimePickerFormat.Short, Width = 110, Enabled = false };
+            _dueDateEndPicker = new DateTimePicker { Format = DateTimePickerFormat.Short, Width = 110, Enabled = false };
+            _dueDateEnableCheckBox.CheckedChanged += (s, e) =>
+            {
+                _dueDateStartPicker.Enabled = _dueDateEnableCheckBox.Checked;
+                _dueDateEndPicker.Enabled = _dueDateEnableCheckBox.Checked;
+            };
+
+            AddFilterRow(layout, string.Empty, _dueDateEnableCheckBox);
+            AddFilterRow(layout, "Start Date", _dueDateStartPicker);
+            AddFilterRow(layout, "End Date", _dueDateEndPicker);
+
+            group.Controls.Add(layout);
+            return group;
+        }
+
+        private GroupBox BuildRangeFilterGroup()
+        {
+            var group = new GroupBox { Text = "Filter", AutoSize = true, Padding = new Padding(8), Margin = new Padding(4) };
+            var layout = new TableLayoutPanel { ColumnCount = 2, AutoSize = true };
+
+            _rangeFieldCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 110 };
+            _rangeFieldCombo.Items.AddRange(new object[] { "Order Number", "Customer", "Part" });
+            _rangeFieldCombo.SelectedIndex = 0;
+            _rangeStartBox = new TextBox { Width = 110 };
+            _rangeEndBox = new TextBox { Width = 110 };
+
+            AddFilterRow(layout, "Select By", _rangeFieldCombo);
+            AddFilterRow(layout, "Start", _rangeStartBox);
+            AddFilterRow(layout, "End", _rangeEndBox);
+
+            group.Controls.Add(layout);
+            return group;
+        }
+
+        private static void AddFilterRow(TableLayoutPanel layout, string label, Control control)
+        {
+            var row = layout.RowCount;
+            layout.RowCount++;
+            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            if (string.IsNullOrEmpty(label))
+            {
+                layout.Controls.Add(control, 0, row);
+                layout.SetColumnSpan(control, 2);
+                return;
+            }
+            layout.Controls.Add(new Label { Text = label, AutoSize = true, TextAlign = ContentAlignment.MiddleLeft, Margin = new Padding(3, 6, 3, 3) }, 0, row);
+            layout.Controls.Add(control, 1, row);
+        }
+
         private void UpdateIncludedOrderStatuses()
         {
-            var statuses = new System.Collections.Generic.HashSet<string>();
+            var statuses = new HashSet<string>();
             if (_statusPlannedCheckBox.Checked) statuses.Add("1");
             if (_statusApprovedCheckBox.Checked) statuses.Add("2");
             _composition.ErpConnector.IncludedOrderStatuses = statuses;
         }
 
-        private System.Threading.Tasks.Task OrderStatusFilterChangedAsync()
-        {
-            // De checkboxes bepalen enkel welke Order_Master.STATUS_10-waarden de volgende keer
-            // worden opgehaald door de "Query"-knop — de al lokaal opgeslagen aanvragen worden er
-            // niet door gefilterd, dus een wijziging hoeft geen (impliciete) MAX-query te starten.
-            UpdateIncludedOrderStatuses();
-            SetStatus("Filter aangepast. Klik op \"Query\" om orders opnieuw op te vragen uit MAX.");
-            return System.Threading.Tasks.Task.CompletedTask;
-        }
-
-        /// <summary>Laadt enkel de al lokaal gesynchroniseerde aanvragen — raakt MAX niet aan. Gebruikt bij het openen van het scherm en na lokale wijzigingen (nieuwe testaanvraag, sourcing, goedkeuringen).</summary>
+        /// <summary>Laadt enkel de al lokaal gesynchroniseerde aanvragen — raakt MAX niet aan. Gebruikt na lokale wijzigingen (nieuwe testaanvraag, sourcing, goedkeuringen), niet bij het openen van het scherm.</summary>
         private async System.Threading.Tasks.Task LoadLocalRequestsAsync()
         {
             SetStatus("Aanvragen laden...");
@@ -144,14 +233,39 @@ namespace Procurement.UI.Forms
             await LoadLinesForSelectedRequestAsync();
         }
 
-        /// <summary>Vraagt open orders op uit MAX (Order_Master/Part_Master, incl. Part_Vendor-mapping sync) en synchroniseert ze naar lokale aanvragen — enkel aangeroepen via de "Query"-knop, niet automatisch.</summary>
+        /// <summary>Vraagt open orders op uit MAX (Order_Master/Part_Master, incl. Part_Vendor-mapping sync) met de huidige filterinstellingen, en synchroniseert ze naar lokale aanvragen — enkel aangeroepen via de "Query"-knop.</summary>
         private async System.Threading.Tasks.Task RefreshRequestsAsync()
         {
             SetStatus("Orders opvragen uit MAX...");
+            ApplyFiltersToErpConnector();
             var requests = await _composition.Engine.GetOpenPurchaseRequestsAsync();
             PopulateRequestsGrid(requests);
             SetStatus($"{requests.Count} openstaande aanvraag/aanvragen geladen.");
             await LoadLinesForSelectedRequestAsync();
+        }
+
+        private void ApplyFiltersToErpConnector()
+        {
+            UpdateIncludedOrderStatuses();
+
+            _composition.ErpConnector.DueDateFilterStart = _dueDateEnableCheckBox.Checked ? _dueDateStartPicker.Value.Date : (DateTime?)null;
+            _composition.ErpConnector.DueDateFilterEnd = _dueDateEnableCheckBox.Checked ? _dueDateEndPicker.Value.Date : (DateTime?)null;
+
+            var rangeStart = _rangeStartBox.Text.Trim();
+            var rangeEnd = _rangeEndBox.Text.Trim();
+            var hasRange = !string.IsNullOrEmpty(rangeStart) || !string.IsNullOrEmpty(rangeEnd);
+
+            _composition.ErpConnector.RangeFilterField = hasRange ? GetSelectedRangeField() : (MaxOrderRangeField?)null;
+            _composition.ErpConnector.RangeFilterStart = string.IsNullOrEmpty(rangeStart) ? null : rangeStart;
+            _composition.ErpConnector.RangeFilterEnd = string.IsNullOrEmpty(rangeEnd) ? null : rangeEnd;
+        }
+
+        private MaxOrderRangeField GetSelectedRangeField()
+        {
+            var text = _rangeFieldCombo.SelectedItem as string;
+            if (text == "Customer") return MaxOrderRangeField.Customer;
+            if (text == "Part") return MaxOrderRangeField.Part;
+            return MaxOrderRangeField.OrderNumber;
         }
 
         private async System.Threading.Tasks.Task QueryOrdersAsync()
@@ -175,18 +289,35 @@ namespace Procurement.UI.Forms
 
         private void PopulateRequestsGrid(IReadOnlyList<PurchaseRequest> requests)
         {
+            // Kolomvolgorde/-namen op verzoek: Order, Status, Firm, Type, PartID, Rev, Desc1,
+            // Desc2, Quantity, Cost, Cnv, DueDate, Reference, Manufacturing Part, Customer,
+            // StockID — zoals in de MAX Order_Master/Part_Master-query. Elke MAX-order sync't naar
+            // precies één PurchaseRequestLine (zie MaxErpConnector), dus de eerste regel volstaat
+            // hier; handmatige testaanvragen hebben ook altijd precies één regel.
             var rows = requests
-                .Select(r => new
+                .Select(r =>
                 {
-                    r.Id,
-                    r.ErpRequestNumber,
-                    r.RequestDate,
-                    r.RequiredDate,
-                    r.Warehouse,
-                    r.Project,
-                    r.Priority,
-                    Status = r.Status.ToString(),
-                    Regels = r.Lines.Count
+                    var line = r.Lines.FirstOrDefault();
+                    return new
+                    {
+                        Id = r.Id,
+                        Order = r.ErpRequestNumber,
+                        Status = r.MaxOrderStatus,
+                        Firm = line?.Firm ?? false,
+                        Type = line?.PartType,
+                        PartID = line?.ErpArticleId,
+                        Rev = line?.Revision,
+                        Desc1 = line?.Desc1,
+                        Desc2 = line?.Desc2,
+                        Quantity = line?.RequestedQuantity ?? 0,
+                        Cost = line?.Cost,
+                        Cnv = line?.CostConv,
+                        DueDate = r.RequiredDate,
+                        Reference = r.Project,
+                        ManufacturingPart = line?.ManufacturerPartNumber,
+                        Customer = line?.Customer,
+                        StockID = line?.StockId
+                    };
                 })
                 .ToList();
 
@@ -197,11 +328,9 @@ namespace Procurement.UI.Forms
             _requestsGrid.DataSource = rows;
             _requestsGrid.SelectionChanged += RequestsGrid_SelectionChanged;
 
-            // Kolomkoppen die overeenkomen met een veld uit de MAX-query (Order_Master/Part_Master)
-            // krijgen de naam zoals die daarin gebruikt wordt, i.p.v. de interne entiteitsnaam.
-            SetHeaderText("ErpRequestNumber", "OrderNumber");
-            SetHeaderText("RequiredDate", "DueDate");
-            SetHeaderText("Project", "Reference");
+            if (_requestsGrid.Columns["Id"] != null)
+                _requestsGrid.Columns["Id"].Visible = false;
+            SetHeaderText("ManufacturingPart", "Manufacturing Part");
         }
 
         private void SetHeaderText(string columnName, string headerText)

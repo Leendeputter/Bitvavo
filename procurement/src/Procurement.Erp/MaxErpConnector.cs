@@ -39,6 +39,15 @@ namespace Procurement.Erp
         /// <summary>MAX Order_Master.STATUS_10 values to include — "1" = Planned, "2" = Approved. Defaults to Approved only; the UI's status checkboxes update this.</summary>
         public HashSet<string> IncludedOrderStatuses { get; set; } = new HashSet<string> { "2" };
 
+        /// <summary>Optional Order_Master.CURDUE_10 range — set from MainForm's "Due Date Range" group box (only applied when its Enable checkbox is checked).</summary>
+        public DateTime? DueDateFilterStart { get; set; }
+        public DateTime? DueDateFilterEnd { get; set; }
+
+        /// <summary>Optional "Select By" range filter — set from MainForm's "Filter" group box.</summary>
+        public MaxOrderRangeField? RangeFilterField { get; set; }
+        public string RangeFilterStart { get; set; }
+        public string RangeFilterEnd { get; set; }
+
         public MaxErpConnector(
             PurchaseRequestRepository purchaseRequestRepository,
             PurchaseOrderRepository purchaseOrderRepository,
@@ -57,7 +66,16 @@ namespace Procurement.Erp
 
         public async Task<IReadOnlyList<PurchaseRequest>> GetOpenPurchaseRequestsAsync()
         {
-            var maxOrders = await _maxOrderRepository.GetOpenOrdersAsync(IncludedOrderStatuses);
+            var filter = new MaxOrderQueryFilter
+            {
+                Statuses = IncludedOrderStatuses,
+                DueDateStart = DueDateFilterStart,
+                DueDateEnd = DueDateFilterEnd,
+                RangeField = RangeFilterField,
+                RangeStart = RangeFilterStart,
+                RangeEnd = RangeFilterEnd
+            };
+            var maxOrders = await _maxOrderRepository.GetOpenOrdersAsync(filter);
 
             foreach (var order in maxOrders)
             {
@@ -73,6 +91,7 @@ namespace Procurement.Erp
                     ErpRequestNumber = Truncate(order.OrderNumber, 50),
                     RequiredDate = order.DueDate,
                     Project = Truncate(order.Reference, 100),
+                    MaxOrderStatus = Truncate(order.Status, 10),
                     Lines = new List<PurchaseRequestLine>
                     {
                         new PurchaseRequestLine
@@ -81,7 +100,16 @@ namespace Procurement.Erp
                             ManufacturerPartNumber = Truncate(order.ManufacturerPartNumber, 100),
                             Description = Truncate(order.Description, 500),
                             RequestedQuantity = order.CurrentQty,
-                            RequiredDate = order.DueDate
+                            RequiredDate = order.DueDate,
+                            PartType = Truncate(order.PartType, 10),
+                            Revision = Truncate(order.Revision, 20),
+                            Firm = order.Firm,
+                            Cost = order.Cost,
+                            CostConv = order.CostConv,
+                            Customer = Truncate(order.Customer, 50),
+                            StockId = Truncate(order.StockId, 50),
+                            Desc1 = Truncate(order.Desc1, 250),
+                            Desc2 = Truncate(order.Desc2, 250)
                         }
                     }
                 };
