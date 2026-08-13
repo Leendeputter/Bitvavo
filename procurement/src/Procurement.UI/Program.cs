@@ -1,8 +1,9 @@
 using System;
-using System.Data.Entity;
+using System.Data.Entity.Infrastructure;
+using System.Data.Entity.Migrations;
 using System.IO;
 using System.Windows.Forms;
-using Procurement.Data;
+using Procurement.Core.Session;
 using Procurement.Data.Migrations;
 using Procurement.UI.Composition;
 using Procurement.UI.Forms;
@@ -60,13 +61,22 @@ namespace Procurement.UI
 
             // EF6 automatic migrations (Migrations/Configuration.cs) create/update the schema and
             // seed the business-rule tables on first run — no design-time Add-Migration needed.
-            Database.SetInitializer(new MigrateDatabaseToLatestVersion<ProcurementDbContext, Configuration>());
-
-            var composition = new CompositionRoot();
-
+            //
+            // Database.SetInitializer<TContext,TConfig>() + Database.Initialize() is the usual
+            // way to run this, but that path has EF6 construct its own ProcurementDbContext
+            // internally via its *parameterless* constructor ("name=ProcurementDbContext") to
+            // resolve a connection — which fails now that the connection string is only known at
+            // runtime (after login) and no longer lives in App.config under that name. Driving
+            // the DbMigrator directly with an explicit DbConnectionInfo (built from
+            // ProcurementSession.SharedConnectionString, populated by LoginForm) sidesteps that
+            // entirely.
             try
             {
-                composition.DbContext.Database.Initialize(force: false);
+                var migrationsConfiguration = new Configuration
+                {
+                    TargetDatabase = new DbConnectionInfo(ProcurementSession.SharedConnectionString, "System.Data.SqlClient")
+                };
+                new DbMigrator(migrationsConfiguration).Update();
             }
             catch (Exception ex)
             {
@@ -75,6 +85,8 @@ namespace Procurement.UI
                     "Database-fout", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
+
+            var composition = new CompositionRoot();
 
             Application.Run(new MainForm(composition));
         }
