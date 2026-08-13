@@ -51,6 +51,9 @@ namespace Procurement.Erp
         public string RangeFilterStart { get; set; }
         public string RangeFilterEnd { get; set; }
 
+        /// <summary>How many rows the *last* GetOpenPurchaseRequestsAsync call's MAX query itself returned, before any local merging — lets MainForm show this separately from the total row count shown, so a "the filter does nothing" report can be diagnosed without a debugger: if this number doesn't shrink when a filter is applied, the SQL-level filter (MaxOrderRepository) is the place to look; if it does shrink but the grid still shows more rows than that, the local-merge logic below is the place to look.</summary>
+        public int LastMaxOrderCount { get; private set; }
+
         public MaxErpConnector(
             PurchaseRequestRepository purchaseRequestRepository,
             PurchaseOrderRepository purchaseOrderRepository,
@@ -79,6 +82,7 @@ namespace Procurement.Erp
                 RangeEnd = RangeFilterEnd
             };
             var maxOrders = await _maxOrderRepository.GetOpenOrdersAsync(filter);
+            LastMaxOrderCount = maxOrders.Count;
 
             foreach (var order in maxOrders)
             {
@@ -137,16 +141,29 @@ namespace Procurement.Erp
             // filter (statuses/Due Date range/Select By) — a request synced by an earlier,
             // unfiltered Query never disappears from local storage just because the current filter
             // no longer matches it. Without this, the Due Date Range / Filter group boxes would
-            // visibly do nothing: the grid would keep showing everything ever synced. Manually
-            // added test requests (PurchaseRequest.MaxOrderStatus == null, never set by this class)
-            // are exempt — those aren't part of any MAX query result and should stay visible
-            // regardless of the current MAX filter, same as before this fix.
+            // visibly do nothing: the grid would keep showing everything ever synced.
+            //
+            // Manually added test requests should stay visible regardless of the current MAX
+            // filter (they were never part of any MAX query result to begin with) — but that check
+            // must NOT be "PurchaseRequest.MaxOrderStatus == null", which was the actual bug here:
+            // MaxOrderStatus only gets (re)populated for a row when that row is present in the
+            // *current* maxOrders batch (see ApplyDisplayOnlyFields above and the AddAsync branch
+            // below) — so a MAX-sourced row synced before that column existed, which hasn't
+            // happened to match a filtered Query since, still has MaxOrderStatus == null and would
+            // incorrectly be treated as "manual, always show" — exactly the bypass that made every
+            // filter look like it did nothing, and also why its Desc1/Desc2/etc. stayed blank (same
+            // never-refreshed row). NewPurchaseRequestForm's "TEST-" ErpRequestNumber prefix is set
+            // once at creation and never depends on being refreshed later, so it doesn't have this
+            // problem.
             var matchedOrderNumbers = new HashSet<string>(maxOrders.Select(o => Truncate(o.OrderNumber, 50)));
             var openRequests = await _purchaseRequestRepository.GetOpenAsync();
             return openRequests
-                .Where(r => r.MaxOrderStatus == null || matchedOrderNumbers.Contains(r.ErpRequestNumber))
+                .Where(r => IsManualTestRequest(r.ErpRequestNumber) || matchedOrderNumbers.Contains(r.ErpRequestNumber))
                 .ToList();
         }
+
+        private static bool IsManualTestRequest(string erpRequestNumber) =>
+            !string.IsNullOrEmpty(erpRequestNumber) && erpRequestNumber.StartsWith("TEST-", StringComparison.Ordinal);
 
         private static void ApplyDisplayOnlyFields(PurchaseRequest existing, MaxOrder order)
         {

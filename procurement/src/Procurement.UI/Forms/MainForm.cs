@@ -231,9 +231,9 @@ namespace Procurement.UI.Forms
         /// </summary>
         private static GroupBox WrapInGroupBox(string title, Control content)
         {
-            const int left = 10, top = 18, right = 8, bottom = 8;
+            const int left = 8, top = 16, right = 6, bottom = 6;
 
-            var group = new GroupBox { Text = title, Margin = new Padding(4) };
+            var group = new GroupBox { Text = title, Margin = new Padding(3) };
             content.Location = new Point(left, top);
             group.Controls.Add(content);
 
@@ -269,7 +269,10 @@ namespace Procurement.UI.Forms
             ApplyFiltersToErpConnector();
             var requests = await _composition.Engine.GetOpenPurchaseRequestsAsync();
             PopulateRequestsGrid(requests);
-            SetStatus($"{requests.Count} openstaande aanvraag/aanvragen geladen.");
+            // Toont ook hoeveel orders de MAX-query zelf teruggaf (voor het filter toepassen op de
+            // lokale lijst) — handig om te zien of een filter al op MAX-niveau iets doet, los van
+            // hoeveel er uiteindelijk in de grid staan.
+            SetStatus($"{requests.Count} aanvraag/aanvragen getoond ({_composition.ErpConnector.LastMaxOrderCount} orders uit MAX opgehaald met huidig filter).");
             await LoadLinesForSelectedRequestAsync();
         }
 

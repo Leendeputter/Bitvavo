@@ -104,8 +104,18 @@ Omdat MAX-orders na een eerste sync altijd lokaal blijven staan (insert-if-not-e
 filtert `MaxErpConnector.GetOpenPurchaseRequestsAsync` het teruggegeven lijstje ook nog eens op de
 ordernummers uit de *huidige* MAX-query — anders zou een aanscherping van het filter niets zichtbaars
 doen omdat alles wat ooit gesynchroniseerd is gewoon in de lokale tabel blijft staan. Handmatig
-toegevoegde testaanvragen (`PurchaseRequest.MaxOrderStatus == null`) vallen hier buiten en blijven
-altijd zichtbaar, ongeacht het MAX-filter.
+toegevoegde testaanvragen (herkenbaar aan de `"TEST-"`-prefix die `NewPurchaseRequestForm` aan
+`ErpRequestNumber` geeft) vallen hier buiten en blijven altijd zichtbaar, ongeacht het MAX-filter.
+Bewust *niet* `PurchaseRequest.MaxOrderStatus == null` als onderscheid gebruikt: dat veld wordt alleen
+(opnieuw) gezet voor een rij die in de *huidige* MAX-batch zit, dus een oudere, al gesynchroniseerde
+MAX-order die toevallig een tijd lang buiten elk filter viel, zou anders permanent als "handmatig,
+altijd tonen" zijn behandeld — en dus nooit meer gefilterd worden (en ook z'n Desc1/Desc2/Type/enz.
+nooit meer ververst krijgen, want die worden alleen bijgewerkt zodra de rij wél weer in een
+MAX-resultaat voorkomt). Dat was de daadwerkelijke oorzaak van "de filters doen niets".
+
+De statusbalk toont na een Query ook hoeveel orders de MAX-query zelf teruggaf
+(`MaxErpConnector.LastMaxOrderCount`), los van hoeveel er na de lokale merge in de grid staan — handig
+om te zien of een filter al op MAX/SQL-niveau iets doet.
 
 **Kolommen van het hoofdscherm**: Order, Status, Firm, Type, PartID, Rev, Desc1, Desc2, Quantity,
 Cost, Cnv, DueDate, Reference, Manufacturing Part, Customer, StockID — 1-op-1 de velden uit de
