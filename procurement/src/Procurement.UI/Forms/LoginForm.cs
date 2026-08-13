@@ -61,48 +61,76 @@ namespace Procurement.UI.Forms
             Load += LoginForm_Load;
         }
 
+        // Absolute positions/sizes mirror UniPro2026's own UI/Forms/Login.Designer.cs
+        // (cmbAdministrations at 69,35 size 143x21; cb_testMode at 69,62; bt_LogIn at 101,89 size
+        // 75x23 — a small button, not docked/stretched — lbl_company at 12,38; ClientSize
+        // 263x147), shifted down one row to make room for the username label UniPro doesn't show.
         private void InitializeComponent()
         {
-            Text = "Componenteninkoop – Inloggen";
-            Width = 340;
-            Height = 220;
+            Text = "Login";
+            ClientSize = new System.Drawing.Size(263, 175);
             StartPosition = FormStartPosition.CenterScreen;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
 
-            var layout = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 2, Padding = new Padding(12), AutoSize = true };
-            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 35));
-            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 65));
+            var lblUser = new Label
+            {
+                Text = "Gebruiker",
+                Location = new System.Drawing.Point(12, 12),
+                Size = new System.Drawing.Size(51, 13)
+            };
+            _userLabel = new Label
+            {
+                Text = "(onbekend)",
+                Location = new System.Drawing.Point(69, 12),
+                Size = new System.Drawing.Size(182, 13)
+            };
 
-            _userLabel = new Label { Text = "(gebruiker onbekend)", Dock = DockStyle.Fill, TextAlign = System.Drawing.ContentAlignment.MiddleLeft };
-            _companyCombo = new ComboBox { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList };
-            _testModeCheckBox = new CheckBox { Text = "Testmodus", AutoSize = true };
+            _companyLabel = new Label
+            {
+                Text = "Company",
+                Location = new System.Drawing.Point(12, 38 + 26),
+                Size = new System.Drawing.Size(51, 13)
+            };
+            _companyCombo = new ComboBox
+            {
+                Location = new System.Drawing.Point(69, 35 + 26),
+                Size = new System.Drawing.Size(143, 21),
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
 
-            AddRow(layout, "Gebruiker:", _userLabel);
-            _companyLabel = AddRow(layout, "Administratie:", _companyCombo);
-            AddRow(layout, string.Empty, _testModeCheckBox);
+            _testModeCheckBox = new CheckBox
+            {
+                Text = "Testmodus",
+                Location = new System.Drawing.Point(69, 62 + 26),
+                Size = new System.Drawing.Size(76, 17),
+                AutoSize = true
+            };
 
-            _loginButton = new Button { Text = "Inloggen", Width = 100, Dock = DockStyle.Bottom };
+            _loginButton = new Button
+            {
+                Text = "Log In",
+                Location = new System.Drawing.Point(101, 89 + 26),
+                Size = new System.Drawing.Size(75, 23)
+            };
             _loginButton.Click += LoginButton_Click;
 
-            _statusLabel = new Label { Dock = DockStyle.Bottom, Height = 32, Padding = new Padding(4), ForeColor = System.Drawing.Color.DarkRed };
+            _statusLabel = new Label
+            {
+                Location = new System.Drawing.Point(12, 122 + 26),
+                Size = new System.Drawing.Size(239, 32),
+                ForeColor = System.Drawing.Color.DarkRed
+            };
 
-            Controls.Add(layout);
+            Controls.Add(lblUser);
+            Controls.Add(_userLabel);
+            Controls.Add(_companyLabel);
+            Controls.Add(_companyCombo);
+            Controls.Add(_testModeCheckBox);
             Controls.Add(_loginButton);
             Controls.Add(_statusLabel);
             AcceptButton = _loginButton;
-        }
-
-        private static Label AddRow(TableLayoutPanel layout, string label, Control control)
-        {
-            var row = layout.RowCount;
-            layout.RowCount++;
-            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            var labelControl = new Label { Text = label, Dock = DockStyle.Fill, TextAlign = System.Drawing.ContentAlignment.MiddleLeft };
-            layout.Controls.Add(labelControl, 0, row);
-            layout.Controls.Add(control, 1, row);
-            return labelControl;
         }
 
         private void LoginForm_Load(object sender, EventArgs e)
