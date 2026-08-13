@@ -88,14 +88,22 @@ per-company MAX-administratie die bij het inloggen is opgehaald) — de door de 
 query, met `Part_Master.TYPE_01 IN ('B','D','Y')` vast en `Order_Master.STATUS_10` filterbaar via
 de checkboxes "Planned (1)" / "Approved (2)" op het hoofdscherm (standaard: alleen Approved).
 
+**Handmatig opvragen, niet automatisch**: het hoofdscherm haalt bij het openen enkel de al lokaal
+gesynchroniseerde aanvragen op (`PurchaseRequestRepository.GetOpenAsync`, raakt MAX niet aan) — pas
+een klik op de knop **"Query"** start de echte MAX-query (met een busy-cursor tijdens het laden). De
+checkboxes voor Planned/Approved passen alleen aan wat de *volgende* keer Query wordt opgehaald; ze
+herladen niet automatisch. Na lokale acties (nieuwe testaanvraag, sourcing starten, een
+goedkeuring) wordt het scherm ook enkel lokaal ververst, zonder impliciete MAX-query.
+
 **Hoe dit samenwerkt met de rest van de engine**: `ProcurementEngine`, de approval-flow en het
 plaatsen van orders werken volledig in termen van dit prototype's eigen `PurchaseRequest`-tabel
 (`CompanyId`-gescheiden, zie boven). In plaats van MAX-orders los daarvan te verwerken, worden ze
-bij elke `GetOpenPurchaseRequestsAsync()`-aanroep **gesynchroniseerd**: elke MAX-order zonder
-bestaande `PurchaseRequest` (gededupliceerd op `ErpRequestNumber` = `Order_Master.ORDNUM_10`) wordt
-één keer aangemaakt; bestaat 'm al, dan gebeurt er niets (geen update van hoeveelheid/status bij
-wijzigingen in MAX — buiten scope voor dit prototype). Handmatig toegevoegde testaanvragen
-(§8.1) staan gewoon naast de gesynchroniseerde MAX-orders in dezelfde tabel/lijst.
+bij elke `GetOpenPurchaseRequestsAsync()`-aanroep (dus bij elke klik op "Query") **gesynchroniseerd**:
+elke MAX-order zonder bestaande `PurchaseRequest` (gededupliceerd op `ErpRequestNumber` =
+`Order_Master.ORDNUM_10`) wordt één keer aangemaakt; bestaat 'm al, dan gebeurt er niets (geen update
+van hoeveelheid/status bij wijzigingen in MAX — buiten scope voor dit prototype). Handmatig
+toegevoegde testaanvragen (§8.1) staan gewoon naast de gesynchroniseerde MAX-orders in dezelfde
+tabel/lijst.
 
 **Bekende datamapping-aanname, graag controleren**: de aangeleverde query heeft geen apart
 fabrikant-veld, alleen `Part_Master.VIEWER_01 AS ManufacturingPart` — die wordt gebruikt als

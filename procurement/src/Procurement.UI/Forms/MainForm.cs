@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Forms;
+using Procurement.Core.Entities;
 using Procurement.UI.Composition;
 
 namespace Procurement.UI.Forms
@@ -14,6 +16,7 @@ namespace Procurement.UI.Forms
         private DataGridView _linesGrid;
         private CheckBox _statusPlannedCheckBox;
         private CheckBox _statusApprovedCheckBox;
+        private Button _queryButton;
         private Button _newRequestButton;
         private Button _startSourcingButton;
         private Button _viewOffersButton;
@@ -28,7 +31,10 @@ namespace Procurement.UI.Forms
         {
             _composition = composition ?? throw new ArgumentNullException(nameof(composition));
             InitializeComponent();
-            Load += async (s, e) => await RefreshRequestsAsync();
+            // Orders worden niet meer automatisch bij het openen uit MAX opgehaald (dat kan een
+            // trage query zijn) — enkel al lokaal gesynchroniseerde aanvragen worden getoond, tot
+            // de gebruiker zelf op "Query" klikt.
+            Load += async (s, e) => await LoadLocalRequestsAsync();
         }
 
         private void InitializeComponent()
@@ -40,6 +46,8 @@ namespace Procurement.UI.Forms
             StartPosition = FormStartPosition.CenterScreen;
 
             var toolPanel = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 40, FlowDirection = FlowDirection.LeftToRight };
+            _queryButton = new Button { Text = "Query", AutoSize = true };
+            _queryButton.Click += async (s, e) => await QueryOrdersAsync();
             _newRequestButton = new Button { Text = "Nieuwe testaanvraag toevoegen", AutoSize = true };
             _newRequestButton.Click += async (s, e) => await NewRequestAsync();
             _startSourcingButton = new Button { Text = "Sourcing starten", AutoSize = true };
@@ -65,7 +73,7 @@ namespace Procurement.UI.Forms
 
             toolPanel.Controls.AddRange(new Control[]
             {
-                _newRequestButton, _startSourcingButton, _orderDetailButton,
+                _queryButton, _newRequestButton, _startSourcingButton, _orderDetailButton,
                 _approvalsButton, _supplierMappingButton, _settingsButton, _auditLogButton,
                 _statusPlannedCheckBox, _statusApprovedCheckBox
             });
@@ -76,7 +84,7 @@ namespace Procurement.UI.Forms
                 Height = 350,
                 ReadOnly = true,
                 AllowUserToAddRows = false,
-                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
+                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.AllCells,
                 SelectionMode = DataGridViewSelectionMode.FullRowSelect,
                 MultiSelect = false
             };
@@ -89,7 +97,7 @@ namespace Procurement.UI.Forms
                 Dock = DockStyle.Fill,
                 ReadOnly = true,
                 AllowUserToAddRows = false,
-                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
+                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.AllCells,
                 SelectionMode = DataGridViewSelectionMode.FullRowSelect,
                 MultiSelect = false
             };
@@ -116,23 +124,58 @@ namespace Procurement.UI.Forms
             _composition.ErpConnector.IncludedOrderStatuses = statuses;
         }
 
-        private async System.Threading.Tasks.Task OrderStatusFilterChangedAsync()
+        private System.Threading.Tasks.Task OrderStatusFilterChangedAsync()
         {
+            // De checkboxes bepalen enkel welke Order_Master.STATUS_10-waarden de volgende keer
+            // worden opgehaald door de "Query"-knop — de al lokaal opgeslagen aanvragen worden er
+            // niet door gefilterd, dus een wijziging hoeft geen (impliciete) MAX-query te starten.
             UpdateIncludedOrderStatuses();
+            SetStatus("Filter aangepast. Klik op \"Query\" om orders opnieuw op te vragen uit MAX.");
+            return System.Threading.Tasks.Task.CompletedTask;
+        }
+
+        /// <summary>Laadt enkel de al lokaal gesynchroniseerde aanvragen — raakt MAX niet aan. Gebruikt bij het openen van het scherm en na lokale wijzigingen (nieuwe testaanvraag, sourcing, goedkeuringen).</summary>
+        private async System.Threading.Tasks.Task LoadLocalRequestsAsync()
+        {
+            SetStatus("Aanvragen laden...");
+            var requests = await _composition.PurchaseRequestRepository.GetOpenAsync();
+            PopulateRequestsGrid(requests);
+            SetStatus($"{requests.Count} openstaande aanvraag/aanvragen geladen.");
+            await LoadLinesForSelectedRequestAsync();
+        }
+
+        /// <summary>Vraagt open orders op uit MAX (Order_Master/Part_Master, incl. Part_Vendor-mapping sync) en synchroniseert ze naar lokale aanvragen — enkel aangeroepen via de "Query"-knop, niet automatisch.</summary>
+        private async System.Threading.Tasks.Task RefreshRequestsAsync()
+        {
+            SetStatus("Orders opvragen uit MAX...");
+            var requests = await _composition.Engine.GetOpenPurchaseRequestsAsync();
+            PopulateRequestsGrid(requests);
+            SetStatus($"{requests.Count} openstaande aanvraag/aanvragen geladen.");
+            await LoadLinesForSelectedRequestAsync();
+        }
+
+        private async System.Threading.Tasks.Task QueryOrdersAsync()
+        {
+            _queryButton.Enabled = false;
+            UseWaitCursor = true;
             try
             {
                 await RefreshRequestsAsync();
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, ex.Message, "Fout bij laden van aanvragen", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, ex.Message, "Fout bij opvragen van orders", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                UseWaitCursor = false;
+                _queryButton.Enabled = true;
             }
         }
 
-        private async System.Threading.Tasks.Task RefreshRequestsAsync()
+        private void PopulateRequestsGrid(IReadOnlyList<PurchaseRequest> requests)
         {
-            SetStatus("Aanvragen laden...");
-            var requests = (await _composition.Engine.GetOpenPurchaseRequestsAsync())
+            var rows = requests
                 .Select(r => new
                 {
                     r.Id,
@@ -151,11 +194,20 @@ namespace Procurement.UI.Forms
             // default current cell); detach first so that doesn't race with the explicit reload
             // below against the same shared DbContext.
             _requestsGrid.SelectionChanged -= RequestsGrid_SelectionChanged;
-            _requestsGrid.DataSource = requests;
+            _requestsGrid.DataSource = rows;
             _requestsGrid.SelectionChanged += RequestsGrid_SelectionChanged;
 
-            SetStatus($"{requests.Count} openstaande aanvraag/aanvragen geladen.");
-            await LoadLinesForSelectedRequestAsync();
+            // Kolomkoppen die overeenkomen met een veld uit de MAX-query (Order_Master/Part_Master)
+            // krijgen de naam zoals die daarin gebruikt wordt, i.p.v. de interne entiteitsnaam.
+            SetHeaderText("ErpRequestNumber", "OrderNumber");
+            SetHeaderText("RequiredDate", "DueDate");
+            SetHeaderText("Project", "Reference");
+        }
+
+        private void SetHeaderText(string columnName, string headerText)
+        {
+            if (_requestsGrid.Columns[columnName] != null)
+                _requestsGrid.Columns[columnName].HeaderText = headerText;
         }
 
         private async void RequestsGrid_SelectionChanged(object sender, EventArgs e)
@@ -218,7 +270,7 @@ namespace Procurement.UI.Forms
             {
                 if (form.ShowDialog(this) == DialogResult.OK)
                 {
-                    await RefreshRequestsAsync();
+                    await LoadLocalRequestsAsync();
                 }
             }
         }
@@ -252,7 +304,7 @@ namespace Procurement.UI.Forms
                 _startSourcingButton.Enabled = true;
             }
 
-            await RefreshRequestsAsync();
+            await LoadLocalRequestsAsync();
         }
 
         private void ShowOffersForSelectedLine()
@@ -291,7 +343,7 @@ namespace Procurement.UI.Forms
             {
                 form.ShowDialog(this);
             }
-            await RefreshRequestsAsync();
+            await LoadLocalRequestsAsync();
         }
 
         private void ShowSupplierMapping()
