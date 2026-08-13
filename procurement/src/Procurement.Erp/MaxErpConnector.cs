@@ -19,9 +19,12 @@ namespace Procurement.Erp
     /// order number) rather than returning them directly — everything downstream
     /// (ProcurementEngine, approval, order placement) already works entirely in terms of our own
     /// PurchaseRequest.Id, so syncing first keeps that unchanged instead of forking the workflow
-    /// for a second "kind" of purchase request. Existing rows are never updated after the first
-    /// sync (MVP scope) — if a MAX order's quantity/status/etc. changes later, that's not
-    /// reflected here yet.
+    /// for a second "kind" of purchase request. Workflow-relevant fields on an existing row are
+    /// never updated after the first sync (MVP scope) — if a MAX order's quantity/status/etc.
+    /// changes later, that's not reflected here yet. The purely-informational MAX mirror fields
+    /// (see ApplyDisplayOnlyFields) are the one exception: those refresh on every sync, since
+    /// nothing downstream reads them and refreshing keeps MainForm's grid showing current MAX
+    /// values instead of whatever was captured the first time that order was seen.
     ///
     /// CreatePurchaseOrderAsync/UpdatePurchaseOrderStatusAsync are unrelated to MAX (this
     /// prototype's own PurchaseOrder tracking, spec §6 step 9) and are delegated to
@@ -80,7 +83,17 @@ namespace Procurement.Erp
             foreach (var order in maxOrders)
             {
                 var existing = await _purchaseRequestRepository.FindByErpRequestNumberAsync(order.OrderNumber);
-                if (existing != null) continue;
+                if (existing != null)
+                {
+                    // These fields were added after some requests were already synced (and the
+                    // dedup-by-ErpRequestNumber above otherwise never revisits an existing row),
+                    // so without this they'd stay blank forever for anything synced by an older
+                    // build. They're purely a MAX mirror for display (MainForm's requests grid) —
+                    // nothing in the sourcing/matching/approval logic reads them — so refreshing
+                    // them from the latest MAX values on every sync is safe.
+                    ApplyDisplayOnlyFields(existing, order);
+                    continue;
+                }
 
                 // MAX's own data isn't guaranteed to fit our column lengths (e.g. VIEWER_01 isn't
                 // reliably a clean manufacturer part number yet — see MaxOrder.ManufacturerPartNumber)
@@ -117,9 +130,28 @@ namespace Procurement.Erp
                 await _purchaseRequestRepository.AddAsync(request);
             }
 
+            await _purchaseRequestRepository.SaveAsync();
             await SyncVendorPartMappingsAsync(maxOrders);
 
             return await _purchaseRequestRepository.GetOpenAsync();
+        }
+
+        private static void ApplyDisplayOnlyFields(PurchaseRequest existing, MaxOrder order)
+        {
+            existing.MaxOrderStatus = Truncate(order.Status, 10);
+
+            var line = existing.Lines.FirstOrDefault();
+            if (line == null) return;
+
+            line.PartType = Truncate(order.PartType, 10);
+            line.Revision = Truncate(order.Revision, 20);
+            line.Firm = order.Firm;
+            line.Cost = order.Cost;
+            line.CostConv = order.CostConv;
+            line.Customer = Truncate(order.Customer, 50);
+            line.StockId = Truncate(order.StockId, 50);
+            line.Desc1 = Truncate(order.Desc1, 250);
+            line.Desc2 = Truncate(order.Desc2, 250);
         }
 
         /// <summary>

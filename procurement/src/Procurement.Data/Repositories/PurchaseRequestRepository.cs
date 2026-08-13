@@ -73,5 +73,8 @@ namespace Procurement.Data.Repositories
             request.Status = status;
             await _context.SaveChangesAsync();
         });
+
+        /// <summary>Flushes pending changes on entities already tracked by this context (e.g. a PurchaseRequest/Lines instance returned earlier by FindByErpRequestNumberAsync and mutated in place) — used by MaxErpConnector to refresh display-only MAX fields on an already-synced request without re-fetching it.</summary>
+        public Task SaveAsync() => _context.RunGuardedAsync(async () => { await _context.SaveChangesAsync(); });
     }
 }

@@ -98,23 +98,23 @@ ORDER BY dbo.Order_Master.ORDNUM_10";
                     {
                         results.Add(new MaxOrder
                         {
-                            OrderNumber = reader["Order"].ToString(),
-                            OrderLong = reader["OrderLong"] as string,
-                            PartId = reader["PartID"].ToString(),
+                            OrderNumber = reader["Order"].ToString().Trim(),
+                            OrderLong = ToDisplayString(reader["OrderLong"]),
+                            PartId = reader["PartID"].ToString().Trim(),
                             CurrentQty = Convert.ToInt32(reader["CurrentQty"]),
                             Firm = ToBool(reader["Firm"]),
-                            Status = reader["Status"].ToString(),
+                            Status = reader["Status"].ToString().Trim(),
                             DueDate = reader["DueDate"] as DateTime?,
-                            StockId = reader["StockID"] as string,
+                            StockId = ToDisplayString(reader["StockID"]),
                             Revision = ToDisplayString(reader["Revision"]),
                             Cost = ToNullableDecimal(reader["Cost"]),
                             CostConv = ToNullableDecimal(reader["CostConv"]),
-                            Reference = reader["Reference"] as string,
-                            Desc1 = reader["Desc1"] as string,
-                            Desc2 = reader["Desc2"] as string,
-                            ManufacturerPartNumber = reader["ManufacturingPart"] as string,
-                            Customer = reader["Customer"] as string,
-                            PartType = reader["PartType"] as string
+                            Reference = ToDisplayString(reader["Reference"]),
+                            Desc1 = ToDisplayString(reader["Desc1"]),
+                            Desc2 = ToDisplayString(reader["Desc2"]),
+                            ManufacturerPartNumber = ToDisplayString(reader["ManufacturingPart"]),
+                            Customer = ToDisplayString(reader["Customer"]),
+                            PartType = ToDisplayString(reader["PartType"])
                         });
                     }
                 }

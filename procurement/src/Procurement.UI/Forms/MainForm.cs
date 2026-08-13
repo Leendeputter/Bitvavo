@@ -139,8 +139,10 @@ namespace Procurement.UI.Forms
 
         private GroupBox BuildQueryGroup()
         {
-            var group = new GroupBox { Text = "Orders ophalen uit MAX", AutoSize = true, Padding = new Padding(8), Margin = new Padding(4) };
-            var layout = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true };
+            var group = new GroupBox { Text = "Orders ophalen uit MAX", AutoSize = true, Margin = new Padding(4) };
+            // A GroupBox's own layout doesn't reserve space for its border/label unless a child is
+            // Dock=Fill (which fights AutoSize) — an explicit Location clears both instead.
+            var layout = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true, Location = new Point(12, 22) };
 
             // MAX Order_Master.STATUS_10 filter (user-supplied query): 1 = Planned, 2 = Approved.
             // Default: only Approved, matching what should auto-source without review. Alleen van
@@ -161,8 +163,8 @@ namespace Procurement.UI.Forms
 
         private GroupBox BuildDueDateRangeGroup()
         {
-            var group = new GroupBox { Text = "Due Date Range", AutoSize = true, Padding = new Padding(8), Margin = new Padding(4) };
-            var layout = new TableLayoutPanel { ColumnCount = 2, AutoSize = true };
+            var group = new GroupBox { Text = "Due Date Range", AutoSize = true, Margin = new Padding(4) };
+            var layout = new TableLayoutPanel { ColumnCount = 2, AutoSize = true, Location = new Point(12, 22) };
 
             _dueDateEnableCheckBox = new CheckBox { Text = "Enable", AutoSize = true };
             _dueDateStartPicker = new DateTimePicker { Format = DateTimePickerFormat.Short, Width = 110, Enabled = false };
@@ -183,8 +185,8 @@ namespace Procurement.UI.Forms
 
         private GroupBox BuildRangeFilterGroup()
         {
-            var group = new GroupBox { Text = "Filter", AutoSize = true, Padding = new Padding(8), Margin = new Padding(4) };
-            var layout = new TableLayoutPanel { ColumnCount = 2, AutoSize = true };
+            var group = new GroupBox { Text = "Filter", AutoSize = true, Margin = new Padding(4) };
+            var layout = new TableLayoutPanel { ColumnCount = 2, AutoSize = true, Location = new Point(12, 22) };
 
             _rangeFieldCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 110 };
             _rangeFieldCombo.Items.AddRange(new object[] { "Order Number", "Customer", "Part" });
