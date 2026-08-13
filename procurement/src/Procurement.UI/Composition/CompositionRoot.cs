@@ -1,0 +1,67 @@
+using System.Collections.Generic;
+using Procurement.Core.Interfaces;
+using Procurement.Data;
+using Procurement.Data.Repositories;
+using Procurement.Engine;
+using Procurement.Erp;
+using Procurement.Suppliers.DigiKey;
+using Procurement.Suppliers.Farnell;
+
+namespace Procurement.UI.Composition
+{
+    /// <summary>
+    /// Manual composition root — this prototype is small enough that a DI container would only
+    /// add ceremony. One ProcurementDbContext per application run keeps EF6 change tracking
+    /// simple for a single-user WinForms prototype (spec §15: single user, no roles model).
+    /// </summary>
+    public class CompositionRoot
+    {
+        public ProcurementDbContext DbContext { get; }
+        public ProcurementEngine Engine { get; }
+        public PurchaseRequestRepository PurchaseRequestRepository { get; }
+        public SupplierProductMappingRepository SupplierProductMappingRepository { get; }
+        public PurchaseOrderRepository PurchaseOrderRepository { get; }
+        public SupplierOrderRepository SupplierOrderRepository { get; }
+        public PolicyRepository PolicyRepository { get; }
+        public SupplierRepository SupplierRepository { get; }
+        public ProcurementEventRepository ProcurementEventRepository { get; }
+        public IReadOnlyList<ISupplierAdapter> Adapters { get; }
+
+        public CompositionRoot()
+        {
+            DbContext = new ProcurementDbContext();
+
+            var auditLogger = new DbAuditLogger(DbContext);
+
+            PurchaseRequestRepository = new PurchaseRequestRepository(DbContext);
+            SupplierProductMappingRepository = new SupplierProductMappingRepository(DbContext);
+            var offerRepository = new SupplierOfferRepository(DbContext);
+            var selectionRepository = new SupplierSelectionRepository(DbContext);
+            var approvalRepository = new ApprovalRequestRepository(DbContext);
+            PurchaseOrderRepository = new PurchaseOrderRepository(DbContext);
+            SupplierOrderRepository = new SupplierOrderRepository(DbContext);
+            PolicyRepository = new PolicyRepository(DbContext);
+            SupplierRepository = new SupplierRepository(DbContext);
+            ProcurementEventRepository = new ProcurementEventRepository(DbContext);
+
+            var digiKeyAdapter = new DigiKeyAdapter(new DigiKeyOptions { UseMockData = true, IsSandbox = true });
+            var farnellAdapter = new FarnellAdapter(new FarnellOptions { UseMockData = true, IsSandbox = true });
+            Adapters = new List<ISupplierAdapter> { digiKeyAdapter, farnellAdapter };
+
+            var erpConnector = new MockErpConnector(PurchaseRequestRepository, PurchaseOrderRepository);
+
+            Engine = new ProcurementEngine(
+                erpConnector,
+                Adapters,
+                auditLogger,
+                PurchaseRequestRepository,
+                SupplierProductMappingRepository,
+                offerRepository,
+                selectionRepository,
+                approvalRepository,
+                PurchaseOrderRepository,
+                SupplierOrderRepository,
+                PolicyRepository);
+        }
+    }
+}

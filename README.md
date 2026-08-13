@@ -6,6 +6,11 @@ rules can be tested without risking real funds. See
 [`docs/functionele-specificatie.md`](docs/functionele-specificatie.md) for the full functional
 specification this implementation follows.
 
+This repository also contains an unrelated, standalone prototype — an automated components
+procurement app (DigiKey/Farnell) built on Windows Forms/.NET Framework 4.8/EF6 — under
+[`procurement/`](procurement/README.md). It shares no code with the trading bot; see its own
+README for build/run instructions.
+
 ## Project structure
 
 ```
