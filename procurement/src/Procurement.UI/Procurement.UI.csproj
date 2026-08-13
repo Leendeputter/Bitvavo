@@ -18,6 +18,11 @@
     <Reference Include="System.Configuration" />
   </ItemGroup>
 
+  <!-- MyLogManager.Create(...) (MAXCore) returns an NLog.LogFactory — same NLog version UniPro2026 references. -->
+  <ItemGroup>
+    <PackageReference Include="NLog" Version="4.7.15" />
+  </ItemGroup>
+
   <!--
     Same MAX50 (Exact MAX ERP .NET Update SDK) references as UniPro2026.csproj, needed for
     LoginForm's MaxSQL.GetPrimaryConnection/GetConnection calls (company list + admin
