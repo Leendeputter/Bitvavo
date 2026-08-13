@@ -1,5 +1,6 @@
 using System;
 using System.Data.Entity;
+using System.IO;
 using System.Windows.Forms;
 using Procurement.Data;
 using Procurement.Data.Migrations;
@@ -13,6 +14,26 @@ namespace Procurement.UI
         [STAThread]
         private static void Main()
         {
+            // TEMPORARY DIAGNOSTICS — remove once the LoginForm/MaxSQL crash is understood.
+            // Logs *every* exception the moment it's thrown, including ones caught somewhere
+            // (e.g. inside LoginForm's own try/catch) or thrown on a different thread than the
+            // one running that try/catch — both of which would explain a crash dialog still
+            // appearing even though LoginForm_Load's MaxSQL call is wrapped in try/catch.
+            var diagnosticsLogPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "procurement-firstchance.log");
+            AppDomain.CurrentDomain.FirstChanceException += (s, e) =>
+            {
+                try
+                {
+                    File.AppendAllText(diagnosticsLogPath,
+                        $"{DateTime.Now:O} [thread {System.Threading.Thread.CurrentThread.ManagedThreadId}]\n{e.Exception}\n\n");
+                }
+                catch
+                {
+                    // Best-effort diagnostics only — never let logging itself crash the app.
+                }
+            };
+
             // Without this, an exception thrown after the first `await` inside an async-void
             // event handler (e.g. Load, SelectionChanged, Click) is rethrown on the UI
             // SynchronizationContext with no visible feedback — the form just appears to hang on
