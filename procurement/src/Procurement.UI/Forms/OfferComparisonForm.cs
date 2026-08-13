@@ -111,6 +111,7 @@ namespace Procurement.UI.Forms
 
             var offerId = (int)_offersGrid.CurrentRow.Cells["Id"].Value;
 
+            _chooseOfferButton.Enabled = false;
             try
             {
                 _statusLabel.Text = "Bezig met verwerken...";
@@ -122,6 +123,10 @@ namespace Procurement.UI.Forms
             {
                 MessageBox.Show(this, ex.Message, "Fout", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 _statusLabel.Text = "Mislukt.";
+            }
+            finally
+            {
+                _chooseOfferButton.Enabled = true;
             }
         }
     }

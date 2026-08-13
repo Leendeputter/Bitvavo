@@ -15,18 +15,17 @@ namespace Procurement.Data.Repositories
             _context = context;
         }
 
-        public async Task<IReadOnlyList<Supplier>> GetAllAsync()
+        public Task<IReadOnlyList<Supplier>> GetAllAsync() => _context.RunGuardedAsync(async () =>
         {
-            return await _context.Suppliers
+            IReadOnlyList<Supplier> result = await _context.Suppliers
                 .Include(s => s.Capabilities)
                 .ToListAsync();
-        }
+            return result;
+        });
 
-        public async Task<Supplier> GetByCodeAsync(string supplierCode)
-        {
-            return await _context.Suppliers
+        public Task<Supplier> GetByCodeAsync(string supplierCode) => _context.RunGuardedAsync(() =>
+            _context.Suppliers
                 .Include(s => s.Capabilities)
-                .FirstOrDefaultAsync(s => s.SupplierCode == supplierCode);
-        }
+                .FirstOrDefaultAsync(s => s.SupplierCode == supplierCode));
     }
 }

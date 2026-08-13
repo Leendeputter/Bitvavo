@@ -13,6 +13,18 @@ namespace Procurement.UI
         [STAThread]
         private static void Main()
         {
+            // Without this, an exception thrown after the first `await` inside an async-void
+            // event handler (e.g. Load, SelectionChanged, Click) is rethrown on the UI
+            // SynchronizationContext with no visible feedback — the form just appears to hang on
+            // whatever status text was last set. Route it to a message box instead.
+            Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+            Application.ThreadException += (s, e) => MessageBox.Show(
+                $"Onverwachte fout:\n\n{e.Exception}",
+                "Onverwachte fout", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            AppDomain.CurrentDomain.UnhandledException += (s, e) => MessageBox.Show(
+                $"Onverwachte fout:\n\n{e.ExceptionObject}",
+                "Onverwachte fout", MessageBoxButtons.OK, MessageBoxIcon.Error);
+
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
 

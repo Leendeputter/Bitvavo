@@ -16,7 +16,7 @@ namespace Procurement.Data.Repositories
             _context = context;
         }
 
-        public async Task<IReadOnlyList<PurchaseRequest>> GetOpenAsync()
+        public Task<IReadOnlyList<PurchaseRequest>> GetOpenAsync() => _context.RunGuardedAsync(async () =>
         {
             var openStatuses = new[]
             {
@@ -26,41 +26,41 @@ namespace Procurement.Data.Repositories
                 PurchaseRequestStatus.ReadyToOrder
             };
 
-            return await _context.PurchaseRequests
+            IReadOnlyList<PurchaseRequest> result = await _context.PurchaseRequests
                 .Include(pr => pr.Lines)
                 .Where(pr => openStatuses.Contains(pr.Status))
                 .OrderBy(pr => pr.Priority).ThenBy(pr => pr.RequestDate)
                 .ToListAsync();
-        }
+            return result;
+        });
 
-        public async Task<IReadOnlyList<PurchaseRequest>> GetAllAsync()
+        public Task<IReadOnlyList<PurchaseRequest>> GetAllAsync() => _context.RunGuardedAsync(async () =>
         {
-            return await _context.PurchaseRequests
+            IReadOnlyList<PurchaseRequest> result = await _context.PurchaseRequests
                 .Include(pr => pr.Lines)
                 .OrderByDescending(pr => pr.RequestDate)
                 .ToListAsync();
-        }
+            return result;
+        });
 
-        public async Task<PurchaseRequest> GetByIdAsync(int id)
-        {
-            return await _context.PurchaseRequests
+        public Task<PurchaseRequest> GetByIdAsync(int id) => _context.RunGuardedAsync(() =>
+            _context.PurchaseRequests
                 .Include(pr => pr.Lines)
-                .FirstOrDefaultAsync(pr => pr.Id == id);
-        }
+                .FirstOrDefaultAsync(pr => pr.Id == id));
 
-        public async Task<PurchaseRequest> AddAsync(PurchaseRequest request)
+        public Task<PurchaseRequest> AddAsync(PurchaseRequest request) => _context.RunGuardedAsync(async () =>
         {
             _context.PurchaseRequests.Add(request);
             await _context.SaveChangesAsync();
             return request;
-        }
+        });
 
-        public async Task UpdateStatusAsync(int purchaseRequestId, PurchaseRequestStatus status)
+        public Task UpdateStatusAsync(int purchaseRequestId, PurchaseRequestStatus status) => _context.RunGuardedAsync(async () =>
         {
             var request = await _context.PurchaseRequests.FindAsync(purchaseRequestId);
             if (request == null) return;
             request.Status = status;
             await _context.SaveChangesAsync();
-        }
+        });
     }
 }

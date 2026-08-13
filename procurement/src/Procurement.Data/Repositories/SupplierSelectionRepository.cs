@@ -14,20 +14,18 @@ namespace Procurement.Data.Repositories
             _context = context;
         }
 
-        public async Task<SupplierSelection> AddAsync(SupplierSelection selection)
+        public Task<SupplierSelection> AddAsync(SupplierSelection selection) => _context.RunGuardedAsync(async () =>
         {
             _context.SupplierSelections.Add(selection);
             await _context.SaveChangesAsync();
             return selection;
-        }
+        });
 
-        public async Task<SupplierSelection> GetByLineIdAsync(int purchaseRequestLineId)
-        {
-            return await _context.SupplierSelections
+        public Task<SupplierSelection> GetByLineIdAsync(int purchaseRequestLineId) => _context.RunGuardedAsync(() =>
+            _context.SupplierSelections
                 .Include(s => s.SelectedOffer)
                 .Where(s => s.PurchaseRequestLineId == purchaseRequestLineId)
                 .OrderByDescending(s => s.SelectedAt)
-                .FirstOrDefaultAsync();
-        }
+                .FirstOrDefaultAsync());
     }
 }

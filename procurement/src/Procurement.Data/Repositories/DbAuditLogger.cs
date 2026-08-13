@@ -23,7 +23,7 @@ namespace Procurement.Data.Repositories
             _context = context;
         }
 
-        public async Task LogAsync(
+        public Task LogAsync(
             string entityType,
             string entityId,
             string eventType,
@@ -32,7 +32,7 @@ namespace Procurement.Data.Repositories
             string requestPayload = null,
             string responsePayload = null,
             string error = null,
-            string userOrSystem = "system")
+            string userOrSystem = "system") => _context.RunGuardedAsync(async () =>
         {
             var evt = new ProcurementEvent
             {
@@ -49,7 +49,7 @@ namespace Procurement.Data.Repositories
 
             _context.ProcurementEvents.Add(evt);
             await _context.SaveChangesAsync();
-        }
+        });
 
         private static string Mask(string payload)
         {

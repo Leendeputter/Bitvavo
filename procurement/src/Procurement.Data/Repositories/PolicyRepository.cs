@@ -6,7 +6,7 @@ using Procurement.Core.Entities;
 
 namespace Procurement.Data.Repositories
 {
-    /// <summary>CRUD over the three business-rule tables from spec §3.5, managed via the Instellingen-scherm (§8.6).</summary>
+    /// <summary>CRUD over the three business-rule tables from spec §3.5, managed via de Instellingen-scherm (§8.6).</summary>
     public class PolicyRepository
     {
         private readonly ProcurementDbContext _context;
@@ -16,51 +16,47 @@ namespace Procurement.Data.Repositories
             _context = context;
         }
 
-        public async Task<ApprovalPolicy> GetApprovalPolicyAsync()
-        {
-            return await _context.ApprovalPolicies.FirstOrDefaultAsync();
-        }
+        public Task<ApprovalPolicy> GetApprovalPolicyAsync() => _context.RunGuardedAsync(() =>
+            _context.ApprovalPolicies.FirstOrDefaultAsync());
 
-        public async Task SaveApprovalPolicyAsync(ApprovalPolicy policy)
+        public Task SaveApprovalPolicyAsync(ApprovalPolicy policy) => _context.RunGuardedAsync(async () =>
         {
             if (policy.Id == 0)
                 _context.ApprovalPolicies.Add(policy);
             await _context.SaveChangesAsync();
-        }
+        });
 
-        public async Task<IReadOnlyList<PackagingPolicy>> GetPackagingPoliciesAsync()
+        public Task<IReadOnlyList<PackagingPolicy>> GetPackagingPoliciesAsync() => _context.RunGuardedAsync(async () =>
         {
-            return await _context.PackagingPolicies.OrderBy(p => p.ComponentCategory).ToListAsync();
-        }
+            IReadOnlyList<PackagingPolicy> result = await _context.PackagingPolicies.OrderBy(p => p.ComponentCategory).ToListAsync();
+            return result;
+        });
 
-        public async Task<PackagingPolicy> GetPackagingPolicyAsync(string componentCategory)
-        {
-            return await _context.PackagingPolicies.FirstOrDefaultAsync(p => p.ComponentCategory == componentCategory)
-                   ?? await _context.PackagingPolicies.FirstOrDefaultAsync(p => p.ComponentCategory == "Default");
-        }
+        public Task<PackagingPolicy> GetPackagingPolicyAsync(string componentCategory) => _context.RunGuardedAsync(async () =>
+            await _context.PackagingPolicies.FirstOrDefaultAsync(p => p.ComponentCategory == componentCategory)
+            ?? await _context.PackagingPolicies.FirstOrDefaultAsync(p => p.ComponentCategory == "Default"));
 
-        public async Task SavePackagingPolicyAsync(PackagingPolicy policy)
+        public Task SavePackagingPolicyAsync(PackagingPolicy policy) => _context.RunGuardedAsync(async () =>
         {
             if (policy.Id == 0)
                 _context.PackagingPolicies.Add(policy);
             await _context.SaveChangesAsync();
-        }
+        });
 
-        public async Task<IReadOnlyList<SupplierPreference>> GetSupplierPreferencesAsync()
+        public Task<IReadOnlyList<SupplierPreference>> GetSupplierPreferencesAsync() => _context.RunGuardedAsync(async () =>
         {
-            return await _context.SupplierPreferences.OrderBy(p => p.Priority).ToListAsync();
-        }
+            IReadOnlyList<SupplierPreference> result = await _context.SupplierPreferences.OrderBy(p => p.Priority).ToListAsync();
+            return result;
+        });
 
-        public async Task<SupplierPreference> GetSupplierPreferenceAsync(string supplierCode)
-        {
-            return await _context.SupplierPreferences.FirstOrDefaultAsync(p => p.SupplierCode == supplierCode);
-        }
+        public Task<SupplierPreference> GetSupplierPreferenceAsync(string supplierCode) => _context.RunGuardedAsync(() =>
+            _context.SupplierPreferences.FirstOrDefaultAsync(p => p.SupplierCode == supplierCode));
 
-        public async Task SaveSupplierPreferenceAsync(SupplierPreference preference)
+        public Task SaveSupplierPreferenceAsync(SupplierPreference preference) => _context.RunGuardedAsync(async () =>
         {
             if (preference.Id == 0)
                 _context.SupplierPreferences.Add(preference);
             await _context.SaveChangesAsync();
-        }
+        });
     }
 }

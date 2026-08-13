@@ -68,7 +68,7 @@ namespace Procurement.UI.Forms
                 SelectionMode = DataGridViewSelectionMode.FullRowSelect,
                 MultiSelect = false
             };
-            _requestsGrid.SelectionChanged += async (s, e) => await LoadLinesForSelectedRequestAsync();
+            _requestsGrid.SelectionChanged += RequestsGrid_SelectionChanged;
 
             var linesLabel = new Label { Text = "Regels van geselecteerde aanvraag:", Dock = DockStyle.Top, Height = 20, Padding = new Padding(4) };
 
@@ -114,9 +114,27 @@ namespace Procurement.UI.Forms
                 })
                 .ToList();
 
+            // Assigning DataSource can itself raise SelectionChanged (when the grid picks a
+            // default current cell); detach first so that doesn't race with the explicit reload
+            // below against the same shared DbContext.
+            _requestsGrid.SelectionChanged -= RequestsGrid_SelectionChanged;
             _requestsGrid.DataSource = requests;
+            _requestsGrid.SelectionChanged += RequestsGrid_SelectionChanged;
+
             SetStatus($"{requests.Count} openstaande aanvraag/aanvragen geladen.");
             await LoadLinesForSelectedRequestAsync();
+        }
+
+        private async void RequestsGrid_SelectionChanged(object sender, EventArgs e)
+        {
+            try
+            {
+                await LoadLinesForSelectedRequestAsync();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message, "Fout bij laden van regels", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
 
         private async System.Threading.Tasks.Task LoadLinesForSelectedRequestAsync()
@@ -181,6 +199,10 @@ namespace Procurement.UI.Forms
                 return;
             }
 
+            // Guard against a double-click firing two overlapping SourcePurchaseRequestAsync
+            // calls — also makes clear to the user that something is happening, instead of a
+            // click that appears to do nothing while sourcing runs in the background.
+            _startSourcingButton.Enabled = false;
             SetStatus("Sourcing wordt gestart (DigiKey + Farnell parallel)...");
             try
             {
@@ -191,6 +213,10 @@ namespace Procurement.UI.Forms
             {
                 MessageBox.Show(this, ex.Message, "Fout tijdens sourcing", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 SetStatus("Sourcing mislukt.");
+            }
+            finally
+            {
+                _startSourcingButton.Enabled = true;
             }
 
             await RefreshRequestsAsync();

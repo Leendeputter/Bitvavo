@@ -43,7 +43,7 @@ namespace Procurement.UI.Forms
                 SelectionMode = DataGridViewSelectionMode.FullRowSelect,
                 MultiSelect = false
             };
-            _purchaseOrdersGrid.SelectionChanged += async (s, e) => await LoadSupplierOrdersAsync();
+            _purchaseOrdersGrid.SelectionChanged += PurchaseOrdersGrid_SelectionChanged;
 
             var soLabel = new Label { Text = "Supplier Orders voor geselecteerde PO:", Dock = DockStyle.Top, Height = 20, Padding = new Padding(4) };
             _supplierOrdersGrid = new DataGridView
@@ -68,6 +68,10 @@ namespace Procurement.UI.Forms
         private async System.Threading.Tasks.Task RefreshAsync()
         {
             var orders = await _purchaseOrderRepository.GetByPurchaseRequestIdAsync(_purchaseRequestId);
+
+            // Assigning DataSource can itself raise SelectionChanged; detach first so that
+            // doesn't race with the explicit reload below against the same shared DbContext.
+            _purchaseOrdersGrid.SelectionChanged -= PurchaseOrdersGrid_SelectionChanged;
             _purchaseOrdersGrid.DataSource = orders.Select(po => new
             {
                 po.Id,
@@ -76,8 +80,21 @@ namespace Procurement.UI.Forms
                 po.CreatedAt,
                 Regels = po.Lines.Count
             }).ToList();
+            _purchaseOrdersGrid.SelectionChanged += PurchaseOrdersGrid_SelectionChanged;
 
             await LoadSupplierOrdersAsync();
+        }
+
+        private async void PurchaseOrdersGrid_SelectionChanged(object sender, EventArgs e)
+        {
+            try
+            {
+                await LoadSupplierOrdersAsync();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message, "Fout bij laden van supplier orders", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
 
         private async System.Threading.Tasks.Task LoadSupplierOrdersAsync()

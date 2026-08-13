@@ -17,12 +17,12 @@ namespace Procurement.Data.Repositories
             _context = context;
         }
 
-        public async Task<IReadOnlyList<ProcurementEvent>> SearchAsync(
+        public Task<IReadOnlyList<ProcurementEvent>> SearchAsync(
             string entityType = null,
             string eventType = null,
             string supplierCode = null,
             DateTime? from = null,
-            DateTime? to = null)
+            DateTime? to = null) => _context.RunGuardedAsync(async () =>
         {
             var query = _context.ProcurementEvents.AsQueryable();
 
@@ -37,7 +37,8 @@ namespace Procurement.Data.Repositories
             if (to.HasValue)
                 query = query.Where(e => e.Timestamp <= to.Value);
 
-            return await query.OrderByDescending(e => e.Timestamp).Take(1000).ToListAsync();
-        }
+            IReadOnlyList<ProcurementEvent> result = await query.OrderByDescending(e => e.Timestamp).Take(1000).ToListAsync();
+            return result;
+        });
     }
 }

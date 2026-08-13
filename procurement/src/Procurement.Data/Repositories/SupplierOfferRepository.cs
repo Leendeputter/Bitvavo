@@ -15,26 +15,25 @@ namespace Procurement.Data.Repositories
             _context = context;
         }
 
-        public async Task<IReadOnlyList<SupplierOffer>> GetByLineIdAsync(int purchaseRequestLineId)
+        public Task<IReadOnlyList<SupplierOffer>> GetByLineIdAsync(int purchaseRequestLineId) => _context.RunGuardedAsync(async () =>
         {
-            return await _context.SupplierOffers
+            IReadOnlyList<SupplierOffer> result = await _context.SupplierOffers
                 .Include(o => o.PackagingOptions)
                 .Where(o => o.PurchaseRequestLineId == purchaseRequestLineId)
                 .OrderBy(o => o.LandedCost)
                 .ToListAsync();
-        }
+            return result;
+        });
 
-        public async Task AddRangeAsync(IEnumerable<SupplierOffer> offers)
+        public Task AddRangeAsync(IEnumerable<SupplierOffer> offers) => _context.RunGuardedAsync(async () =>
         {
             _context.SupplierOffers.AddRange(offers);
             await _context.SaveChangesAsync();
-        }
+        });
 
-        public async Task<SupplierOffer> GetByIdAsync(int id)
-        {
-            return await _context.SupplierOffers
+        public Task<SupplierOffer> GetByIdAsync(int id) => _context.RunGuardedAsync(() =>
+            _context.SupplierOffers
                 .Include(o => o.PackagingOptions)
-                .FirstOrDefaultAsync(o => o.Id == id);
-        }
+                .FirstOrDefaultAsync(o => o.Id == id));
     }
 }

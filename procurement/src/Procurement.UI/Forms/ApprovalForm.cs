@@ -86,6 +86,8 @@ namespace Procurement.UI.Forms
 
             var approvalId = (int)_grid.CurrentRow.Cells["Id"].Value;
 
+            _approveButton.Enabled = false;
+            _rejectButton.Enabled = false;
             try
             {
                 await _engine.ApproveAsync(approvalId, approve, _commentBox.Text, Environment.UserName);
@@ -95,6 +97,11 @@ namespace Procurement.UI.Forms
             catch (Exception ex)
             {
                 MessageBox.Show(this, ex.Message, "Fout", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                _approveButton.Enabled = true;
+                _rejectButton.Enabled = true;
             }
         }
     }

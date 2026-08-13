@@ -17,24 +17,25 @@ namespace Procurement.Data.Repositories
             _context = context;
         }
 
-        public async Task<ApprovalRequest> AddAsync(ApprovalRequest request)
+        public Task<ApprovalRequest> AddAsync(ApprovalRequest request) => _context.RunGuardedAsync(async () =>
         {
             _context.ApprovalRequests.Add(request);
             await _context.SaveChangesAsync();
             return request;
-        }
+        });
 
-        public async Task<IReadOnlyList<ApprovalRequest>> GetPendingAsync()
+        public Task<IReadOnlyList<ApprovalRequest>> GetPendingAsync() => _context.RunGuardedAsync(async () =>
         {
-            return await _context.ApprovalRequests
+            IReadOnlyList<ApprovalRequest> result = await _context.ApprovalRequests
                 .Include(a => a.PurchaseRequestLine)
                 .Include(a => a.ProposedOffer)
                 .Where(a => a.Decision == ApprovalDecision.Pending)
                 .OrderBy(a => a.CreatedAt)
                 .ToListAsync();
-        }
+            return result;
+        });
 
-        public async Task DecideAsync(int id, ApprovalDecision decision, string comment, string decidedBy)
+        public Task DecideAsync(int id, ApprovalDecision decision, string comment, string decidedBy) => _context.RunGuardedAsync(async () =>
         {
             var request = await _context.ApprovalRequests.FindAsync(id);
             if (request == null) return;
@@ -44,6 +45,6 @@ namespace Procurement.Data.Repositories
             request.DecidedBy = decidedBy;
             request.DecidedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
-        }
+        });
     }
 }

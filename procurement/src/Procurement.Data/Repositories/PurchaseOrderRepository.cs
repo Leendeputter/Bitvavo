@@ -15,41 +15,38 @@ namespace Procurement.Data.Repositories
             _context = context;
         }
 
-        public async Task<PurchaseOrder> AddAsync(PurchaseOrder order)
+        public Task<PurchaseOrder> AddAsync(PurchaseOrder order) => _context.RunGuardedAsync(async () =>
         {
             _context.PurchaseOrders.Add(order);
             await _context.SaveChangesAsync();
             return order;
-        }
+        });
 
-        public async Task<PurchaseOrder> GetByErpPoNumberAsync(string erpPoNumber)
-        {
-            return await _context.PurchaseOrders
+        public Task<PurchaseOrder> GetByErpPoNumberAsync(string erpPoNumber) => _context.RunGuardedAsync(() =>
+            _context.PurchaseOrders
                 .Include(po => po.Lines)
-                .FirstOrDefaultAsync(po => po.ErpPoNumber == erpPoNumber);
-        }
+                .FirstOrDefaultAsync(po => po.ErpPoNumber == erpPoNumber));
 
-        public async Task<IReadOnlyList<PurchaseOrder>> GetByPurchaseRequestIdAsync(int purchaseRequestId)
+        public Task<IReadOnlyList<PurchaseOrder>> GetByPurchaseRequestIdAsync(int purchaseRequestId) => _context.RunGuardedAsync(async () =>
         {
-            return await _context.PurchaseOrders
+            IReadOnlyList<PurchaseOrder> result = await _context.PurchaseOrders
                 .Include(po => po.Lines)
                 .Where(po => po.PurchaseRequestId == purchaseRequestId)
                 .ToListAsync();
-        }
+            return result;
+        });
 
-        public async Task<PurchaseOrder> GetByIdAsync(int id)
-        {
-            return await _context.PurchaseOrders
+        public Task<PurchaseOrder> GetByIdAsync(int id) => _context.RunGuardedAsync(() =>
+            _context.PurchaseOrders
                 .Include(po => po.Lines)
-                .FirstOrDefaultAsync(po => po.Id == id);
-        }
+                .FirstOrDefaultAsync(po => po.Id == id));
 
-        public async Task UpdateStatusByErpPoNumberAsync(string erpPoNumber, Procurement.Core.Enums.PurchaseOrderStatus status)
+        public Task UpdateStatusByErpPoNumberAsync(string erpPoNumber, Procurement.Core.Enums.PurchaseOrderStatus status) => _context.RunGuardedAsync(async () =>
         {
             var order = await _context.PurchaseOrders.FirstOrDefaultAsync(po => po.ErpPoNumber == erpPoNumber);
             if (order == null) return;
             order.Status = status;
             await _context.SaveChangesAsync();
-        }
+        });
     }
 }

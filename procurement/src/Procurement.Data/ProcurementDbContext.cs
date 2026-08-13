@@ -1,6 +1,9 @@
+using System;
 using System.Data.Entity;
 using System.Data.Entity.Infrastructure.Annotations;
 using System.Data.Entity.ModelConfiguration.Conventions;
+using System.Threading;
+using System.Threading.Tasks;
 using Procurement.Core.Entities;
 using Procurement.Data.Configurations;
 
@@ -10,15 +13,59 @@ namespace Procurement.Data
     /// EF6 Code First context for the procurement prototype. Connection string name/key is
     /// "ProcurementDbContext" (see App.config in Procurement.UI); LocalDB by default for
     /// development, SQL Server for anything beyond that.
+    ///
+    /// This app keeps a single long-lived instance for the whole run (see CompositionRoot), which
+    /// is simple but not thread/reentrancy-safe on its own: EF6 throws NotSupportedException if a
+    /// second async operation starts on a context before the first completes — easy to trigger in
+    /// WinForms since a user can interact with the UI (firing another event handler) while an
+    /// earlier await is still pending. <see cref="RunGuardedAsync{T}"/> serializes all access to
+    /// this context so overlapping calls queue up instead of crashing.
     /// </summary>
     public class ProcurementDbContext : DbContext
     {
+        private readonly SemaphoreSlim _gate = new SemaphoreSlim(1, 1);
+
         public ProcurementDbContext() : base("name=ProcurementDbContext")
         {
         }
 
         public ProcurementDbContext(string nameOrConnectionString) : base(nameOrConnectionString)
         {
+        }
+
+        public async Task<T> RunGuardedAsync<T>(Func<Task<T>> operation)
+        {
+            await _gate.WaitAsync();
+            try
+            {
+                return await operation();
+            }
+            finally
+            {
+                _gate.Release();
+            }
+        }
+
+        public async Task RunGuardedAsync(Func<Task> operation)
+        {
+            await _gate.WaitAsync();
+            try
+            {
+                await operation();
+            }
+            finally
+            {
+                _gate.Release();
+            }
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _gate.Dispose();
+            }
+            base.Dispose(disposing);
         }
 
         public DbSet<PurchaseRequest> PurchaseRequests { get; set; }
