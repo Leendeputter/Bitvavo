@@ -2,6 +2,9 @@ using System;
 using System.Data.Entity;
 using System.Data.Entity.Infrastructure.Annotations;
 using System.Data.Entity.ModelConfiguration.Conventions;
+using System.Data.Entity.Validation;
+using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Procurement.Core.Entities;
@@ -70,6 +73,38 @@ namespace Procurement.Data
             {
                 _gate.Release();
             }
+        }
+
+        // DbEntityValidationException.Message is always the same generic "Validation failed..."
+        // text — the actual per-property reason lives in EntityValidationErrors, which nothing
+        // prints by default. Overriding SaveChangesAsync here (the method every repository
+        // ultimately calls) means every validation failure, current and future, surfaces its
+        // real cause everywhere in the app automatically, without repeating try/catch in each
+        // of the ~20 call sites across the repositories.
+        public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                return await base.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbEntityValidationException ex)
+            {
+                throw new DbEntityValidationException(BuildValidationErrorMessage(ex), ex.EntityValidationErrors);
+            }
+        }
+
+        private static string BuildValidationErrorMessage(DbEntityValidationException ex)
+        {
+            var sb = new StringBuilder("Validatie mislukt:");
+            foreach (var entityError in ex.EntityValidationErrors)
+            {
+                var entityName = entityError.Entry.Entity.GetType().Name;
+                foreach (var error in entityError.ValidationErrors)
+                {
+                    sb.Append($"\n- {entityName}.{error.PropertyName}: {error.ErrorMessage}");
+                }
+            }
+            return sb.ToString();
         }
 
         protected override void Dispose(bool disposing)

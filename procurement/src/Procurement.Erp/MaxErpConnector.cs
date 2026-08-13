@@ -53,18 +53,22 @@ namespace Procurement.Erp
                 var existing = await _purchaseRequestRepository.FindByErpRequestNumberAsync(order.OrderNumber);
                 if (existing != null) continue;
 
+                // MAX's own data isn't guaranteed to fit our column lengths (e.g. VIEWER_01 isn't
+                // reliably a clean manufacturer part number yet — see MaxOrder.ManufacturerPartNumber)
+                // — truncate defensively so one oversized/dirty MAX row can't fail EF6 validation
+                // and abort the whole sync for every other order in the batch.
                 var request = new PurchaseRequest
                 {
-                    ErpRequestNumber = order.OrderNumber,
+                    ErpRequestNumber = Truncate(order.OrderNumber, 50),
                     RequiredDate = order.DueDate,
-                    Project = order.Reference,
+                    Project = Truncate(order.Reference, 100),
                     Lines = new List<PurchaseRequestLine>
                     {
                         new PurchaseRequestLine
                         {
-                            ErpArticleId = order.PartId,
-                            ManufacturerPartNumber = order.ManufacturerPartNumber,
-                            Description = order.Description,
+                            ErpArticleId = Truncate(order.PartId, 50),
+                            ManufacturerPartNumber = Truncate(order.ManufacturerPartNumber, 100),
+                            Description = Truncate(order.Description, 500),
                             RequestedQuantity = order.CurrentQty,
                             RequiredDate = order.DueDate
                         }
@@ -80,5 +84,8 @@ namespace Procurement.Erp
         public Task<string> CreatePurchaseOrderAsync(PurchaseOrderDraft draft) => _inner.CreatePurchaseOrderAsync(draft);
 
         public Task UpdatePurchaseOrderStatusAsync(string erpPoNumber, string status) => _inner.UpdatePurchaseOrderStatusAsync(erpPoNumber, status);
+
+        private static string Truncate(string value, int maxLength) =>
+            string.IsNullOrEmpty(value) || value.Length <= maxLength ? value : value.Substring(0, maxLength);
     }
 }
