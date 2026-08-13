@@ -16,6 +16,7 @@ namespace Procurement.Data.Configurations
                 .HasColumnAnnotation(IndexAnnotation.AnnotationName,
                     new IndexAnnotation(new IndexAttribute("IX_Supplier_SupplierCode") { IsUnique = true }));
             Property(s => s.Name).HasMaxLength(200);
+            Property(s => s.VendorId).HasMaxLength(20);
 
             HasMany(s => s.Capabilities)
                 .WithRequired(c => c.Supplier)

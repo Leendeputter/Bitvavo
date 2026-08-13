@@ -29,7 +29,11 @@ namespace Procurement.Data.Migrations
 
         private static void SeedSuppliers(ProcurementDbContext context)
         {
-            SeedSupplier(context, "DIGIKEY", "DigiKey Electronics", new[]
+            // VendorId = MAX Part_Vendor.VENID_07 for this supplier, used to translate MAX's
+            // vendor-part cross-reference into SupplierProductMapping rows (see MaxErpConnector).
+            // Only backfilled if empty, so a manual correction via Instellingen (§8.6) is never
+            // silently overwritten by this seed running again on a later startup.
+            SeedSupplier(context, "DIGIKEY", "DigiKey Electronics", "10194", new[]
             {
                 (Capability: "ProductSearch", Status: CapabilityStatus.Supported),
                 (Capability: "Pricing", Status: CapabilityStatus.Supported),
@@ -42,7 +46,7 @@ namespace Procurement.Data.Migrations
                 (Capability: "Invoice", Status: CapabilityStatus.ManualProcess),
             });
 
-            SeedSupplier(context, "FARNELL", "Farnell / element14", new[]
+            SeedSupplier(context, "FARNELL", "Farnell / element14", "0349", new[]
             {
                 (Capability: "ProductSearch", Status: CapabilityStatus.Supported),
                 (Capability: "Pricing", Status: CapabilityStatus.Supported),
@@ -60,6 +64,7 @@ namespace Procurement.Data.Migrations
             ProcurementDbContext context,
             string code,
             string name,
+            string vendorId,
             (string Capability, CapabilityStatus Status)[] capabilities)
         {
             var supplier = context.Suppliers.FirstOrDefault(s => s.SupplierCode == code);
@@ -69,10 +74,16 @@ namespace Procurement.Data.Migrations
                 {
                     SupplierCode = code,
                     Name = name,
+                    VendorId = vendorId,
                     IsSandbox = true,
                     UseMockData = true
                 };
                 context.Suppliers.Add(supplier);
+                context.SaveChanges();
+            }
+            else if (string.IsNullOrEmpty(supplier.VendorId))
+            {
+                supplier.VendorId = vendorId;
                 context.SaveChanges();
             }
 

@@ -9,6 +9,10 @@ namespace Procurement.Core.Entities
         public int Id { get; set; }
         public string SupplierCode { get; set; }
         public string Name { get; set; }
+
+        /// <summary>MAX Part_Vendor.VENID_07 that identifies this supplier in MAX — used to translate MAX's vendor-part cross-reference into SupplierProductMapping rows. Editable via Instellingen (§8.6) since it's MAX-environment-specific, not a code constant.</summary>
+        public string VendorId { get; set; }
+
         public bool IsSandbox { get; set; }
         public bool UseMockData { get; set; }
 

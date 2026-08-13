@@ -105,6 +105,24 @@ het goedkeuringsscherm moet in plaats van automatisch te worden besteld (spec §
 Exact/Verified). Staat er ergens in `Part_Master` een echt fabrikantveld, laat het weten dan voeg ik
 dat toe aan de query/mapping (`MaxOrderRepository`/`MaxErpConnector`).
 
+**Gedeeltelijke ondervanging via `Part_Vendor`**: MAX houdt zelf al bekende koppelingen bij tussen
+interne artikelnummers en leverancierscodes, in `dbo.Part_Vendor` (`PRTNUM_07`/`VENID_07`/
+`VENPRT_07`). `MaxErpConnector.SyncVendorPartMappingsAsync` leest deze tabel uit (via
+`MaxVendorPartRepository`, geschaald tot de artikelen uit de huidige batch open orders) en zet elke
+rij met een herkenbare `VENID_07` om naar een `SupplierProductMapping` met `MatchConfidence.Verified`
+— precies de plek waar `ProcurementEngine.ResolveOneMappingAsync` al naar kijkt *voordat* de
+DigiKey/Farnell-adapters worden aangeroepen. Voor artikelen met een bekende `Part_Vendor`-koppeling
+wordt de fuzzy-matching dus overgeslagen en kan de order alsnog automatisch verwerkt worden (spec §6
+stap 7), ook zonder een fabrikant-veld.
+
+`VENID_07` is MAX-omgeving-specifiek en staat daarom niet hardcoded in de code, maar op
+`Supplier.VendorId` — bewerkbaar via het Instellingen-scherm, tabblad "Suppliers" (§8.6). Bij eerste
+opstart wordt dit veld geseed met de waarden die de gebruiker heeft opgegeven: Farnell = `0349`,
+DigiKey = `10194`; een handmatige wijziging via Instellingen wordt bij een volgende sync nooit
+overschreven. Zoals bij de purchase-request sync geldt ook hier: een bestaande
+`SupplierProductMapping` (bv. handmatig gecorrigeerd via het mapping-scherm, §8.5) wordt nooit
+overschreven door een latere sync.
+
 ## Bouwen en draaien
 
 Dit prototype target `net48` (.NET Framework 4.8) met WinForms en EF6, en **draait alleen op

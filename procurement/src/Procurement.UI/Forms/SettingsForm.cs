@@ -20,6 +20,7 @@ namespace Procurement.UI.Forms
         private DataGridView _supplierPreferenceGrid;
         private DataGridView _packagingPolicyGrid;
         private DataGridView _capabilitiesGrid;
+        private DataGridView _suppliersGrid;
 
         private NumericUpDown _maxOrderValueBox;
         private NumericUpDown _maxPriceVarianceBox;
@@ -44,12 +45,38 @@ namespace Procurement.UI.Forms
             StartPosition = FormStartPosition.CenterParent;
 
             var tabs = new TabControl { Dock = DockStyle.Fill };
+            tabs.TabPages.Add(BuildSuppliersTab());
             tabs.TabPages.Add(BuildSupplierPreferenceTab());
             tabs.TabPages.Add(BuildPackagingPolicyTab());
             tabs.TabPages.Add(BuildApprovalPolicyTab());
             tabs.TabPages.Add(BuildCapabilitiesTab());
 
             Controls.Add(tabs);
+        }
+
+        private TabPage BuildSuppliersTab()
+        {
+            var page = new TabPage("Suppliers");
+            _suppliersGrid = new DataGridView
+            {
+                Dock = DockStyle.Fill,
+                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
+                AllowUserToAddRows = false
+            };
+            var hint = new Label
+            {
+                Dock = DockStyle.Top,
+                Height = 30,
+                Padding = new Padding(4),
+                Text = "VendorId: MAX Part_Vendor.VENID_07 voor deze leverancier (bv. Farnell = 0349, DigiKey = 10194) — gebruikt om de Part_Vendor-koppeltabel te vertalen naar herkende supplier-mappings."
+            };
+            var saveButton = new Button { Text = "Opslaan", Dock = DockStyle.Bottom, AutoSize = true };
+            saveButton.Click += async (s, e) => await SaveSuppliersAsync();
+
+            page.Controls.Add(_suppliersGrid);
+            page.Controls.Add(hint);
+            page.Controls.Add(saveButton);
+            return page;
         }
 
         private TabPage BuildSupplierPreferenceTab()
@@ -144,6 +171,14 @@ namespace Procurement.UI.Forms
 
         private async System.Threading.Tasks.Task RefreshAllAsync()
         {
+            var suppliersForGrid = await _supplierRepository.GetAllAsync();
+            _suppliersGrid.DataSource = new BindingList<Supplier>(suppliersForGrid.ToList());
+            foreach (var column in new[] { "Id", "SupplierCode", "Name", "IsSandbox", "UseMockData" })
+                if (_suppliersGrid.Columns[column] != null)
+                    _suppliersGrid.Columns[column].ReadOnly = true;
+            if (_suppliersGrid.Columns["Capabilities"] != null)
+                _suppliersGrid.Columns["Capabilities"].Visible = false;
+
             var preferences = await _policyRepository.GetSupplierPreferencesAsync();
             _supplierPreferenceGrid.DataSource = new BindingList<SupplierPreference>(preferences.ToList());
             if (_supplierPreferenceGrid.Columns["Id"] != null)
@@ -177,6 +212,16 @@ namespace Procurement.UI.Forms
                 }))
                 .OrderBy(x => x.Supplier).ThenBy(x => x.Capability)
                 .ToList();
+        }
+
+        private async System.Threading.Tasks.Task SaveSuppliersAsync()
+        {
+            var items = (BindingList<Supplier>)_suppliersGrid.DataSource;
+            foreach (var item in items)
+                await _supplierRepository.UpdateVendorIdAsync(item.Id, item.VendorId);
+
+            await RefreshAllAsync();
+            MessageBox.Show(this, "Suppliers opgeslagen.", "Opgeslagen", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
         private async System.Threading.Tasks.Task SaveSupplierPreferencesAsync()

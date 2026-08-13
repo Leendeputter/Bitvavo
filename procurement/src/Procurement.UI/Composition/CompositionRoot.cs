@@ -55,7 +55,14 @@ namespace Procurement.UI.Composition
             Adapters = new List<ISupplierAdapter> { digiKeyAdapter, farnellAdapter };
 
             var maxOrderRepository = new MaxOrderRepository(Session);
-            ErpConnector = new MaxErpConnector(PurchaseRequestRepository, PurchaseOrderRepository, maxOrderRepository);
+            var maxVendorPartRepository = new MaxVendorPartRepository(Session);
+            ErpConnector = new MaxErpConnector(
+                PurchaseRequestRepository,
+                PurchaseOrderRepository,
+                maxOrderRepository,
+                maxVendorPartRepository,
+                SupplierRepository,
+                SupplierProductMappingRepository);
 
             Engine = new ProcurementEngine(
                 ErpConnector,

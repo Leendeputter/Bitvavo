@@ -27,5 +27,14 @@ namespace Procurement.Data.Repositories
             _context.Suppliers
                 .Include(s => s.Capabilities)
                 .FirstOrDefaultAsync(s => s.SupplierCode == supplierCode));
+
+        /// <summary>Updates the editable fields (currently just VendorId) of an existing supplier — used by the Instellingen "Suppliers" tab. Suppliers themselves are only ever created by the migration seed, not from the UI.</summary>
+        public Task UpdateVendorIdAsync(int id, string vendorId) => _context.RunGuardedAsync(async () =>
+        {
+            var supplier = await _context.Suppliers.FindAsync(id);
+            if (supplier == null) return;
+            supplier.VendorId = vendorId;
+            await _context.SaveChangesAsync();
+        });
     }
 }

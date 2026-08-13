@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Procurement.Core.Entities;
+using Procurement.Core.Enums;
 using Procurement.Core.Interfaces;
 using Procurement.Core.Models;
 using Procurement.Data.Repositories;
@@ -29,6 +31,9 @@ namespace Procurement.Erp
     {
         private readonly PurchaseRequestRepository _purchaseRequestRepository;
         private readonly MaxOrderRepository _maxOrderRepository;
+        private readonly MaxVendorPartRepository _maxVendorPartRepository;
+        private readonly SupplierRepository _supplierRepository;
+        private readonly SupplierProductMappingRepository _supplierProductMappingRepository;
         private readonly MockErpConnector _inner;
 
         /// <summary>MAX Order_Master.STATUS_10 values to include — "1" = Planned, "2" = Approved. Defaults to Approved only; the UI's status checkboxes update this.</summary>
@@ -37,10 +42,16 @@ namespace Procurement.Erp
         public MaxErpConnector(
             PurchaseRequestRepository purchaseRequestRepository,
             PurchaseOrderRepository purchaseOrderRepository,
-            MaxOrderRepository maxOrderRepository)
+            MaxOrderRepository maxOrderRepository,
+            MaxVendorPartRepository maxVendorPartRepository,
+            SupplierRepository supplierRepository,
+            SupplierProductMappingRepository supplierProductMappingRepository)
         {
             _purchaseRequestRepository = purchaseRequestRepository ?? throw new ArgumentNullException(nameof(purchaseRequestRepository));
             _maxOrderRepository = maxOrderRepository ?? throw new ArgumentNullException(nameof(maxOrderRepository));
+            _maxVendorPartRepository = maxVendorPartRepository ?? throw new ArgumentNullException(nameof(maxVendorPartRepository));
+            _supplierRepository = supplierRepository ?? throw new ArgumentNullException(nameof(supplierRepository));
+            _supplierProductMappingRepository = supplierProductMappingRepository ?? throw new ArgumentNullException(nameof(supplierProductMappingRepository));
             _inner = new MockErpConnector(purchaseRequestRepository, purchaseOrderRepository);
         }
 
@@ -78,7 +89,50 @@ namespace Procurement.Erp
                 await _purchaseRequestRepository.AddAsync(request);
             }
 
+            await SyncVendorPartMappingsAsync(maxOrders);
+
             return await _purchaseRequestRepository.GetOpenAsync();
+        }
+
+        /// <summary>
+        /// Seeds SupplierProductMapping with Verified confidence from MAX's own Part_Vendor
+        /// cross-reference (known article-number -> supplier-part-code links maintained in MAX),
+        /// so ProcurementEngine.ResolveOneMappingAsync can skip fuzzy adapter matching entirely for
+        /// these lines instead of always falling back to manual approval (see
+        /// MaxOrder.ManufacturerPartNumber's TODO). Scoped to only the parts in the current
+        /// open-orders batch, and never overwrites an existing mapping — a manual correction made
+        /// via the Supplier-mapping screen (§8.5) always wins over a re-sync.
+        /// </summary>
+        private async Task SyncVendorPartMappingsAsync(IReadOnlyList<MaxOrder> maxOrders)
+        {
+            var partIds = maxOrders.Select(o => o.PartId).Where(p => !string.IsNullOrEmpty(p)).Distinct().ToList();
+            if (partIds.Count == 0) return;
+
+            var suppliers = await _supplierRepository.GetAllAsync();
+            var vendorIdToSupplierCode = suppliers
+                .Where(s => !string.IsNullOrEmpty(s.VendorId))
+                .ToDictionary(s => s.VendorId, s => s.SupplierCode);
+            if (vendorIdToSupplierCode.Count == 0) return;
+
+            var vendorParts = await _maxVendorPartRepository.GetForPartsAsync(partIds);
+
+            foreach (var vendorPart in vendorParts)
+            {
+                if (string.IsNullOrEmpty(vendorPart.VendorId) || !vendorIdToSupplierCode.TryGetValue(vendorPart.VendorId, out var supplierCode))
+                    continue;
+
+                var erpArticleId = Truncate(vendorPart.PartId, 50);
+                var existing = await _supplierProductMappingRepository.FindAsync(erpArticleId, supplierCode);
+                if (existing != null) continue;
+
+                await _supplierProductMappingRepository.AddAsync(new SupplierProductMapping
+                {
+                    ErpArticleId = erpArticleId,
+                    SupplierCode = supplierCode,
+                    SupplierPartNumber = Truncate(vendorPart.VendorPart, 100),
+                    MatchConfidence = MatchConfidence.Verified
+                });
+            }
         }
 
         public Task<string> CreatePurchaseOrderAsync(PurchaseOrderDraft draft) => _inner.CreatePurchaseOrderAsync(draft);
