@@ -1,9 +1,11 @@
 using System;
+using System.Data.Entity;
 using System.Data.Entity.Infrastructure;
 using System.Data.Entity.Migrations;
 using System.IO;
 using System.Windows.Forms;
 using Procurement.Core.Session;
+using Procurement.Data;
 using Procurement.Data.Migrations;
 using Procurement.UI.Composition;
 using Procurement.UI.Forms;
@@ -72,6 +74,14 @@ namespace Procurement.UI
             // entirely.
             try
             {
+                // EF6 runs a default initializer strategy (CreateDatabaseIfNotExists<TContext>)
+                // for any context type that hasn't had SetInitializer called for it — and that
+                // default strategy *also* constructs its own ProcurementDbContext via the
+                // parameterless constructor to check the database, independent of the DbMigrator
+                // call below. Disabling it explicitly is the only way to be sure nothing tries
+                // that route — schema management is fully manual here (the DbMigrator call).
+                Database.SetInitializer<ProcurementDbContext>(null);
+
                 var migrationsConfiguration = new Configuration
                 {
                     TargetDatabase = new DbConnectionInfo(ProcurementSession.SharedConnectionString, "System.Data.SqlClient")
