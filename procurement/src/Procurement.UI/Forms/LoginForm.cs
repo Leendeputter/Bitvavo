@@ -94,12 +94,12 @@ namespace Procurement.UI.Forms
 
         private void LoginForm_Load(object sender, EventArgs e)
         {
-            ProcurementSession.LicensePath = LicPath;
-            ProcurementSession.UserName = WindowsIdentity.GetCurrent().Name.Split('\\').Last();
-            _userLabel.Text = ProcurementSession.UserName;
-
             try
             {
+                ProcurementSession.LicensePath = LicPath;
+                ProcurementSession.UserName = ResolveWindowsUserName();
+                _userLabel.Text = ProcurementSession.UserName;
+
                 using (var conn = MaxSQL.GetPrimaryConnection(LicPath))
                 {
                     ProcurementSession.PrimaryConnectionString = conn.ConnectionString;
@@ -111,6 +111,28 @@ namespace Procurement.UI.Forms
                 _statusLabel.Text = $"Kan geen verbinding maken met MAX: {ex.Message}";
                 _loginButton.Enabled = false;
             }
+        }
+
+        // WindowsIdentity.GetCurrent().Name can be null in some environments (restricted token,
+        // certain service/sandbox contexts) — UniPro2026's own Login.cs assumes it never is,
+        // which is exactly what crashed here with a NullReferenceException before this try/catch
+        // existed. Environment.UserName is a simpler, more broadly reliable way to get the same
+        // short account name and is used as a fallback rather than the sole source, to stay
+        // close to UniPro2026's original behavior when it does work.
+        private static string ResolveWindowsUserName()
+        {
+            try
+            {
+                var identityName = WindowsIdentity.GetCurrent()?.Name;
+                if (!string.IsNullOrEmpty(identityName))
+                    return identityName.Split('\\').Last();
+            }
+            catch
+            {
+                // Fall through to Environment.UserName below.
+            }
+
+            return Environment.UserName;
         }
 
         private void LoadCompanies(SqlConnection conn)
