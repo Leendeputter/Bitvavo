@@ -18,9 +18,18 @@
     <Reference Include="System.Configuration" />
   </ItemGroup>
 
-  <!-- MyLogManager.Create(...) (MAXCore) returns an NLog.LogFactory — same NLog version UniPro2026 references. -->
+  <!--
+    Transitive dependencies of MAXCore/MaxOrderNET/MaxTransNET (MAX50), discovered one
+    FileNotFoundException at a time since that library's own dependency list isn't documented
+    anywhere available here — versions match what UniPro2026.csproj/packages.config reference.
+    MyLogManager.Create(...) returns an NLog.LogFactory; MaxSQL.GetConnection uses Dapper
+    internally (DapperExtensions added proactively — UniPro2026 always pairs the two, so it's
+    a likely next failure otherwise).
+  -->
   <ItemGroup>
     <PackageReference Include="NLog" Version="4.7.15" />
+    <PackageReference Include="Dapper" Version="1.40.0" />
+    <PackageReference Include="DapperExtensions" Version="1.4.3" />
   </ItemGroup>
 
   <!--
