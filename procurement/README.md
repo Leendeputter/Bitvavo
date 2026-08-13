@@ -100,6 +100,12 @@ aangevinkt). "Filter" is een generieke "Select By"-range (Order Number/Customer/
 `BETWEEN`-achtige `>=`/`<=` toevoegt op `ORDNUM_10`, `Part_Master.COMCDE_01` resp. `PRTNUM_10` —
 Start en/of End mogen leeg blijven voor een open-einde range. Beide filters worden pas toegepast bij
 de volgende klik op "Query" (`MaxOrderQueryFilter`, opgebouwd in `MainForm.ApplyFiltersToErpConnector`).
+Omdat MAX-orders na een eerste sync altijd lokaal blijven staan (insert-if-not-exists, zie hierboven),
+filtert `MaxErpConnector.GetOpenPurchaseRequestsAsync` het teruggegeven lijstje ook nog eens op de
+ordernummers uit de *huidige* MAX-query — anders zou een aanscherping van het filter niets zichtbaars
+doen omdat alles wat ooit gesynchroniseerd is gewoon in de lokale tabel blijft staan. Handmatig
+toegevoegde testaanvragen (`PurchaseRequest.MaxOrderStatus == null`) vallen hier buiten en blijven
+altijd zichtbaar, ongeacht het MAX-filter.
 
 **Kolommen van het hoofdscherm**: Order, Status, Firm, Type, PartID, Rev, Desc1, Desc2, Quantity,
 Cost, Cnv, DueDate, Reference, Manufacturing Part, Customer, StockID — 1-op-1 de velden uit de
@@ -107,7 +113,10 @@ Order_Master/Part_Master-query (`FRMPLN_10`, `REVLEV_10`, `COST_10`, `CSTCNV_10`
 `COMCDE_01`, ...). Deze velden zijn puur informatief en worden meegesynchroniseerd naar
 `PurchaseRequestLine` (niet gebruikt door de sourcing/matching-logica). `Status` toont hier het ruwe
 `Order_Master.STATUS_10` (`PurchaseRequest.MaxOrderStatus`), niet dit prototype's eigen workflow-
-status (`PurchaseRequest.Status`, zichtbaar via Order details/Goedkeuringen).
+status (`PurchaseRequest.Status`, zichtbaar via Order details/Goedkeuringen). Het regels-grid onder
+het hoofdscherm (regels van de geselecteerde aanvraag) gebruikt dezelfde kolomnamen/-breedtes,
+aangevuld met de workflow-specifieke velden Manufacturer/Packaging/ReelRequirement die niet uit de
+MAX-query komen.
 
 **Hoe dit samenwerkt met de rest van de engine**: `ProcurementEngine`, de approval-flow en het
 plaatsen van orders werken volledig in termen van dit prototype's eigen `PurchaseRequest`-tabel

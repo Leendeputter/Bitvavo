@@ -146,38 +146,33 @@ namespace Procurement.UI.Forms
 
         private GroupBox BuildQueryGroup()
         {
-            var group = new GroupBox { Text = "Orders ophalen uit MAX", AutoSize = true, Margin = new Padding(4) };
-            // A GroupBox's own layout doesn't reserve space for its border/label unless a child is
-            // Dock=Fill (which fights AutoSize) — an explicit Location clears both instead.
-            var layout = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true, Location = new Point(10, 18) };
+            var layout = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true };
 
             // MAX Order_Master.STATUS_10 filter (user-supplied query): 1 = Planned, 2 = Approved.
             // Default: only Approved, matching what should auto-source without review. Alleen van
             // invloed op de *volgende* keer dat op Query wordt geklikt.
-            _statusPlannedCheckBox = new CheckBox { Text = "1 - Planned", AutoSize = true, Checked = false, Margin = new Padding(3, 2, 3, 2) };
-            _statusApprovedCheckBox = new CheckBox { Text = "2 - Approved", AutoSize = true, Checked = true, Margin = new Padding(3, 2, 3, 2) };
+            _statusPlannedCheckBox = new CheckBox { Text = "1 - Planned", AutoSize = true, Checked = false, Margin = new Padding(0, 0, 0, 2) };
+            _statusApprovedCheckBox = new CheckBox { Text = "2 - Approved", AutoSize = true, Checked = true, Margin = new Padding(0, 0, 0, 2) };
             UpdateIncludedOrderStatuses();
 
-            _queryButton = new Button { Text = "Query", AutoSize = true, Margin = new Padding(3, 6, 3, 2) };
+            _queryButton = new Button { Text = "Query", AutoSize = true, Margin = new Padding(0, 6, 0, 0) };
             _queryButton.Click += async (s, e) => await QueryOrdersAsync();
 
             layout.Controls.Add(_statusPlannedCheckBox);
             layout.Controls.Add(_statusApprovedCheckBox);
             layout.Controls.Add(_queryButton);
-            group.Controls.Add(layout);
-            return group;
+            return WrapInGroupBox("Orders ophalen uit MAX", layout);
         }
 
         private GroupBox BuildDueDateRangeGroup()
         {
-            var group = new GroupBox { Text = "Due Date Range", AutoSize = true, Margin = new Padding(4) };
-            var layout = new TableLayoutPanel { ColumnCount = 2, AutoSize = true, Location = new Point(10, 18) };
+            var layout = new TableLayoutPanel { ColumnCount = 2, AutoSize = true };
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
             _dueDateEnableCheckBox = new CheckBox { Text = "Enable", AutoSize = true };
-            _dueDateStartPicker = new DateTimePicker { Format = DateTimePickerFormat.Short, Width = 95, Enabled = false };
-            _dueDateEndPicker = new DateTimePicker { Format = DateTimePickerFormat.Short, Width = 95, Enabled = false };
+            _dueDateStartPicker = new DateTimePicker { Format = DateTimePickerFormat.Short, Width = 90, Enabled = false };
+            _dueDateEndPicker = new DateTimePicker { Format = DateTimePickerFormat.Short, Width = 90, Enabled = false };
             _dueDateEnableCheckBox.CheckedChanged += (s, e) =>
             {
                 _dueDateStartPicker.Enabled = _dueDateEnableCheckBox.Checked;
@@ -188,29 +183,26 @@ namespace Procurement.UI.Forms
             AddFilterRow(layout, "Start Date", _dueDateStartPicker);
             AddFilterRow(layout, "End Date", _dueDateEndPicker);
 
-            group.Controls.Add(layout);
-            return group;
+            return WrapInGroupBox("Due Date Range", layout);
         }
 
         private GroupBox BuildRangeFilterGroup()
         {
-            var group = new GroupBox { Text = "Filter", AutoSize = true, Margin = new Padding(4) };
-            var layout = new TableLayoutPanel { ColumnCount = 2, AutoSize = true, Location = new Point(10, 18) };
+            var layout = new TableLayoutPanel { ColumnCount = 2, AutoSize = true };
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
-            _rangeFieldCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 95 };
+            _rangeFieldCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 90 };
             _rangeFieldCombo.Items.AddRange(new object[] { "Order Number", "Customer", "Part" });
             _rangeFieldCombo.SelectedIndex = 0;
-            _rangeStartBox = new TextBox { Width = 95 };
-            _rangeEndBox = new TextBox { Width = 95 };
+            _rangeStartBox = new TextBox { Width = 90 };
+            _rangeEndBox = new TextBox { Width = 90 };
 
             AddFilterRow(layout, "Select By", _rangeFieldCombo);
             AddFilterRow(layout, "Start", _rangeStartBox);
             AddFilterRow(layout, "End", _rangeEndBox);
 
-            group.Controls.Add(layout);
-            return group;
+            return WrapInGroupBox("Filter", layout);
         }
 
         private static void AddFilterRow(TableLayoutPanel layout, string label, Control control)
@@ -224,9 +216,32 @@ namespace Procurement.UI.Forms
                 layout.SetColumnSpan(control, 2);
                 return;
             }
-            layout.Controls.Add(new Label { Text = label, AutoSize = true, TextAlign = ContentAlignment.MiddleLeft, Margin = new Padding(3, 4, 3, 2) }, 0, row);
-            control.Margin = new Padding(3, 2, 3, 2);
+            layout.Controls.Add(new Label { Text = label, AutoSize = true, TextAlign = ContentAlignment.MiddleLeft, Margin = new Padding(0, 4, 3, 2) }, 0, row);
+            control.Margin = new Padding(3, 2, 0, 2);
             layout.Controls.Add(control, 1, row);
+        }
+
+        /// <summary>
+        /// GroupBox.AutoSize with a manually-positioned (non-Dock) child turned out unreliable in
+        /// practice — the box didn't shrink to fit even after tightening the child's own content.
+        /// This instead reads the child's own (properly computed) PreferredSize and sizes the
+        /// GroupBox explicitly around it, so the box is always exactly as big as its content needs
+        /// — plus enough width for the title text itself, which a too-narrow GroupBox would
+        /// otherwise just clip.
+        /// </summary>
+        private static GroupBox WrapInGroupBox(string title, Control content)
+        {
+            const int left = 10, top = 18, right = 8, bottom = 8;
+
+            var group = new GroupBox { Text = title, Margin = new Padding(4) };
+            content.Location = new Point(left, top);
+            group.Controls.Add(content);
+
+            var contentSize = content.PreferredSize;
+            var titleWidth = TextRenderer.MeasureText(title, group.Font).Width + 24;
+            group.Size = new Size(Math.Max(contentSize.Width + left + right, titleWidth), contentSize.Height + top + bottom);
+
+            return group;
         }
 
         private void UpdateIncludedOrderStatuses()
@@ -344,37 +359,39 @@ namespace Procurement.UI.Forms
 
             if (_requestsGrid.Columns["Id"] != null)
                 _requestsGrid.Columns["Id"].Visible = false;
-            SetHeaderText("ManufacturingPart", "Manufacturing Part");
-
-            // AllCells autosize fits the *widest* value in the whole result set, which makes these
-            // columns wider than their typical content needs — cap their initial width instead and
-            // let the user drag them wider by hand if they want to (Resizable stays the default).
-            SetFixedColumnWidth("PartID", 90);
-            SetFixedColumnWidth("Rev", 45);
-            SetFixedColumnWidth("ManufacturingPart", 150);
-            SetCharacterBasedColumnWidth("Desc2", 30);
+            SetHeaderText(_requestsGrid, "ManufacturingPart", "Manufacturing Part");
+            ApplyMaxColumnWidths(_requestsGrid);
         }
 
-        private void SetHeaderText(string columnName, string headerText)
+        /// <summary>Column widths shared by both grids (see PopulateRequestsGrid/LoadLinesForSelectedRequestAsync) — AllCells autosize fits the *widest* value in the whole result set, which makes these columns wider than their typical content needs. Capping their initial width instead still leaves them user-resizable (Resizable stays the default).</summary>
+        private static void ApplyMaxColumnWidths(DataGridView grid)
         {
-            if (_requestsGrid.Columns[columnName] != null)
-                _requestsGrid.Columns[columnName].HeaderText = headerText;
+            SetFixedColumnWidth(grid, "PartID", 90);
+            SetFixedColumnWidth(grid, "Rev", 45);
+            SetFixedColumnWidth(grid, "ManufacturingPart", 150);
+            SetCharacterBasedColumnWidth(grid, "Desc2", 30);
         }
 
-        private void SetFixedColumnWidth(string columnName, int width)
+        private static void SetHeaderText(DataGridView grid, string columnName, string headerText)
         {
-            var column = _requestsGrid.Columns[columnName];
+            if (grid.Columns[columnName] != null)
+                grid.Columns[columnName].HeaderText = headerText;
+        }
+
+        private static void SetFixedColumnWidth(DataGridView grid, string columnName, int width)
+        {
+            var column = grid.Columns[columnName];
             if (column == null) return;
             column.AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
             column.Width = width;
         }
 
-        private void SetCharacterBasedColumnWidth(string columnName, int characterCount)
+        private static void SetCharacterBasedColumnWidth(DataGridView grid, string columnName, int characterCount)
         {
-            var column = _requestsGrid.Columns[columnName];
+            var column = grid.Columns[columnName];
             if (column == null) return;
             column.AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
-            column.Width = TextRenderer.MeasureText(new string('n', characterCount), _requestsGrid.Font).Width + 12;
+            column.Width = TextRenderer.MeasureText(new string('n', characterCount), grid.Font).Width + 12;
         }
 
         private async void RequestsGrid_SelectionChanged(object sender, EventArgs e)
@@ -405,18 +422,36 @@ namespace Procurement.UI.Forms
                 return;
             }
 
+            // Zelfde kolomnamen als het requests-grid hierboven (PartID, Type, Rev, Firm, Desc1,
+            // Desc2, Quantity, Cost, Cnv, DueDate, Manufacturing Part, Customer, StockID) — dit is
+            // dezelfde data, enkel op regelniveau i.p.v. de eerste regel van de aanvraag. Manufacturer/
+            // Packaging/ReelRequirement zijn workflow-specifieke velden, niet uit de MAX-query, en
+            // staan daarom achteraan.
             _linesGrid.DataSource = request.Lines.Select(l => new
             {
                 l.Id,
-                l.ErpArticleId,
+                PartID = l.ErpArticleId,
+                Type = l.PartType,
+                Rev = l.Revision,
+                l.Firm,
+                l.Desc1,
+                l.Desc2,
+                Quantity = l.RequestedQuantity,
+                l.Cost,
+                Cnv = l.CostConv,
+                DueDate = l.RequiredDate,
+                ManufacturingPart = l.ManufacturerPartNumber,
+                l.Customer,
+                StockID = l.StockId,
                 l.Manufacturer,
-                l.ManufacturerPartNumber,
-                l.Description,
-                l.RequestedQuantity,
-                l.RequiredDate,
                 Packaging = l.PackagingRequirement.ToString(),
                 l.ReelRequirement
             }).ToList();
+
+            if (_linesGrid.Columns["Id"] != null)
+                _linesGrid.Columns["Id"].Visible = false;
+            SetHeaderText(_linesGrid, "ManufacturingPart", "Manufacturing Part");
+            ApplyMaxColumnWidths(_linesGrid);
         }
 
         private int? GetSelectedRequestId()

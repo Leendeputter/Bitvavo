@@ -133,7 +133,19 @@ namespace Procurement.Erp
             await _purchaseRequestRepository.SaveAsync();
             await SyncVendorPartMappingsAsync(maxOrders);
 
-            return await _purchaseRequestRepository.GetOpenAsync();
+            // GetOpenAsync() returns *every* still-open local request regardless of this call's
+            // filter (statuses/Due Date range/Select By) — a request synced by an earlier,
+            // unfiltered Query never disappears from local storage just because the current filter
+            // no longer matches it. Without this, the Due Date Range / Filter group boxes would
+            // visibly do nothing: the grid would keep showing everything ever synced. Manually
+            // added test requests (PurchaseRequest.MaxOrderStatus == null, never set by this class)
+            // are exempt — those aren't part of any MAX query result and should stay visible
+            // regardless of the current MAX filter, same as before this fix.
+            var matchedOrderNumbers = new HashSet<string>(maxOrders.Select(o => Truncate(o.OrderNumber, 50)));
+            var openRequests = await _purchaseRequestRepository.GetOpenAsync();
+            return openRequests
+                .Where(r => r.MaxOrderStatus == null || matchedOrderNumbers.Contains(r.ErpRequestNumber))
+                .ToList();
         }
 
         private static void ApplyDisplayOnlyFields(PurchaseRequest existing, MaxOrder order)
@@ -152,6 +164,11 @@ namespace Procurement.Erp
             line.StockId = Truncate(order.StockId, 50);
             line.Desc1 = Truncate(order.Desc1, 250);
             line.Desc2 = Truncate(order.Desc2, 250);
+            // Description is Desc1+Desc2 joined at the time MAX was queried — refreshed here too
+            // (unlike other workflow fields) so the padded-space bug fixed in MaxOrderRepository
+            // actually clears for rows synced by an older build, instead of keeping the stale,
+            // un-trimmed text forever.
+            line.Description = Truncate(order.Description, 500);
         }
 
         /// <summary>
