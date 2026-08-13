@@ -212,6 +212,18 @@ namespace Procurement.Engine
         private async Task<LineOutcome> SourceAndProcessLineAsync(
             PurchaseRequestLine line, IReadOnlyList<ISupplierAdapter> activeAdapters, ApprovalPolicy approvalPolicy)
         {
+            // A line that already has a SupplierSelection was already sourced, selected and (at
+            // least attempted to be) ordered — either automatically or via manual approval/
+            // override. Re-running the pipeline for it would place a second order for the same
+            // line, so treat it as already handled instead.
+            var existingSelection = await _selectionRepository.GetByLineIdAsync(line.Id);
+            if (existingSelection != null)
+            {
+                await _auditLogger.LogAsync("PurchaseRequestLine", line.Id.ToString(), "SOURCING_SKIPPED_ALREADY_SELECTED", "Success",
+                    responsePayload: $"SupplierSelectionId={existingSelection.Id}");
+                return LineOutcome.Ordered;
+            }
+
             var packagingPolicy = await _policyRepository.GetPackagingPolicyAsync("Default");
 
             var mappings = await ResolveProductMappingsAsync(line, activeAdapters);
@@ -477,10 +489,32 @@ namespace Procurement.Engine
             {
                 await _auditLogger.LogAsync("PurchaseOrder", erpPoNumber, "SUPPLIER_ORDER_SKIPPED", "ManualProcess", offer.SupplierCode,
                     error: "Ordering capability niet ondersteund door deze adapter; order moet handmatig geplaatst worden.");
-                return;
+            }
+            else
+            {
+                await PlaceSupplierOrderAsync(purchaseOrder, offer, adapter);
             }
 
-            await PlaceSupplierOrderAsync(purchaseOrder, offer, adapter);
+            // The line now has a placed (or manually-handed-off) order; once every line of the
+            // parent request reaches that point, the request itself should stop showing up as
+            // "open" — otherwise it stays selectable in the UI and a repeat "Sourcing starten"
+            // click re-runs the whole pipeline and places a second order for the same line.
+            await RecomputeRequestStatusIfFullyOrderedAsync(line.PurchaseRequestId);
+        }
+
+        private async Task RecomputeRequestStatusIfFullyOrderedAsync(int purchaseRequestId)
+        {
+            var request = await _purchaseRequestRepository.GetByIdAsync(purchaseRequestId);
+            if (request == null || request.Lines.Count == 0) return;
+
+            foreach (var requestLine in request.Lines)
+            {
+                var selection = await _selectionRepository.GetByLineIdAsync(requestLine.Id);
+                if (selection == null) return;
+            }
+
+            await _purchaseRequestRepository.UpdateStatusAsync(purchaseRequestId, PurchaseRequestStatus.Ordered);
+            await _auditLogger.LogAsync("PurchaseRequest", purchaseRequestId.ToString(), "ALL_LINES_ORDERED", "Success");
         }
 
         private async Task PlaceSupplierOrderAsync(PurchaseOrder purchaseOrder, SupplierOffer offer, ISupplierAdapter adapter)
