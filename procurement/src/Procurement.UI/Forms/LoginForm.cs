@@ -1,6 +1,7 @@
 using MAX50;
 using System;
 using System.Collections.Generic;
+using System.Configuration;
 using System.Data;
 using System.Data.SqlClient;
 using System.Linq;
@@ -34,6 +35,18 @@ namespace Procurement.UI.Forms
     {
         // TODO: confirm this is the correct license path for this machine (same as UniPro2026's Login.licPath).
         private const string LicPath = @"\\192.168.0.12\Exact Max\RMServer\LIC";
+
+        // MaxSQL.GetPrimaryConnection reads MyLogManager.Instance() as its very first statement
+        // and NREs if that was never initialized — UniPro2026's own Login_Load always calls
+        // MyLogManager.Create(...) first (see AppSession.Log). Defaults below mirror UniPro2026's
+        // Login.cs (logPath/logFile/pvDebug), adjusted to this app's own folder; override via
+        // App.config appSettings if these are wrong (no rebuild needed).
+        private static readonly string LogPath =
+            ConfigurationManager.AppSettings["Logging.Path"] ?? @"C:\Unitron\Procurement\Log";
+        private static readonly string LogFile =
+            ConfigurationManager.AppSettings["Logging.FileName"] ?? "Procurement.log";
+        private static readonly bool DebugLogging =
+            !bool.TryParse(ConfigurationManager.AppSettings["Logging.Debug"], out var debugSetting) || debugSetting;
 
         private Label _userLabel;
         private Label _companyLabel;
@@ -97,8 +110,13 @@ namespace Procurement.UI.Forms
             try
             {
                 ProcurementSession.LicensePath = LicPath;
+                ProcurementSession.LogPath = LogPath;
+                ProcurementSession.LogFile = LogFile;
                 ProcurementSession.UserName = ResolveWindowsUserName();
                 _userLabel.Text = ProcurementSession.UserName;
+
+                // Must run before any MaxSQL call — see the LogPath/LogFile/DebugLogging comment above.
+                MyLogManager.Create(LogFile, LogPath, DebugLogging).GetCurrentClassLogger();
 
                 using (var conn = MaxSQL.GetPrimaryConnection(LicPath))
                 {

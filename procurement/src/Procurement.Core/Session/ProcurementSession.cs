@@ -13,6 +13,10 @@ namespace Procurement.Core.Session
         public static string UserName { get; set; }
         public static string LicensePath { get; set; }
 
+        /// <summary>Passed into MyLogManager.Create at login, before any MaxSQL call — MaxSQL reads MyLogManager.Instance() internally and NREs if it was never initialized.</summary>
+        public static string LogPath { get; set; }
+        public static string LogFile { get; set; }
+
         /// <summary>MAX "primary" connection, used to look up the list of companies (ExactRMCompanies).</summary>
         public static string PrimaryConnectionString { get; set; }
 
