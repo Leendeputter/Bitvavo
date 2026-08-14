@@ -9,7 +9,7 @@ namespace Procurement.Data.Configurations
     {
         public SupplierOrderConfiguration()
         {
-            ToTable("SupplierOrder");
+            ToTable("Procurement_SupplierOrder");
             HasKey(o => o.Id);
 
             Property(o => o.ErpPoNumber).HasMaxLength(50).IsRequired();
@@ -50,7 +50,7 @@ namespace Procurement.Data.Configurations
     {
         public SupplierOrderLineConfiguration()
         {
-            ToTable("SupplierOrderLine");
+            ToTable("Procurement_SupplierOrderLine");
             HasKey(l => l.Id);
 
             Property(l => l.SupplierPartNumber).HasMaxLength(100);

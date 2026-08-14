@@ -7,7 +7,7 @@ namespace Procurement.Data.Configurations
     {
         public ApprovalRequestConfiguration()
         {
-            ToTable("ApprovalRequest");
+            ToTable("Procurement_ApprovalRequest");
             HasKey(a => a.Id);
 
             Property(a => a.Reasons).HasMaxLength(2000);

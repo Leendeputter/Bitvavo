@@ -9,7 +9,7 @@ namespace Procurement.Data.Configurations
     {
         public PurchaseRequestConfiguration()
         {
-            ToTable("PurchaseRequest");
+            ToTable("Procurement_PurchaseRequest");
             HasKey(pr => pr.Id);
 
             Property(pr => pr.ErpRequestNumber).HasMaxLength(50);
@@ -33,7 +33,7 @@ namespace Procurement.Data.Configurations
     {
         public PurchaseRequestLineConfiguration()
         {
-            ToTable("PurchaseRequestLine");
+            ToTable("Procurement_PurchaseRequestLine");
             HasKey(l => l.Id);
 
             Property(l => l.ErpArticleId).HasMaxLength(50);

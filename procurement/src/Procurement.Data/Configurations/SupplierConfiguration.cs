@@ -9,7 +9,7 @@ namespace Procurement.Data.Configurations
     {
         public SupplierConfiguration()
         {
-            ToTable("Supplier");
+            ToTable("Procurement_Supplier");
             HasKey(s => s.Id);
 
             Property(s => s.SupplierCode).HasMaxLength(20).IsRequired()
@@ -29,7 +29,7 @@ namespace Procurement.Data.Configurations
     {
         public SupplierCapabilityRecordConfiguration()
         {
-            ToTable("SupplierCapability");
+            ToTable("Procurement_SupplierCapability");
             HasKey(c => c.Id);
 
             Property(c => c.Capability).HasMaxLength(50).IsRequired();

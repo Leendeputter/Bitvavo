@@ -7,7 +7,7 @@ namespace Procurement.Data.Configurations
     {
         public SupplierProductCacheConfiguration()
         {
-            ToTable("SupplierProduct");
+            ToTable("Procurement_SupplierProduct");
             HasKey(p => p.Id);
 
             Property(p => p.SupplierCode).HasMaxLength(20).IsRequired();

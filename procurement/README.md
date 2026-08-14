@@ -189,16 +189,51 @@ Of open `Procurement.sln` in Visual Studio en bouw vanuit daar.
 
 ### Database
 
-`Procurement.UI` gebruikt EF6 **automatic migrations** (`src/Procurement.Data/Migrations/Configuration.cs`)
-— er is geen losse `Add-Migration`-stap nodig. Er staat geen statische connection string meer in
-`App.config`: die wordt na het inloggen opgebouwd door `ProcurementConnectionStringHelper` uit de
-MAX-adminconnectie (zelfde server/auth, andere catalog: `Unitron` of `Unitron_test`). Bij de eerste
-start op een lege `Unitron`-database:
+Alle eigen tabellen van deze app staan in de **Unitron**-database, op dezelfde SQL Server als
+MAX/UniPro (zelfde server/auth, andere catalog — `Unitron` of `Unitron_test` in testmodus, opgebouwd
+door `ProcurementConnectionStringHelper` uit de MAX-adminconnectie na het inloggen; er staat geen
+statische connection string meer in `App.config`). Elke tabel heeft het prefix **`Procurement_`**
+(bv. `Procurement_PurchaseRequest`, `Procurement_Supplier`) zodat ze duidelijk herkenbaar zijn tussen
+UniPro's eigen tabellen in diezelfde database en er geen naamsbotsing kan ontstaan.
 
-1. Wordt het schema aangemaakt op basis van de na het inloggen opgebouwde connection string.
-2. Worden de policy-tabellen geseed: `Supplier`/`SupplierCapability` (DigiKey + Farnell, conform
-   spec §5), een standaard `SupplierPreference` per leverancier, een default `PackagingPolicy` en
-   een default `ApprovalPolicy`.
+**Database-migraties — expliciet, niet automatisch.** Eerder gebruikte dit project EF6 *automatic*
+migrations: het schema werd stilzwijgend aangepast bij elke opstart, zonder dat daar een zichtbare
+stap voor nodig was. Dat is bewust aangepast (`AutomaticMigrationsEnabled = false` in
+`src/Procurement.Data/Migrations/Configuration.cs`) omdat schema-wijzigingen op een gedeelde database
+zoals Unitron eerst beoordeeld moeten kunnen worden voordat ze worden toegepast. Het proces is nu:
+
+1. Wanneer het model (entities/`Configurations/*.cs`) wijzigt, moet er een migratie gescaffold worden
+   via Visual Studio's Package Manager Console (Tools → NuGet Package Manager → Package Manager
+   Console). Zet **Default project** op `Procurement.Data`. Omdat `ProcurementDbContext`'s eigen
+   parameterloze constructor bewust een niet-bestaande placeholder-connectie gebruikt (zie de comment
+   erbij — dat was nodig om een eerdere bug op te lossen), moet de echte Unitron-connectie expliciet
+   worden meegegeven:
+   ```powershell
+   Add-Migration <BeschrijvendeNaam> -ConnectionString "Data Source=<jouw-SQL-server>;Initial Catalog=Unitron;Integrated Security=True" -ConnectionProviderName "System.Data.SqlClient"
+   ```
+2. Open het gegenereerde bestand in `Procurement.Data\Migrations\` en controleer de `Up()`/`Down()`-
+   methode — dat toont exact welke `CreateTable`/`AddColumn`/`DropColumn`/`RenameTable` enz. zullen
+   worden uitgevoerd. Dit bestand hoort in git te komen (net als elke andere codewijziging).
+3. Bij de volgende keer opstarten laat `Program.cs` een bevestigingsvenster zien met de naam van elke
+   nog niet toegepaste migratie, vóórdat er iets op Unitron wordt uitgevoerd — pas na "Ja" wordt
+   `DbMigrator.Update()` aangeroepen. Ontbreekt de migratie nog (model gewijzigd, maar stap 1 niet
+   gedaan), dan volgt een duidelijke melding i.p.v. een generieke connectiefout.
+
+**Let op bij de eerstvolgende migratie**: de tabellen bestonden al (aangemaakt door de oude
+automatische migraties, vóór het `Procurement_`-prefix) — de eerste `Add-Migration` erna scaffoldt
+dus in feite een *hernoeming* van alle 17 tabellen. EF6's scaffolder herkent een hernoeming niet
+automatisch en genereert standaard een `DropTable` + `CreateTable`-paar per tabel, wat de huidige
+testdata in die tabellen zou weggooien. Wil je de huidige data behouden, wijzig dan in het
+gegenereerde migratiebestand elk `DropTable`/`CreateTable`-paar naar `RenameTable(name: "dbo.<oude
+naam>", newName: "Procurement_<naam>")` vóór je 'm toepast. Ook de overstap van automatische naar
+code-based migraties kan bij de allereerste `Add-Migration` wat wrijving geven (EF6 kent dan nog geen
+migratiebestand dat overeenkomt met wat er al in `__MigrationHistory` staat) — stuur de exacte
+foutmelding door als dat gebeurt, dan lossen we 'm samen op.
+
+Bij een eerste start op een lege `Unitron`-database worden na de migratie ook de policy-tabellen
+geseed: `Procurement_Supplier`/`Procurement_SupplierCapability` (DigiKey + Farnell, conform spec §5),
+een standaard `SupplierPreference` per leverancier, een default `PackagingPolicy` en een default
+`ApprovalPolicy`.
 
 ### Starten
 

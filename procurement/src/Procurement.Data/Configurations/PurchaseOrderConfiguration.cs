@@ -7,7 +7,7 @@ namespace Procurement.Data.Configurations
     {
         public PurchaseOrderConfiguration()
         {
-            ToTable("PurchaseOrder");
+            ToTable("Procurement_PurchaseOrder");
             HasKey(po => po.Id);
 
             Property(po => po.ErpPoNumber).HasMaxLength(50).IsRequired();
@@ -28,7 +28,7 @@ namespace Procurement.Data.Configurations
     {
         public PurchaseOrderLineConfiguration()
         {
-            ToTable("PurchaseOrderLine");
+            ToTable("Procurement_PurchaseOrderLine");
             HasKey(l => l.Id);
 
             Property(l => l.SupplierCode).HasMaxLength(20);

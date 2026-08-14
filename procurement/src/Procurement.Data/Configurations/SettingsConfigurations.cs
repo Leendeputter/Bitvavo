@@ -7,7 +7,7 @@ namespace Procurement.Data.Configurations
     {
         public ProcurementEventConfiguration()
         {
-            ToTable("ProcurementEvent");
+            ToTable("Procurement_Event");
             HasKey(e => e.Id);
 
             Property(e => e.EntityType).HasMaxLength(50);
@@ -26,7 +26,7 @@ namespace Procurement.Data.Configurations
     {
         public SupplierPreferenceConfiguration()
         {
-            ToTable("SupplierPreference");
+            ToTable("Procurement_SupplierPreference");
             HasKey(p => p.Id);
             Property(p => p.SupplierCode).HasMaxLength(20).IsRequired();
         }
@@ -36,7 +36,7 @@ namespace Procurement.Data.Configurations
     {
         public PackagingPolicyConfiguration()
         {
-            ToTable("PackagingPolicy");
+            ToTable("Procurement_PackagingPolicy");
             HasKey(p => p.Id);
             Property(p => p.ComponentCategory).HasMaxLength(100).IsRequired();
             Property(p => p.AllowedPackagingCsv).HasMaxLength(200).HasColumnName("AllowedPackaging");
@@ -47,7 +47,7 @@ namespace Procurement.Data.Configurations
     {
         public ApprovalPolicyConfiguration()
         {
-            ToTable("ApprovalPolicy");
+            ToTable("Procurement_ApprovalPolicy");
             HasKey(p => p.Id);
         }
     }

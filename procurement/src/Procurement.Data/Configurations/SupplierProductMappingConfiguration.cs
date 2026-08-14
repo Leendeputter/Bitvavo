@@ -9,7 +9,7 @@ namespace Procurement.Data.Configurations
     {
         public SupplierProductMappingConfiguration()
         {
-            ToTable("SupplierProductMapping");
+            ToTable("Procurement_SupplierProductMapping");
             HasKey(m => m.Id);
 
             Property(m => m.ErpArticleId).HasMaxLength(50);

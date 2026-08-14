@@ -7,7 +7,7 @@ namespace Procurement.Data.Configurations
     {
         public SupplierOfferPackagingOptionConfiguration()
         {
-            ToTable("SupplierOfferPackaging");
+            ToTable("Procurement_SupplierOfferPackaging");
             HasKey(p => p.Id);
         }
     }

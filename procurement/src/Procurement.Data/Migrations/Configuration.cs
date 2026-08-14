@@ -6,17 +6,17 @@ using Procurement.Core.Enums;
 namespace Procurement.Data.Migrations
 {
     /// <summary>
-    /// EF6 automatic migrations — no design-time "Add-Migration" scaffolding is available for
-    /// this prototype, so the schema evolves automatically on startup
-    /// (Database.SetInitializer(new MigrateDatabaseToLatestVersion&lt;...&gt;()) in
-    /// Procurement.UI's Program.cs) and seeds the configurable business rules from spec §3.5/§5.
+    /// EF6 code-based migrations. Schema changes are no longer applied automatically/silently —
+    /// they require an explicit, reviewable migration file scaffolded via "Add-Migration" in
+    /// Visual Studio's Package Manager Console (Default project: Procurement.Data) before
+    /// Program.cs's DbMigrator will apply anything to the real Unitron database. See the
+    /// "Database-migraties" section in README.md for the exact steps and why this changed.
     /// </summary>
     public sealed class Configuration : DbMigrationsConfiguration<ProcurementDbContext>
     {
         public Configuration()
         {
-            AutomaticMigrationsEnabled = true;
-            AutomaticMigrationDataLossAllowed = true;
+            AutomaticMigrationsEnabled = false;
         }
 
         protected override void Seed(ProcurementDbContext context)

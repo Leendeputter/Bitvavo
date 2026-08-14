@@ -7,7 +7,7 @@ namespace Procurement.Data.Configurations
     {
         public SupplierOfferConfiguration()
         {
-            ToTable("SupplierOffer");
+            ToTable("Procurement_SupplierOffer");
             HasKey(o => o.Id);
 
             Property(o => o.SupplierCode).HasMaxLength(20).IsRequired();

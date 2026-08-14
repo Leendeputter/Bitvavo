@@ -2,7 +2,9 @@ using System;
 using System.Data.Entity;
 using System.Data.Entity.Infrastructure;
 using System.Data.Entity.Migrations;
+using System.Data.Entity.Migrations.Infrastructure;
 using System.IO;
+using System.Linq;
 using System.Windows.Forms;
 using Procurement.Core.Session;
 using Procurement.Data;
@@ -61,8 +63,12 @@ namespace Procurement.UI
                     return;
             }
 
-            // EF6 automatic migrations (Migrations/Configuration.cs) create/update the schema and
-            // seed the business-rule tables on first run — no design-time Add-Migration needed.
+            // EF6 code-based migrations (Migrations/Configuration.cs, AutomaticMigrationsEnabled =
+            // false) — schema changes only exist as an explicit, reviewable migration file
+            // (scaffolded via Add-Migration in Visual Studio, see README's "Database-migraties"
+            // section), never inferred/applied silently from a model diff. This block still
+            // applies whatever migration(s) are already scaffolded, but only after the user
+            // explicitly confirms which ones — nothing touches Unitron without that.
             //
             // Database.SetInitializer<TContext,TConfig>() + Database.Initialize() is the usual
             // way to run this, but that path has EF6 construct its own ProcurementDbContext
@@ -86,7 +92,36 @@ namespace Procurement.UI
                 {
                     TargetDatabase = new DbConnectionInfo(ProcurementSession.SharedConnectionString, "System.Data.SqlClient")
                 };
-                new DbMigrator(migrationsConfiguration).Update();
+                var migrator = new DbMigrator(migrationsConfiguration);
+
+                var pending = migrator.GetPendingMigrations().ToList();
+                if (pending.Count > 0)
+                {
+                    var confirm = MessageBox.Show(
+                        "De volgende database-wijzigingen staan klaar om toegepast te worden op de Unitron-database:\n\n"
+                        + string.Join("\n", pending)
+                        + "\n\nDoorgaan?",
+                        "Database-migratie bevestigen", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                    if (confirm != DialogResult.Yes)
+                        return;
+                }
+
+                migrator.Update();
+            }
+            catch (AutomaticMigrationsDisabledException ex)
+            {
+                // Thrown when the Code First model doesn't match what's recorded for this database
+                // and there's no scaffolded migration to explain the difference — i.e. someone
+                // changed an entity/mapping without running Add-Migration first. Not a connection
+                // problem, so it gets its own message instead of the generic one below.
+                MessageBox.Show(
+                    "Het model is aangepast, maar er is nog geen migratie gescaffold voor deze wijziging.\n\n"
+                    + "Draai in Visual Studio (Package Manager Console, Default project: Procurement.Data):\n"
+                    + "Add-Migration <naam> -ConnectionString \"...\" -ConnectionProviderName \"System.Data.SqlClient\"\n\n"
+                    + "Zie de \"Database-migraties\"-sectie in README.md voor de exacte stappen.\n\n"
+                    + ex.Message,
+                    "Migratie ontbreekt", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
             }
             catch (Exception ex)
             {

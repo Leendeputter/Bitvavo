@@ -7,7 +7,7 @@ namespace Procurement.Data.Configurations
     {
         public SupplierSelectionConfiguration()
         {
-            ToTable("SupplierSelection");
+            ToTable("Procurement_SupplierSelection");
             HasKey(s => s.Id);
 
             Property(s => s.ReasonSummary).HasMaxLength(2000);
