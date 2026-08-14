@@ -1,25 +1,23 @@
-using System.Data.Entity.Migrations;
+using System.Collections.Generic;
 using System.Linq;
 using Procurement.Core.Entities;
 using Procurement.Core.Enums;
 
-namespace Procurement.Data.Migrations
+namespace Procurement.Data
 {
     /// <summary>
-    /// EF6 code-based migrations. Schema changes are no longer applied automatically/silently —
-    /// they require an explicit, reviewable migration file scaffolded via "Add-Migration" in
-    /// Visual Studio's Package Manager Console (Default project: Procurement.Data) before
-    /// Program.cs's DbMigrator will apply anything to the real Unitron database. See the
-    /// "Database-migraties" section in README.md for the exact steps and why this changed.
+    /// Seeds the configurable business-rule tables from spec §3.5/§5 (suppliers, capabilities,
+    /// preferences, packaging/approval policy defaults). Called directly from Program.cs after the
+    /// schema-existence check — this used to be EF6 migrations' Seed() callback, but this project's
+    /// PackageReference-style .csproj doesn't support the classic "Add-Migration"/"Update-Database"
+    /// PowerShell tooling (that mechanism relies on NuGet's install.ps1/init.ps1 scripts, which
+    /// PackageReference projects never run — see README's "Database" section), so migrations
+    /// scaffolding was dropped entirely in favor of hand-reviewed SQL scripts. Every method here is
+    /// idempotent (checks before inserting), so calling this on every startup is safe.
     /// </summary>
-    public sealed class Configuration : DbMigrationsConfiguration<ProcurementDbContext>
+    public static class SeedData
     {
-        public Configuration()
-        {
-            AutomaticMigrationsEnabled = false;
-        }
-
-        protected override void Seed(ProcurementDbContext context)
+        public static void EnsureSeeded(ProcurementDbContext context)
         {
             SeedSuppliers(context);
             SeedSupplierPreferences(context);
@@ -147,7 +145,7 @@ namespace Procurement.Data.Migrations
                     PreferredPackaging = PackagingType.EitherReel,
                     OriginalReelRequired = false
                 };
-                policy.AllowedPackaging = new System.Collections.Generic.List<PackagingType>
+                policy.AllowedPackaging = new List<PackagingType>
                 {
                     PackagingType.OriginalReel,
                     PackagingType.ReReel,

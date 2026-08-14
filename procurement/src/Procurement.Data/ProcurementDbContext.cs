@@ -30,12 +30,12 @@ namespace Procurement.Data
     {
         private readonly SemaphoreSlim _gate = new SemaphoreSlim(1, 1);
 
-        // EF6's migration tooling (DbMigrator) constructs a context via this parameterless
-        // constructor purely to compute the current Code First model — for diffing against
-        // migration history — regardless of Configuration.TargetDatabase (which only supplies
-        // the connection actually used for the real database work in Program.cs). This instance
-        // is never opened/queried for real, so the connection string just needs to be
-        // syntactically valid, not a working one — a "name=X" config lookup throws immediately
+        // Various bits of EF6 machinery construct a context via this parameterless constructor
+        // purely to compute the current Code First model (e.g. Program.cs's
+        // ObjectContextAdapter.ObjectContext.CreateDatabaseScript() call, formerly also EF6's
+        // migrations tooling before that was dropped — see README's "Database" section for why).
+        // This instance is never opened/queried for real, so the connection string just needs to
+        // be syntactically valid, not a working one — a "name=X" config lookup throws immediately
         // during construction if that name doesn't exist, which is exactly what broke here once
         // the static App.config connection string was removed in favor of a runtime-resolved one.
         public ProcurementDbContext() : base(DesignTimeOnlyConnectionString)

@@ -196,57 +196,49 @@ statische connection string meer in `App.config`). Elke tabel heeft het prefix *
 (bv. `Procurement_PurchaseRequest`, `Procurement_Supplier`) zodat ze duidelijk herkenbaar zijn tussen
 UniPro's eigen tabellen in diezelfde database en er geen naamsbotsing kan ontstaan.
 
-**Database-migraties — expliciet, niet automatisch.** Eerder gebruikte dit project EF6 *automatic*
+**Database-schema — expliciet, niet automatisch.** Eerder gebruikte dit project EF6 *automatic*
 migrations: het schema werd stilzwijgend aangepast bij elke opstart, zonder dat daar een zichtbare
-stap voor nodig was. Dat is bewust aangepast (`AutomaticMigrationsEnabled = false` in
-`src/Procurement.Data/Migrations/Configuration.cs`) omdat schema-wijzigingen op een gedeelde database
-zoals Unitron eerst beoordeeld moeten kunnen worden voordat ze worden toegepast. Het proces is nu:
+stap voor nodig was. Dat is bewust uitgezet omdat schema-wijzigingen op een gedeelde database zoals
+Unitron eerst beoordeeld moeten kunnen worden voordat ze worden toegepast.
 
-1. Wanneer het model (entities/`Configurations/*.cs`) wijzigt, moet er een migratie gescaffold worden
-   via Visual Studio's Package Manager Console (Tools → NuGet Package Manager → Package Manager
-   Console). Zet **Default project** op `Procurement.Data`. Omdat `ProcurementDbContext`'s eigen
-   parameterloze constructor bewust een niet-bestaande placeholder-connectie gebruikt (zie de comment
-   erbij — dat was nodig om een eerdere bug op te lossen), moet de echte Unitron-connectie expliciet
-   worden meegegeven:
-   ```powershell
-   Add-Migration <BeschrijvendeNaam> -ConnectionString "Data Source=<jouw-SQL-server>;Initial Catalog=Unitron;Integrated Security=True" -ConnectionProviderName "System.Data.SqlClient"
-   ```
-2. Open het gegenereerde bestand in `Procurement.Data\Migrations\` en controleer de `Up()`/`Down()`-
-   methode — dat toont exact welke `CreateTable`/`AddColumn`/`DropColumn`/`RenameTable` enz. zullen
-   worden uitgevoerd. Dit bestand hoort in git te komen (net als elke andere codewijziging).
-3. Bij de volgende keer opstarten laat `Program.cs` een bevestigingsvenster zien met de naam van elke
-   nog niet toegepaste migratie, vóórdat er iets op Unitron wordt uitgevoerd — pas na "Ja" wordt
-   `DbMigrator.Update()` aangeroepen. Ontbreekt de migratie nog (model gewijzigd, maar stap 1 niet
-   gedaan), dan volgt een duidelijke melding i.p.v. een generieke connectiefout.
+**Belangrijke correctie op een eerdere aanname in deze README**: het aanvankelijke plan was EF6's
+*code-based* migrations (`Add-Migration`/`Update-Database` in Visual Studio's Package Manager
+Console) — dat bleek niet te werken. Die cmdlets worden geregistreerd via NuGet's klassieke
+`install.ps1`/`init.ps1`-scriptmechanisme, en dat mechanisme draait NuGet nooit voor
+`PackageReference`-stijl projecten (elk project in deze solution, inclusief `Procurement.Data`) —
+vandaar `Add-Migration : The term 'Add-Migration' is not recognized...`. Dit is geen ontbrekend
+Visual Studio-onderdeel en geen op te lossen instelling; het is een structurele beperking van EF6's
+tooling in combinatie met moderne SDK-stijl `.csproj`-bestanden. Er is dus geen migratiegeschiedenis
+of scaffolding meer — schema's worden nu als volgt beheerd:
 
-**Eerstvolgende migratie — schone lei (gekozen i.p.v. de oude data behouden)**: de tabellen bestonden
-al onder hun oude namen (aangemaakt door de oude automatische migraties, vóór het `Procurement_`-
-prefix). De eerste `Add-Migration` erna zal daarom waarschijnlijk een `DropTable` + `CreateTable`-paar
-per tabel scaffolden — precies wat we hier willen, want de oude data mag weg, voor zowel `Unitron` als
-`Unitron_test`. Eén addertje: het gescaffolde bestand is gebaseerd op de staat van de database
-waartegen je `Add-Migration` draait; als `Unitron_test` de oude tabellen niet (allemaal) heeft, laat
-`DropTable("dbo.<oude naam>")` daar de migratie mislukken. Maak de `Up()`-methode daarom sowieso
-robuust tegen "tabel bestaat niet", zodat hetzelfde bestand veilig tegen beide databases kan:
+1. Bij het opstarten controleert `Program.cs` alleen of `Procurement_PurchaseRequest` (een vaste,
+   herkenbare tabel) al bestaat. Bestaat die niet, dan wordt er **niets** automatisch aangemaakt —
+   in plaats daarvan genereert de app zelf een compleet SQL-script (via EF6's eigen
+   `ObjectContext.CreateDatabaseScript()`, dus gegarandeerd overeenkomend met het huidige model,
+   zonder dat daar migratie-tooling voor nodig is) en zet dat op je bureaublad
+   (`procurement-schema-<tijdstip>.sql`), met een duidelijke melding. Bekijk dat script, voer het uit
+   in **SQL Server Management Studio**, en start de app daarna opnieuw.
+2. Voor **toekomstige** modelwijzigingen (nieuw veld, nieuwe tabel, enz.) geldt hetzelfde principe,
+   maar dan handmatig: ik lever een los, leesbaar `.sql`-bestand met exact de benodigde
+   `ALTER TABLE`/`CREATE TABLE`-statements (geen scaffolding-tool nodig, ik weet precies wat er
+   gewijzigd is), jij bekijkt het en voert het zelf uit in SSMS voordat de bijbehorende code-wijziging
+   iets kan doen. Dit vervangt de eerder voorgestelde `Add-Migration`-stap volledig.
+3. Bestaat `Procurement_PurchaseRequest` al, dan slaat de app de scriptgeneratie over en gaat direct
+   verder met het seeden van de policy-tabellen (zie hieronder) en opstarten.
 
-1. Draai `Add-Migration Procurement_InitialSchema -ConnectionString "...Unitron..." -ConnectionProviderName "System.Data.SqlClient"`.
-2. Open het gegenereerde bestand. Vervang elke regel `DropTable("dbo.<Naam>");` (in dezelfde volgorde
-   als gegenereerd — die volgorde respecteert de foreign keys al correct) door:
-   ```csharp
-   Sql("IF OBJECT_ID('dbo.<Naam>', 'U') IS NOT NULL DROP TABLE dbo.<Naam>;");
-   ```
-   Laat de `CreateTable(...)`-aanroepen ongewijzigd.
-3. Pas toe op `Unitron` (`Update-Database -ConnectionString "...Unitron..." -ConnectionProviderName "System.Data.SqlClient"`, of gewoon de app normaal starten en het bevestigingsvenster met "Ja" bevestigen).
-4. Pas hetzelfde bestand toe op `Unitron_test` (`Update-Database -ConnectionString "...Unitron_test..." -ConnectionProviderName "System.Data.SqlClient"`, of de app één keer in testmodus starten).
+**Schone lei voor zowel `Unitron` als `Unitron_test`** (in plaats van de oude data behouden): het
+gegenereerde script begint met het opruimen van de 18 tabellen die deze app vóór het
+`Procurement_`-prefix gebruikte (`Supplier`, `PurchaseRequest`, enz.) — inclusief het eerst verwijderen
+van alle foreign keys die daarnaar verwijzen, dynamisch opgezocht via `sys.foreign_keys` in plaats van
+een handmatig uitgezochte volgorde. Elke stap is voorzien van een `IF OBJECT_ID(...) IS NOT NULL`-
+guard, dus hetzelfde script is veilig te draaien tegen `Unitron_test` ook als die database de oude
+tabellen niet (allemaal) heeft.
 
-De overstap van automatische naar code-based migraties kan bij deze allereerste `Add-Migration` wat
-wrijving geven (EF6 kent dan nog geen migratiebestand dat overeenkomt met wat er al in
-`__MigrationHistory` staat) — stuur de exacte foutmelding door als dat gebeurt, dan lossen we 'm samen
-op.
-
-Bij een eerste start op een lege `Unitron`-database worden na de migratie ook de policy-tabellen
-geseed: `Procurement_Supplier`/`Procurement_SupplierCapability` (DigiKey + Farnell, conform spec §5),
-een standaard `SupplierPreference` per leverancier, een default `PackagingPolicy` en een default
-`ApprovalPolicy`.
+Bij een eerste start op een lege database worden na het aanmaken van het schema ook de
+policy-tabellen geseed: `Procurement_Supplier`/`Procurement_SupplierCapability` (DigiKey + Farnell,
+conform spec §5), een standaard `SupplierPreference` per leverancier, een default `PackagingPolicy`
+en een default `ApprovalPolicy` (`Procurement.Data/SeedData.cs`, aangeroepen vanuit `Program.cs` —
+dit was voorheen EF6 migrations' `Seed()`-callback).
 
 ### Starten
 
