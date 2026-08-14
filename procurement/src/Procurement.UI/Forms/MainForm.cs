@@ -379,6 +379,10 @@ namespace Procurement.UI.Forms
                         Quantity = line?.RequestedQuantity ?? 0,
                         Cost = line?.Cost,
                         Cnv = line?.CostConv,
+                        // Blank (null) rather than 0 or an exception when Cost/CostConv niet allebei
+                        // bekend zijn of CostConv 0 is — anders zou een deling door nul of een
+                        // stille 0-waarde een verkeerde indruk geven.
+                        ExtCost = ComputeExtCost(line?.RequestedQuantity ?? 0, line?.Cost, line?.CostConv),
                         DueDate = r.RequiredDate,
                         Reference = r.Project,
                         ManufacturingPart = line?.ManufacturerPartNumber,
@@ -402,7 +406,15 @@ namespace Procurement.UI.Forms
             if (_requestsGrid.Columns["Id"] != null)
                 _requestsGrid.Columns["Id"].Visible = false;
             SetHeaderText(_requestsGrid, "ManufacturingPart", "Manufacturing Part");
+            SetHeaderText(_requestsGrid, "ExtCost", "Ext. Cost");
             ApplyMaxColumnWidths(_requestsGrid);
+        }
+
+        /// <summary>Ext. Cost voor een regel = Quantity * Cost / Cost Conv.</summary>
+        private static decimal? ComputeExtCost(int quantity, decimal? cost, decimal? costConv)
+        {
+            if (!cost.HasValue || !costConv.HasValue || costConv.Value == 0m) return null;
+            return quantity * cost.Value / costConv.Value;
         }
 
         /// <summary>
@@ -432,8 +444,9 @@ namespace Procurement.UI.Forms
             SetCharacterBasedColumnWidth(grid, "Firm", 6);
             SetCharacterBasedColumnWidth(grid, "Type", 8);
             SetCharacterBasedColumnWidth(grid, "Quantity", 10);
-            SetCharacterBasedColumnWidth(grid, "Cost", 10);
-            SetCharacterBasedColumnWidth(grid, "Cnv", 10);
+            SetCharacterBasedColumnWidth(grid, "Cost", 12);
+            SetCharacterBasedColumnWidth(grid, "Cnv", 12);
+            SetCharacterBasedColumnWidth(grid, "ExtCost", 14);
             SetCharacterBasedColumnWidth(grid, "DueDate", 12);
             SetCharacterBasedColumnWidth(grid, "Customer", 14);
             SetCharacterBasedColumnWidth(grid, "StockID", 14);
@@ -443,6 +456,21 @@ namespace Procurement.UI.Forms
             SetCharacterBasedColumnWidth(grid, "ReelRequirement", 8);
             // Desc1/Reference (variable-length free text) are deliberately left out — those are the
             // columns Fill actually distributes the remaining window width across.
+
+            // Cost/Cnv (Cost Conv) come straight from MAX; ExtCost (Quantity * Cost / Cost Conv) is
+            // computed here. All three are shown with 4 decimals rather than the framework's default
+            // ("N2"/currency-style rounding), since these are conversion factors/unit costs where the
+            // 3rd/4th decimal actually matters.
+            SetDecimalFormat(grid, "Cost", 4);
+            SetDecimalFormat(grid, "Cnv", 4);
+            SetDecimalFormat(grid, "ExtCost", 4);
+        }
+
+        private static void SetDecimalFormat(DataGridView grid, string columnName, int decimals)
+        {
+            var column = grid.Columns[columnName];
+            if (column == null) return;
+            column.DefaultCellStyle.Format = "N" + decimals;
         }
 
         /// <summary>
