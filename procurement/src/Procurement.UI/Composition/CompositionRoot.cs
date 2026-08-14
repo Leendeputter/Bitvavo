@@ -75,13 +75,15 @@ namespace Procurement.UI.Composition
 
             var maxOrderRepository = new MaxOrderRepository(Session);
             var maxVendorPartRepository = new MaxVendorPartRepository(Session);
+            var maxPurchaseOrderRepository = new MaxPurchaseOrderRepository(Session);
             ErpConnector = new MaxErpConnector(
                 PurchaseRequestRepository,
                 PurchaseOrderRepository,
                 maxOrderRepository,
                 maxVendorPartRepository,
                 SupplierRepository,
-                SupplierProductMappingRepository);
+                SupplierProductMappingRepository,
+                maxPurchaseOrderRepository);
 
             Engine = new ProcurementEngine(
                 ErpConnector,

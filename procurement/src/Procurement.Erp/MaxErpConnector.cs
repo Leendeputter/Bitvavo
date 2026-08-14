@@ -26,9 +26,10 @@ namespace Procurement.Erp
     /// nothing downstream reads them and refreshing keeps MainForm's grid showing current MAX
     /// values instead of whatever was captured the first time that order was seen.
     ///
-    /// CreatePurchaseOrderAsync/UpdatePurchaseOrderStatusAsync are unrelated to MAX (this
-    /// prototype's own PurchaseOrder tracking, spec §6 step 9) and are delegated to
-    /// MockErpConnector rather than duplicated.
+    /// CreatePurchaseOrderAsync/UpdatePurchaseOrderStatusAsync (spec §6 step 9) delegate to
+    /// MockErpConnector by default (UseMockPurchaseOrders=true — this prototype's own
+    /// PurchaseOrder tracking) or to MaxPurchaseOrderRepository once that's implemented and the
+    /// flag is flipped to false — see that class's comment for why it isn't yet.
     /// </summary>
     public class MaxErpConnector : IErpConnector
     {
@@ -37,10 +38,20 @@ namespace Procurement.Erp
         private readonly MaxVendorPartRepository _maxVendorPartRepository;
         private readonly SupplierRepository _supplierRepository;
         private readonly SupplierProductMappingRepository _supplierProductMappingRepository;
+        private readonly MaxPurchaseOrderRepository _maxPurchaseOrderRepository;
         private readonly MockErpConnector _inner;
 
         /// <summary>MAX Order_Master.STATUS_10 values to include — "1" = Planned, "2" = Approved. Defaults to Approved only; the UI's status checkboxes update this.</summary>
         public HashSet<string> IncludedOrderStatuses { get; set; } = new HashSet<string> { "2" };
+
+        /// <summary>
+        /// Whether "Order plaatsen" writes to this app's own Procurement_PurchaseOrder table (true,
+        /// the default and only currently-working option) or attempts a real MAX PO via
+        /// MaxPurchaseOrderRepository (false). See that class's comment for what's still needed
+        /// before the real path works — flipping this before then throws a clear
+        /// NotImplementedException instead of silently doing the wrong thing.
+        /// </summary>
+        public bool UseMockPurchaseOrders { get; set; } = true;
 
         /// <summary>Optional Order_Master.CURDUE_10 range — set from MainForm's "Due Date Range" group box (only applied when its Enable checkbox is checked).</summary>
         public DateTime? DueDateFilterStart { get; set; }
@@ -60,13 +71,15 @@ namespace Procurement.Erp
             MaxOrderRepository maxOrderRepository,
             MaxVendorPartRepository maxVendorPartRepository,
             SupplierRepository supplierRepository,
-            SupplierProductMappingRepository supplierProductMappingRepository)
+            SupplierProductMappingRepository supplierProductMappingRepository,
+            MaxPurchaseOrderRepository maxPurchaseOrderRepository)
         {
             _purchaseRequestRepository = purchaseRequestRepository ?? throw new ArgumentNullException(nameof(purchaseRequestRepository));
             _maxOrderRepository = maxOrderRepository ?? throw new ArgumentNullException(nameof(maxOrderRepository));
             _maxVendorPartRepository = maxVendorPartRepository ?? throw new ArgumentNullException(nameof(maxVendorPartRepository));
             _supplierRepository = supplierRepository ?? throw new ArgumentNullException(nameof(supplierRepository));
             _supplierProductMappingRepository = supplierProductMappingRepository ?? throw new ArgumentNullException(nameof(supplierProductMappingRepository));
+            _maxPurchaseOrderRepository = maxPurchaseOrderRepository ?? throw new ArgumentNullException(nameof(maxPurchaseOrderRepository));
             _inner = new MockErpConnector(purchaseRequestRepository, purchaseOrderRepository);
         }
 
@@ -236,9 +249,13 @@ namespace Procurement.Erp
             }
         }
 
-        public Task<string> CreatePurchaseOrderAsync(PurchaseOrderDraft draft) => _inner.CreatePurchaseOrderAsync(draft);
+        public Task<string> CreatePurchaseOrderAsync(PurchaseOrderDraft draft) => UseMockPurchaseOrders
+            ? _inner.CreatePurchaseOrderAsync(draft)
+            : _maxPurchaseOrderRepository.CreatePurchaseOrderAsync(draft);
 
-        public Task UpdatePurchaseOrderStatusAsync(string erpPoNumber, string status) => _inner.UpdatePurchaseOrderStatusAsync(erpPoNumber, status);
+        public Task UpdatePurchaseOrderStatusAsync(string erpPoNumber, string status) => UseMockPurchaseOrders
+            ? _inner.UpdatePurchaseOrderStatusAsync(erpPoNumber, status)
+            : _maxPurchaseOrderRepository.UpdateStatusAsync(erpPoNumber, status);
 
         private static string Truncate(string value, int maxLength) =>
             string.IsNullOrEmpty(value) || value.Length <= maxLength ? value : value.Substring(0, maxLength);

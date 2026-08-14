@@ -350,6 +350,15 @@ Supplier C re-reel 4.000 @ €0,105) letterlijk reproduceert, inclusief de twee 
 - **Audit log**: elke stap van de workflow schrijft een `ProcurementEvent`; `DbAuditLogger` maskeert
   bekende secret-sleutelnamen (`apiKey`, `secret`, `password`, `token`, ...) voordat een payload
   wordt weggeschreven.
+- **MAX PO-aanmaak: scaffolding klaar, implementatie nog niet** — `MaxErpConnector.UseMockPurchaseOrders`
+  (default `true`) bepaalt of "Order plaatsen" naar dit prototype's eigen `Procurement_PurchaseOrder`
+  blijft schrijven, of straks naar een echte MAX-PO via `MaxPurchaseOrderRepository`. Die laatste
+  gooit voorlopig bewust een `NotImplementedException` — in tegenstelling tot de
+  Order_Master/Part_Master-leeskant (`MaxOrderRepository`), waarvan de exacte tabel-/kolomstructuur
+  vooraf is aangeleverd, is er voor MAX's PO-aanmaak nog geen geverifieerd schema. Zie de
+  class-comment van `MaxPurchaseOrderRepository` voor precies welke informatie daarvoor nodig is
+  (tabellen/kolommen of liever een MAX-eigen API/stored procedure, PO-nummergeneratie, statuswaarden,
+  een testomgeving) voordat dit ingevuld kan worden.
 
 ## Bekende beperkingen van dit prototype
 
