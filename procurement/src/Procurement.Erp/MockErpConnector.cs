@@ -41,12 +41,14 @@ namespace Procurement.Erp
             var order = new PurchaseOrder
             {
                 ErpPoNumber = erpPoNumber,
-                PurchaseRequestId = draft.PurchaseRequestId,
+                SupplierCode = draft.SupplierCode,
+                Currency = draft.Currency ?? "EUR",
+                IdempotencyKey = draft.IdempotencyKey,
                 Status = PurchaseOrderStatus.Submitted,
+                OrderTotal = draft.Lines.Sum(l => l.LineTotal),
                 Lines = draft.Lines.Select(l => new PurchaseOrderLine
                 {
                     PurchaseRequestLineId = l.PurchaseRequestLineId,
-                    SupplierCode = draft.SupplierCode,
                     SupplierPartNumber = l.SupplierPartNumber,
                     Quantity = l.Quantity,
                     UnitPrice = l.UnitPrice,

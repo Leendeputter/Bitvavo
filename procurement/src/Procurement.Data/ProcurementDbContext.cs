@@ -126,8 +126,7 @@ namespace Procurement.Data
         public DbSet<ApprovalRequest> ApprovalRequests { get; set; }
         public DbSet<PurchaseOrder> PurchaseOrders { get; set; }
         public DbSet<PurchaseOrderLine> PurchaseOrderLines { get; set; }
-        public DbSet<SupplierOrder> SupplierOrders { get; set; }
-        public DbSet<SupplierOrderLine> SupplierOrderLines { get; set; }
+        public DbSet<PurchaseOrderDelivery> PurchaseOrderDeliveries { get; set; }
         public DbSet<ProcurementEvent> ProcurementEvents { get; set; }
         public DbSet<SupplierPreference> SupplierPreferences { get; set; }
         public DbSet<PackagingPolicy> PackagingPolicies { get; set; }
@@ -156,8 +155,7 @@ namespace Procurement.Data
             modelBuilder.Configurations.Add(new ApprovalRequestConfiguration());
             modelBuilder.Configurations.Add(new PurchaseOrderConfiguration());
             modelBuilder.Configurations.Add(new PurchaseOrderLineConfiguration());
-            modelBuilder.Configurations.Add(new SupplierOrderConfiguration());
-            modelBuilder.Configurations.Add(new SupplierOrderLineConfiguration());
+            modelBuilder.Configurations.Add(new PurchaseOrderDeliveryConfiguration());
             modelBuilder.Configurations.Add(new SupplierConfiguration());
             modelBuilder.Configurations.Add(new SupplierCapabilityRecordConfiguration());
             modelBuilder.Configurations.Add(new ProcurementEventConfiguration());

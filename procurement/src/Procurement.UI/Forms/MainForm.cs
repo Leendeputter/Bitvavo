@@ -37,6 +37,7 @@ namespace Procurement.UI.Forms
         private Button _newRequestButton;
         private Button _startSourcingButton;
         private Button _sourceAllButton;
+        private Button _placeOrdersButton;
         private Button _viewOffersButton;
         private Button _orderDetailButton;
         private Button _approvalsButton;
@@ -76,6 +77,12 @@ namespace Procurement.UI.Forms
             _startSourcingButton.Click += async (s, e) => await SourceRequestsAsync(GetSelectedRequestIds(), confirmIfMoreThan: 1);
             _sourceAllButton = new Button { Text = "Alles sourcen", AutoSize = true };
             _sourceAllButton.Click += async (s, e) => await SourceRequestsAsync(GetAllRequestIds(), confirmIfMoreThan: 1);
+            // Losgekoppeld van sourcing (spec-correctie): sourcing/goedkeuring brengt een aanvraag
+            // enkel tot ReadyToOrder (een SupplierSelection per regel), het daadwerkelijk plaatsen
+            // van de order is een aparte, expliciete stap — zo kan per leverancier gebundeld worden
+            // i.p.v. automatisch bij elke match meteen te bestellen.
+            _placeOrdersButton = new Button { Text = "Order plaatsen (selectie)", AutoSize = true };
+            _placeOrdersButton.Click += async (s, e) => await PlaceOrdersAsync(GetSelectedRequestIds());
             _orderDetailButton = new Button { Text = "Order details", AutoSize = true };
             _orderDetailButton.Click += (s, e) => ShowOrderDetail();
             _approvalsButton = new Button { Text = "Goedkeuringen...", AutoSize = true };
@@ -89,7 +96,7 @@ namespace Procurement.UI.Forms
 
             toolPanel.Controls.AddRange(new Control[]
             {
-                _newRequestButton, _startSourcingButton, _sourceAllButton, _orderDetailButton,
+                _newRequestButton, _startSourcingButton, _sourceAllButton, _placeOrdersButton, _orderDetailButton,
                 _approvalsButton, _supplierMappingButton, _settingsButton, _auditLogButton
             });
 
@@ -537,7 +544,7 @@ namespace Procurement.UI.Forms
             _sourceAllButton.Enabled = false;
             UseWaitCursor = true;
 
-            var ordered = 0;
+            var readyToOrder = 0;
             var waitingApproval = 0;
             var exceptionCount = 0;
             var failed = 0;
@@ -565,7 +572,7 @@ namespace Procurement.UI.Forms
                     await _composition.Engine.SourcePurchaseRequestAsync(requestIds[i]);
                     var updated = await _composition.PurchaseRequestRepository.GetByIdAsync(requestIds[i]);
                     if (updated == null) continue;
-                    if (updated.Status == PurchaseRequestStatus.Ordered) ordered++;
+                    if (updated.Status == PurchaseRequestStatus.ReadyToOrder) readyToOrder++;
                     else if (updated.Status == PurchaseRequestStatus.WaitingApproval) waitingApproval++;
                     else if (updated.Status == PurchaseRequestStatus.Exception) exceptionCount++;
                 }
@@ -579,10 +586,50 @@ namespace Procurement.UI.Forms
             _startSourcingButton.Enabled = true;
             _sourceAllButton.Enabled = true;
 
-            var summary = $"Sourcing klaar: {ordered} besteld, {waitingApproval} wacht op goedkeuring, {exceptionCount} met fout";
+            var summary = $"Sourcing klaar: {readyToOrder} klaar om te bestellen, {waitingApproval} wacht op goedkeuring, {exceptionCount} met fout";
             if (failed > 0) summary += $", {failed} mislukt";
             if (skipped > 0) summary += $", {skipped} overgeslagen (al in afwachting van goedkeuring)";
             SetStatus(summary + ".");
+
+            await LoadLocalRequestsAsync();
+        }
+
+        /// <summary>
+        /// Plaatst orders voor de geselecteerde aanvragen — enkel regels die al een SupplierSelection
+        /// hebben (status ReadyToOrder) en nog niet op een PO staan worden meegenomen. Regels worden
+        /// per leverancier gebundeld tot één PO per leverancier (nooit per project/klant — zie
+        /// ProcurementEngine.PlaceOrdersAsync), op dezelfde manier opgezet als "Sourcing starten
+        /// (selectie)" hierboven.
+        /// </summary>
+        private async System.Threading.Tasks.Task PlaceOrdersAsync(IReadOnlyList<int> requestIds)
+        {
+            if (requestIds.Count == 0)
+            {
+                MessageBox.Show(this, "Selecteer eerst een of meer aanvragen.", "Geen selectie", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var confirm = MessageBox.Show(this,
+                $"Order(s) plaatsen voor {requestIds.Count} aanvraag/aanvragen? Regels worden per leverancier gebundeld tot één PO per leverancier.",
+                "Bevestigen", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            if (confirm != DialogResult.Yes) return;
+
+            _placeOrdersButton.Enabled = false;
+            UseWaitCursor = true;
+            try
+            {
+                await _composition.Engine.PlaceOrdersAsync(requestIds, _composition.Session.UserName);
+                SetStatus("Order(s) geplaatst.");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message, "Fout bij plaatsen van order", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                UseWaitCursor = false;
+                _placeOrdersButton.Enabled = true;
+            }
 
             await LoadLocalRequestsAsync();
         }
@@ -611,7 +658,7 @@ namespace Procurement.UI.Forms
                 return;
             }
 
-            using (var form = new OrderDetailForm(_composition.PurchaseOrderRepository, _composition.SupplierOrderRepository, requestId.Value))
+            using (var form = new OrderDetailForm(_composition.PurchaseRequestRepository, _composition.PurchaseOrderRepository, requestId.Value))
             {
                 form.ShowDialog(this);
             }

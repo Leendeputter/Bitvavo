@@ -132,10 +132,10 @@ aangevuld met de workflow-specifieke velden Manufacturer/Packaging/ReelRequireme
 MAX-query komen (maar niet de Workflow-kolom, want per regel is dat altijd de status van de hele
 aanvraag).
 
-**Bekend gat**: eenmaal automatisch bestelde aanvragen (`PurchaseRequest.Status == Ordered`) vallen uit
-`GetOpenAsync()` en dus uit dit grid — en daarmee ook uit bereik van de "Order details"-knop, die enkel
-werkt voor de op dat moment in dit grid geselecteerde aanvraag. Er is momenteel geen scherm dat *alle*
-aanvragen (ook afgeronde) laat opzoeken.
+**Bekend gat**: eenmaal daadwerkelijk bestelde aanvragen (`PurchaseRequest.Status == Ordered`) vallen
+uit `GetOpenAsync()` en dus uit dit grid — en daarmee ook uit bereik van de "Order details"-knop, die
+enkel werkt voor de op dat moment in dit grid geselecteerde aanvraag. Er is momenteel geen scherm dat
+*alle* aanvragen (ook afgeronde) laat opzoeken.
 
 **Hoe dit samenwerkt met de rest van de engine**: `ProcurementEngine`, de approval-flow en het
 plaatsen van orders werken volledig in termen van dit prototype's eigen `PurchaseRequest`-tabel
@@ -211,28 +211,33 @@ Visual Studio-onderdeel en geen op te lossen instelling; het is een structurele 
 tooling in combinatie met moderne SDK-stijl `.csproj`-bestanden. Er is dus geen migratiegeschiedenis
 of scaffolding meer — schema's worden nu als volgt beheerd:
 
-1. Bij het opstarten controleert `Program.cs` alleen of `Procurement_PurchaseRequest` (een vaste,
-   herkenbare tabel) al bestaat. Bestaat die niet, dan wordt er **niets** automatisch aangemaakt —
-   in plaats daarvan genereert de app zelf een compleet SQL-script (via EF6's eigen
-   `ObjectContext.CreateDatabaseScript()`, dus gegarandeerd overeenkomend met het huidige model,
-   zonder dat daar migratie-tooling voor nodig is) en zet dat op je bureaublad
-   (`procurement-schema-<tijdstip>.sql`), met een duidelijke melding. Bekijk dat script, voer het uit
-   in **SQL Server Management Studio**, en start de app daarna opnieuw.
-2. Voor **toekomstige** modelwijzigingen (nieuw veld, nieuwe tabel, enz.) geldt hetzelfde principe,
-   maar dan handmatig: ik lever een los, leesbaar `.sql`-bestand met exact de benodigde
-   `ALTER TABLE`/`CREATE TABLE`-statements (geen scaffolding-tool nodig, ik weet precies wat er
-   gewijzigd is), jij bekijkt het en voert het zelf uit in SSMS voordat de bijbehorende code-wijziging
-   iets kan doen. Dit vervangt de eerder voorgestelde `Add-Migration`-stap volledig.
-3. Bestaat `Procurement_PurchaseRequest` al, dan slaat de app de scriptgeneratie over en gaat direct
-   verder met het seeden van de policy-tabellen (zie hieronder) en opstarten.
+1. Bij het opstarten controleert `Program.cs` of de kolom `Procurement_PurchaseOrder.SupplierCode`
+   al bestaat — niet alleen of de tabel bestaat, want een tabel kan ook bestaan in een *oudere* vorm
+   die niet meer bij het huidige model past (zie de aug-2026-wijziging hieronder). Bestaat die kolom
+   niet, dan wordt er **niets** automatisch aangepast — in plaats daarvan genereert de app zelf een
+   compleet SQL-script (via EF6's eigen `ObjectContext.CreateDatabaseScript()`, dus gegarandeerd
+   overeenkomend met het huidige model, zonder dat daar migratie-tooling voor nodig is) en zet dat op
+   je bureaublad (`procurement-schema-<tijdstip>.sql`), met een duidelijke melding. Bekijk dat script,
+   voer het uit in **SQL Server Management Studio**, en start de app daarna opnieuw.
+2. Voor **toekomstige** modelwijzigingen geldt hetzelfde principe: `Program.cs`'s check wordt
+   uitgebreid met een kenmerk van de nieuwe vorm (een kolom/tabel die pas in het nieuwe model bestaat),
+   zodat een verouderd schema hetzelfde script-en-SSMS-pad doorloopt als een compleet lege database.
+   Dit vervangt de eerder voorgestelde `Add-Migration`-stap volledig.
+3. Is de check positief, dan slaat de app de scriptgeneratie over en gaat direct verder met het
+   seeden van de policy-tabellen (zie hieronder) en opstarten.
 
 **Schone lei voor zowel `Unitron` als `Unitron_test`** (in plaats van de oude data behouden): het
-gegenereerde script begint met het opruimen van de 18 tabellen die deze app vóór het
-`Procurement_`-prefix gebruikte (`Supplier`, `PurchaseRequest`, enz.) — inclusief het eerst verwijderen
+gegenereerde script begint met het opruimen van **alle** `Procurement_`-tabellen — ook de tabellen
+waarvan de vorm niet gewijzigd is, want `CreateDatabaseScript()` genereert altijd een volledig
+`CREATE TABLE` per tabel in het model (het is geen ALTER/diff-tool), dus elke tabel moet eerst weg om
+zonder "already exists"-fouten opnieuw aangemaakt te kunnen worden — inclusief het eerst verwijderen
 van alle foreign keys die daarnaar verwijzen, dynamisch opgezocht via `sys.foreign_keys` in plaats van
 een handmatig uitgezochte volgorde. Elke stap is voorzien van een `IF OBJECT_ID(...) IS NOT NULL`-
-guard, dus hetzelfde script is veilig te draaien tegen `Unitron_test` ook als die database de oude
-tabellen niet (allemaal) heeft.
+guard, dus hetzelfde script is veilig te draaien tegen `Unitron_test` ook als die database de tabellen
+niet (allemaal) heeft. Dit "schone lei"-principe (afgesproken bij de eerdere `Procurement_`-prefix-
+rename) wordt nu hergebruikt voor latere schemawijzigingen zolang dit nog een vroege prototype-fase is
+zonder productiedata van waarde — elke keer dat het opnieuw gebeurt, staat dat expliciet in de
+opstartmelding, nooit stilzwijgend.
 
 Bij een eerste start op een lege database worden na het aanmaken van het schema ook de
 policy-tabellen geseed: `Procurement_Supplier`/`Procurement_SupplierCapability` (DigiKey + Farnell,
@@ -247,16 +252,30 @@ Zet `Procurement.UI` als startproject en start (F5). Eerst verschijnt het inlogs
 [Inloggen en company-selectie](#inloggen-en-company-selectie)); na een geslaagde login verschijnt
 het hoofdscherm (`MainForm`, Purchase Requests-overzicht) met de gekozen administratie in de
 titelbalk. Via "Nieuwe testaanvraag toevoegen" kan een testmatige aanvraag worden ingevoerd,
-waarna "Sourcing starten" de volledige workflow doorloopt.
+waarna "Sourcing starten" een aanvraag zo ver mogelijk brengt — maar bestelt hem nog niet, zie
+hieronder.
 
-**Sourcing van meerdere aanvragen tegelijk**: elke rij in het grid komt van precies 1 MAX-order
-(dus altijd 1 regel) — één voor één sourcen is bij veel open orders onwerkbaar. Het requests-grid
-is daarom multi-select (Ctrl/Shift-klik); **"Sourcing starten (selectie)"** verwerkt alle
+**Sourcing en order plaatsen zijn losgekoppeld** (spec-correctie, aug 2026): sourcing brengt een
+aanvraag maximaal tot `ReadyToOrder` (elke regel heeft een `SupplierSelection`, automatisch bij een
+goede match of na handmatige goedkeuring) — er wordt daarbij nog **niets** besteld. Pas een aparte,
+expliciete stap, **"Order plaatsen (selectie)"**, plaatst de daadwerkelijke order. Reden: automatisch
+meteen bestellen bij elke goede match liet geen ruimte om eerst een reeks aanvragen te verzamelen en
+gestructureerd per project/klant te ontvangen. Regels worden daarbij **per leverancier** gebundeld tot
+één PO (nooit per project/klant — zo koopt dit bedrijf niet in): één `PurchaseOrder` heeft dus altijd
+precies één leverancier, maar kan lijnen bevatten van meerdere verschillende aanvragen als die
+dezelfde leverancier delen (`ProcurementEngine.PlaceOrdersAsync`).
+
+**Sourcing/order plaatsen van meerdere aanvragen tegelijk**: elke rij in het grid komt van precies 1
+MAX-order (dus altijd 1 regel) — één voor één verwerken is bij veel open orders onwerkbaar. Het
+requests-grid is daarom multi-select (Ctrl/Shift-klik); **"Sourcing starten (selectie)"** verwerkt alle
 geselecteerde aanvragen na elkaar (nooit parallel, want de app deelt toch al één `ProcurementDbContext`
-die alles serialiseert), **"Alles sourcen"** verwerkt de hele grid zonder eerst te hoeven selecteren.
-Beide tonen na afloop een samenvatting (aantal besteld/wacht op goedkeuring/fout) i.p.v. een los
-berichtvenster per aanvraag, en slaan aanvragen over die al `WaitingApproval` zijn — opnieuw sourcen
-zou anders een tweede, dubbele `ApprovalRequest` aanmaken voor regels die nog niet besloten zijn.
+die alles serialiseert), **"Alles sourcen"** verwerkt de hele grid zonder eerst te hoeven selecteren,
+en **"Order plaatsen (selectie)"** plaatst orders voor de geselecteerde aanvragen (regels zonder
+`SupplierSelection`, of die al op een PO staan, worden overgeslagen — zie hierboven). Sourcing-acties
+tonen na afloop een samenvatting (aantal klaar om te bestellen/wacht op goedkeuring/fout) i.p.v. een
+los berichtvenster per aanvraag, en slaan aanvragen over die al `WaitingApproval` zijn — opnieuw
+sourcen zou anders een tweede, dubbele `ApprovalRequest` aanmaken voor regels die nog niet besloten
+zijn.
 
 ### Tests
 
@@ -282,9 +301,14 @@ Supplier C re-reel 4.000 @ €0,105) letterlijk reproduceert, inclusief de twee 
   `TODO`, zodat alleen die klasse hoeft te worden ingevuld zodra er echte credentials zijn.
 - **Business-regels als data**: `SupplierPreference`, `PackagingPolicy` en `ApprovalPolicy` zijn
   SQL Server-tabellen, beheerd via het Instellingen-scherm (§8.6) — niet hard-coded.
-- **Idempotency** (spec §10): elke supplier-order krijgt een `PROC-{jaar}-{volgnummer}-{SUPPLIERCODE}`
-  sleutel; `ProcurementEngine` checkt eerst of er al een `SupplierOrder` bestaat voor de combinatie
-  ErpPoNumber+SupplierCode voordat een nieuwe wordt geplaatst.
+- **`PurchaseOrder` = `SupplierOrder`** (spec-correctie, aug 2026): wat eerst twee entiteiten waren
+  (een ERP-PO en een los, aan die PO gekoppeld supplier-order) bleek in de praktijk hetzelfde ding —
+  in MAX heet dat allebei gewoon "PurchaseOrder", en dit bedrijf koopt altijd per leverancier in, nooit
+  per project/klant. Eén PO heeft daarom precies één leverancier, met meerdere `PurchaseOrderLine`s die
+  op hun beurt meerdere `PurchaseOrderDelivery`'s (deelleveringen) kunnen hebben.
+- **Idempotency** (spec §10): elke PO krijgt bij aanmaak meteen een
+  `PROC-{jaar}-{volgnummer}-{SUPPLIERCODE}`-sleutel, ook als de leverancier-adapter geen Ordering
+  ondersteunt (dan blijft de PO een handmatig proces, maar heeft 'm alsnog).
 - **Audit log**: elke stap van de workflow schrijft een `ProcurementEvent`; `DbAuditLogger` maskeert
   bekende secret-sleutelnamen (`apiKey`, `secret`, `password`, `token`, ...) voordat een payload
   wordt weggeschreven.

@@ -129,7 +129,7 @@ namespace Procurement.Suppliers.Farnell
             {
                 Success = true,
                 SupplierOrderNumber = $"FN{DateTime.UtcNow:yyyyMMddHHmmss}{new Random(idempotencyKey.GetHashCode()).Next(100, 999)}",
-                Status = SupplierOrderStatusEnum.Acknowledged,
+                Status = PurchaseOrderStatus.Acknowledged,
                 OrderTotal = orderTotal,
                 Currency = request.Currency ?? "EUR",
                 SubmittedAt = DateTime.UtcNow
@@ -153,7 +153,7 @@ namespace Procurement.Suppliers.Farnell
             return Task.FromResult(new Core.Models.SupplierOrderStatus
             {
                 SupplierOrderNumber = supplierOrderNumber,
-                Status = SupplierOrderStatusEnum.Confirmed,
+                Status = PurchaseOrderStatus.Confirmed,
                 ConfirmedAt = DateTime.UtcNow
             });
         }

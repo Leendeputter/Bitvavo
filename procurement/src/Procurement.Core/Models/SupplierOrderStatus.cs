@@ -4,11 +4,11 @@ using Procurement.Core.Enums;
 
 namespace Procurement.Core.Models
 {
-    /// <summary>DTO returned by ISupplierAdapter.GetOrderStatusAsync — distinct from the persisted SupplierOrderStatusEnum.</summary>
+    /// <summary>DTO returned by ISupplierAdapter.GetOrderStatusAsync.</summary>
     public class SupplierOrderStatus
     {
         public string SupplierOrderNumber { get; set; }
-        public SupplierOrderStatusEnum Status { get; set; }
+        public PurchaseOrderStatus Status { get; set; }
         public DateTime? ConfirmedAt { get; set; }
         public List<SupplierOrderStatusLine> Lines { get; set; } = new List<SupplierOrderStatusLine>();
     }

@@ -25,7 +25,6 @@ namespace Procurement.UI.Composition
         public PurchaseRequestRepository PurchaseRequestRepository { get; }
         public SupplierProductMappingRepository SupplierProductMappingRepository { get; }
         public PurchaseOrderRepository PurchaseOrderRepository { get; }
-        public SupplierOrderRepository SupplierOrderRepository { get; }
         public PolicyRepository PolicyRepository { get; }
         public SupplierRepository SupplierRepository { get; }
         public ProcurementEventRepository ProcurementEventRepository { get; }
@@ -45,7 +44,6 @@ namespace Procurement.UI.Composition
             var selectionRepository = new SupplierSelectionRepository(DbContext);
             var approvalRepository = new ApprovalRequestRepository(DbContext);
             PurchaseOrderRepository = new PurchaseOrderRepository(DbContext);
-            SupplierOrderRepository = new SupplierOrderRepository(DbContext);
             PolicyRepository = new PolicyRepository(DbContext);
             SupplierRepository = new SupplierRepository(DbContext);
             ProcurementEventRepository = new ProcurementEventRepository(DbContext);
@@ -74,7 +72,6 @@ namespace Procurement.UI.Composition
                 selectionRepository,
                 approvalRepository,
                 PurchaseOrderRepository,
-                SupplierOrderRepository,
                 PolicyRepository);
         }
     }

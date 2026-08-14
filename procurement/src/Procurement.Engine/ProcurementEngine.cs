@@ -14,7 +14,8 @@ namespace Procurement.Engine
 {
     public enum LineOutcome
     {
-        Ordered,
+        /// <summary>Line has a SupplierSelection — sourced and either auto-approved or already handled. Placing the actual order is a separate, later step (ProcurementEngine.PlaceOrdersAsync) — spec correction, aug 2026.</summary>
+        Selected,
         PendingApproval,
         Exception
     }
@@ -35,7 +36,6 @@ namespace Procurement.Engine
         private readonly SupplierSelectionRepository _selectionRepository;
         private readonly ApprovalRequestRepository _approvalRepository;
         private readonly PurchaseOrderRepository _purchaseOrderRepository;
-        private readonly SupplierOrderRepository _supplierOrderRepository;
         private readonly PolicyRepository _policyRepository;
 
         public ProcurementEngine(
@@ -48,7 +48,6 @@ namespace Procurement.Engine
             SupplierSelectionRepository selectionRepository,
             ApprovalRequestRepository approvalRepository,
             PurchaseOrderRepository purchaseOrderRepository,
-            SupplierOrderRepository supplierOrderRepository,
             PolicyRepository policyRepository)
         {
             _erp = erp ?? throw new ArgumentNullException(nameof(erp));
@@ -60,7 +59,6 @@ namespace Procurement.Engine
             _selectionRepository = selectionRepository ?? throw new ArgumentNullException(nameof(selectionRepository));
             _approvalRepository = approvalRepository ?? throw new ArgumentNullException(nameof(approvalRepository));
             _purchaseOrderRepository = purchaseOrderRepository ?? throw new ArgumentNullException(nameof(purchaseOrderRepository));
-            _supplierOrderRepository = supplierOrderRepository ?? throw new ArgumentNullException(nameof(supplierOrderRepository));
             _policyRepository = policyRepository ?? throw new ArgumentNullException(nameof(policyRepository));
         }
 
@@ -100,10 +98,13 @@ namespace Procurement.Engine
                 if (outcome == LineOutcome.Exception) anyException = true;
             }
 
+            // Sourcing only gets a line as far as a SupplierSelection (spec correction, aug 2026:
+            // ordering is a separate, explicit step — see PlaceOrdersAsync) — so the "everything
+            // went fine" outcome here is ReadyToOrder, not Ordered.
             var finalStatus =
                 anyPendingApproval ? PurchaseRequestStatus.WaitingApproval :
                 anyException ? PurchaseRequestStatus.Exception :
-                PurchaseRequestStatus.Ordered;
+                PurchaseRequestStatus.ReadyToOrder;
 
             await _purchaseRequestRepository.UpdateStatusAsync(request.Id, finalStatus);
             await _auditLogger.LogAsync("PurchaseRequest", request.Id.ToString(), "SOURCING_COMPLETED", finalStatus.ToString());
@@ -132,7 +133,7 @@ namespace Procurement.Engine
             await _auditLogger.LogAsync("PurchaseRequestLine", purchaseRequestLineId.ToString(), "SUPPLIER_SELECTED_MANUAL", "Success",
                 offer.SupplierCode, responsePayload: selection.ReasonSummary, userOrSystem: user);
 
-            await PlaceOrderForSelectionAsync(line, offer);
+            await RecomputeRequestStatusIfFullySelectedAsync(line.PurchaseRequestId);
         }
 
         /// <summary>Spec §8.3: decide a line that failed the auto-approve criteria.</summary>
@@ -166,7 +167,7 @@ namespace Procurement.Engine
             };
             await _selectionRepository.AddAsync(selection);
 
-            await PlaceOrderForSelectionAsync(line, offer);
+            await RecomputeRequestStatusIfFullySelectedAsync(line.PurchaseRequestId);
         }
 
         private static void ValidateRequest(PurchaseRequest request)
@@ -221,7 +222,7 @@ namespace Procurement.Engine
             {
                 await _auditLogger.LogAsync("PurchaseRequestLine", line.Id.ToString(), "SOURCING_SKIPPED_ALREADY_SELECTED", "Success",
                     responsePayload: $"SupplierSelectionId={existingSelection.Id}");
-                return LineOutcome.Ordered;
+                return LineOutcome.Selected;
             }
 
             var packagingPolicy = await _policyRepository.GetPackagingPolicyAsync("Default");
@@ -291,8 +292,7 @@ namespace Procurement.Engine
                 await _auditLogger.LogAsync("PurchaseRequestLine", line.Id.ToString(), "SUPPLIER_SELECTED", "Success",
                     selectionResult.SelectedOffer.SupplierCode, responsePayload: selectionResult.ReasonSummary);
 
-                await PlaceOrderForSelectionAsync(line, selectionResult.SelectedOffer);
-                return LineOutcome.Ordered;
+                return LineOutcome.Selected;
             }
 
             var approval = new ApprovalRequest
@@ -447,62 +447,7 @@ namespace Procurement.Engine
             return preferred ?? options[0];
         }
 
-        /// <summary>Spec §6 steps 9-11: ERP PO always created first, then the supplier order (idempotent), then status is reflected back to the ERP.</summary>
-        private async Task PlaceOrderForSelectionAsync(PurchaseRequestLine line, SupplierOffer offer)
-        {
-            var lineTotal = offer.OfferedQuantity * offer.UnitPrice;
-            var draft = new PurchaseOrderDraft
-            {
-                PurchaseRequestId = line.PurchaseRequestId,
-                SupplierCode = offer.SupplierCode,
-                Lines = new List<PurchaseOrderDraftLine>
-                {
-                    new PurchaseOrderDraftLine
-                    {
-                        PurchaseRequestLineId = line.Id,
-                        SupplierPartNumber = offer.SupplierPartNumber,
-                        Quantity = offer.OfferedQuantity,
-                        UnitPrice = offer.UnitPrice,
-                        LineTotal = lineTotal
-                    }
-                }
-            };
-
-            string erpPoNumber;
-            try
-            {
-                erpPoNumber = await _erp.CreatePurchaseOrderAsync(draft);
-                await _auditLogger.LogAsync("PurchaseOrder", erpPoNumber, "ERP_PO_CREATED", "Success", offer.SupplierCode,
-                    requestPayload: $"PurchaseRequestLineId={line.Id}; Qty={offer.OfferedQuantity}");
-            }
-            catch (Exception ex)
-            {
-                await _auditLogger.LogAsync("PurchaseRequestLine", line.Id.ToString(), "ERP_PO_CREATE_FAILED", "Error",
-                    offer.SupplierCode, error: ex.Message);
-                throw;
-            }
-
-            var purchaseOrder = await _purchaseOrderRepository.GetByErpPoNumberAsync(erpPoNumber);
-
-            var adapter = _adapters.FirstOrDefault(a => a.SupplierCode == offer.SupplierCode);
-            if (adapter == null || adapter.Capabilities.Ordering != CapabilityStatus.Supported)
-            {
-                await _auditLogger.LogAsync("PurchaseOrder", erpPoNumber, "SUPPLIER_ORDER_SKIPPED", "ManualProcess", offer.SupplierCode,
-                    error: "Ordering capability niet ondersteund door deze adapter; order moet handmatig geplaatst worden.");
-            }
-            else
-            {
-                await PlaceSupplierOrderAsync(purchaseOrder, offer, adapter);
-            }
-
-            // The line now has a placed (or manually-handed-off) order; once every line of the
-            // parent request reaches that point, the request itself should stop showing up as
-            // "open" — otherwise it stays selectable in the UI and a repeat "Sourcing starten"
-            // click re-runs the whole pipeline and places a second order for the same line.
-            await RecomputeRequestStatusIfFullyOrderedAsync(line.PurchaseRequestId);
-        }
-
-        private async Task RecomputeRequestStatusIfFullyOrderedAsync(int purchaseRequestId)
+        private async Task RecomputeRequestStatusIfFullySelectedAsync(int purchaseRequestId)
         {
             var request = await _purchaseRequestRepository.GetByIdAsync(purchaseRequestId);
             if (request == null || request.Lines.Count == 0) return;
@@ -513,44 +458,117 @@ namespace Procurement.Engine
                 if (selection == null) return;
             }
 
-            await _purchaseRequestRepository.UpdateStatusAsync(purchaseRequestId, PurchaseRequestStatus.Ordered);
-            await _auditLogger.LogAsync("PurchaseRequest", purchaseRequestId.ToString(), "ALL_LINES_ORDERED", "Success");
+            await _purchaseRequestRepository.UpdateStatusAsync(purchaseRequestId, PurchaseRequestStatus.ReadyToOrder);
+            await _auditLogger.LogAsync("PurchaseRequest", purchaseRequestId.ToString(), "ALL_LINES_SELECTED", "Success");
         }
 
-        private async Task PlaceSupplierOrderAsync(PurchaseOrder purchaseOrder, SupplierOffer offer, ISupplierAdapter adapter)
+        /// <summary>
+        /// Spec correction, aug 2026: placing orders is decoupled from sourcing/approval, and no
+        /// longer one PO per line — it's grouped by supplier (never by project/customer, that's not
+        /// how this business buys), one PO per supplier, exactly matching MAX's own PurchaseOrder
+        /// concept (see PurchaseOrder.cs). Gathers every line of the given requests that has a
+        /// SupplierSelection but isn't on a PO yet, groups those by SupplierCode, and places one
+        /// (possibly multi-line, possibly multi-request) PO per group.
+        /// </summary>
+        public async Task PlaceOrdersAsync(IReadOnlyList<int> purchaseRequestIds, string user)
         {
-            // Spec §10: never blindly resubmit — if an order already exists for this PO+supplier
-            // (e.g. a retry after a timeout), just refresh its status instead of creating a new one.
-            var existing = await _supplierOrderRepository.FindByErpPoAndSupplierAsync(purchaseOrder.ErpPoNumber, offer.SupplierCode);
-            if (existing != null)
+            var candidates = new List<(PurchaseRequestLine Line, SupplierOffer Offer)>();
+
+            foreach (var requestId in purchaseRequestIds)
             {
-                await RefreshOrderStatusAsync(existing, adapter);
+                var request = await _purchaseRequestRepository.GetByIdAsync(requestId);
+                if (request == null) continue;
+
+                foreach (var line in request.Lines)
+                {
+                    var selection = await _selectionRepository.GetByLineIdAsync(line.Id);
+                    if (selection == null) continue;
+                    if (await _purchaseOrderRepository.HasOrderForLineAsync(line.Id)) continue;
+
+                    var offer = await _offerRepository.GetByIdAsync(selection.SelectedOfferId);
+                    if (offer == null) continue;
+
+                    candidates.Add((line, offer));
+                }
+            }
+
+            if (candidates.Count == 0)
+            {
+                await _auditLogger.LogAsync("PurchaseOrder", "-", "PLACE_ORDERS_NOTHING_TO_DO", "Success", userOrSystem: user);
                 return;
             }
 
+            foreach (var group in candidates.GroupBy(c => c.Offer.SupplierCode))
+            {
+                await PlaceSupplierPurchaseOrderAsync(group.Key, group.ToList(), user);
+            }
+
+            foreach (var requestId in candidates.Select(c => c.Line.PurchaseRequestId).Distinct())
+            {
+                await RecomputeRequestStatusAfterOrderPlacementAsync(requestId);
+            }
+        }
+
+        /// <summary>Spec §6 steps 9-11, now per supplier group instead of per line: ERP PO first (always, for every group), then the supplier-side submission (skipped as a manual process if the adapter doesn't support Ordering), then status reflected back to the ERP.</summary>
+        private async Task PlaceSupplierPurchaseOrderAsync(string supplierCode, List<(PurchaseRequestLine Line, SupplierOffer Offer)> items, string user)
+        {
             var year = DateTime.UtcNow.Year;
-            var sequence = await _supplierOrderRepository.GetNextSequenceForYearAsync(year);
-            var idempotencyKey = IdempotencyKeyGenerator.Generate(year, sequence, offer.SupplierCode);
+            var sequence = await _purchaseOrderRepository.GetNextSequenceForYearAsync(year);
+            var idempotencyKey = IdempotencyKeyGenerator.Generate(year, sequence, supplierCode);
+
+            var draft = new PurchaseOrderDraft
+            {
+                SupplierCode = supplierCode,
+                Currency = items[0].Offer.Currency,
+                IdempotencyKey = idempotencyKey,
+                Lines = items.Select(i => new PurchaseOrderDraftLine
+                {
+                    PurchaseRequestLineId = i.Line.Id,
+                    SupplierPartNumber = i.Offer.SupplierPartNumber,
+                    Quantity = i.Offer.OfferedQuantity,
+                    UnitPrice = i.Offer.UnitPrice,
+                    LineTotal = i.Offer.OfferedQuantity * i.Offer.UnitPrice
+                }).ToList()
+            };
+
+            string erpPoNumber;
+            try
+            {
+                erpPoNumber = await _erp.CreatePurchaseOrderAsync(draft);
+                await _auditLogger.LogAsync("PurchaseOrder", erpPoNumber, "ERP_PO_CREATED", "Success", supplierCode,
+                    requestPayload: $"Lines={items.Count}", userOrSystem: user);
+            }
+            catch (Exception ex)
+            {
+                await _auditLogger.LogAsync("PurchaseOrder", "-", "ERP_PO_CREATE_FAILED", "Error", supplierCode,
+                    error: ex.Message, userOrSystem: user);
+                throw;
+            }
+
+            var adapter = _adapters.FirstOrDefault(a => a.SupplierCode == supplierCode);
+            if (adapter == null || adapter.Capabilities.Ordering != CapabilityStatus.Supported)
+            {
+                await _auditLogger.LogAsync("PurchaseOrder", erpPoNumber, "SUPPLIER_ORDER_SKIPPED", "ManualProcess", supplierCode,
+                    error: "Ordering capability niet ondersteund door deze adapter; order moet handmatig geplaatst worden.");
+                return;
+            }
 
             var request = new SupplierOrderRequest
             {
-                SupplierCode = offer.SupplierCode,
-                ErpPoNumber = purchaseOrder.ErpPoNumber,
-                Currency = offer.Currency,
-                Lines = new List<SupplierOrderRequestLine>
+                SupplierCode = supplierCode,
+                ErpPoNumber = erpPoNumber,
+                Currency = draft.Currency,
+                Lines = items.Select(i => new SupplierOrderRequestLine
                 {
-                    new SupplierOrderRequestLine
-                    {
-                        SupplierPartNumber = offer.SupplierPartNumber,
-                        Quantity = offer.OfferedQuantity,
-                        UnitPrice = offer.UnitPrice,
-                        PackagingType = offer.PackagingType
-                    }
-                }
+                    SupplierPartNumber = i.Offer.SupplierPartNumber,
+                    Quantity = i.Offer.OfferedQuantity,
+                    UnitPrice = i.Offer.UnitPrice,
+                    PackagingType = i.Offer.PackagingType
+                }).ToList()
             };
 
-            await _auditLogger.LogAsync("SupplierOrder", purchaseOrder.ErpPoNumber, "SUPPLIER_ORDER_SUBMITTING", "InProgress", offer.SupplierCode,
-                requestPayload: DescribeOrderRequest(request), userOrSystem: "system");
+            await _auditLogger.LogAsync("PurchaseOrder", erpPoNumber, "SUPPLIER_ORDER_SUBMITTING", "InProgress", supplierCode,
+                requestPayload: DescribeOrderRequest(request), userOrSystem: user);
 
             SupplierOrderResult result;
             try
@@ -559,50 +577,32 @@ namespace Procurement.Engine
             }
             catch (SupplierException ex)
             {
-                await _auditLogger.LogAsync("SupplierOrder", purchaseOrder.ErpPoNumber, "SUPPLIER_ORDER_FAILED", "Error",
-                    offer.SupplierCode, error: $"{ex.ErrorCode}: {ex.Message}");
+                await _auditLogger.LogAsync("PurchaseOrder", erpPoNumber, "SUPPLIER_ORDER_FAILED", "Error",
+                    supplierCode, error: $"{ex.ErrorCode}: {ex.Message}");
                 throw;
             }
 
-            var order = new SupplierOrder
-            {
-                ErpPoId = purchaseOrder.Id,
-                ErpPoNumber = purchaseOrder.ErpPoNumber,
-                SupplierCode = offer.SupplierCode,
-                SupplierOrderNumber = result.SupplierOrderNumber,
-                IdempotencyKey = idempotencyKey,
-                OrderVersion = 1,
-                OrderDate = DateTime.UtcNow,
-                Currency = result.Currency,
-                OrderTotal = result.OrderTotal,
-                Status = result.Status,
-                SubmittedAt = result.SubmittedAt,
-                Lines = new List<SupplierOrderLine>
-                {
-                    new SupplierOrderLine
-                    {
-                        SupplierPartNumber = offer.SupplierPartNumber,
-                        Quantity = offer.OfferedQuantity,
-                        UnitPrice = offer.UnitPrice
-                    }
-                }
-            };
+            var purchaseOrder = await _purchaseOrderRepository.GetByErpPoNumberAsync(erpPoNumber);
+            await _purchaseOrderRepository.ApplySupplierOrderResultAsync(purchaseOrder.Id, result);
+            await _auditLogger.LogAsync("PurchaseOrder", result.SupplierOrderNumber ?? erpPoNumber, "SUPPLIER_ORDER_CREATED",
+                "Success", supplierCode, responsePayload: $"Status={result.Status}; OrderTotal={result.OrderTotal} {result.Currency}");
 
-            await _supplierOrderRepository.AddAsync(order);
-            await _auditLogger.LogAsync("SupplierOrder", order.SupplierOrderNumber ?? purchaseOrder.ErpPoNumber, "SUPPLIER_ORDER_CREATED",
-                "Success", offer.SupplierCode, responsePayload: $"Status={result.Status}; OrderTotal={result.OrderTotal} {result.Currency}");
-
-            await _erp.UpdatePurchaseOrderStatusAsync(purchaseOrder.ErpPoNumber, PurchaseOrderStatus.FullyOrdered.ToString());
+            await _erp.UpdatePurchaseOrderStatusAsync(erpPoNumber, result.Status.ToString());
         }
 
-        private async Task RefreshOrderStatusAsync(SupplierOrder existing, ISupplierAdapter adapter)
+        /// <summary>A request only moves to Ordered once every one of its lines is covered by a PO — a request whose ReadyToOrder lines only partially made it into this batch (the caller chose a subset) stays as-is instead of being marked done early.</summary>
+        private async Task RecomputeRequestStatusAfterOrderPlacementAsync(int purchaseRequestId)
         {
-            if (adapter.Capabilities.OrderStatus != CapabilityStatus.Supported) return;
+            var request = await _purchaseRequestRepository.GetByIdAsync(purchaseRequestId);
+            if (request == null || request.Lines.Count == 0) return;
 
-            var status = await adapter.GetOrderStatusAsync(existing.SupplierOrderNumber);
-            await _supplierOrderRepository.UpdateStatusAsync(existing.Id, status.Status, status.ConfirmedAt);
-            await _auditLogger.LogAsync("SupplierOrder", existing.SupplierOrderNumber, "SUPPLIER_ORDER_STATUS_REFRESHED", "Success",
-                existing.SupplierCode, responsePayload: $"Status={status.Status}");
+            foreach (var requestLine in request.Lines)
+            {
+                if (!await _purchaseOrderRepository.HasOrderForLineAsync(requestLine.Id)) return;
+            }
+
+            await _purchaseRequestRepository.UpdateStatusAsync(purchaseRequestId, PurchaseRequestStatus.Ordered);
+            await _auditLogger.LogAsync("PurchaseRequest", purchaseRequestId.ToString(), "ALL_LINES_ORDERED", "Success");
         }
 
         private static string DescribeOrderRequest(SupplierOrderRequest request)

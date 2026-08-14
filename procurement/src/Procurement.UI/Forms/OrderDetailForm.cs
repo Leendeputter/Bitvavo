@@ -1,25 +1,34 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Forms;
+using Procurement.Core.Entities;
 using Procurement.Data.Repositories;
 
 namespace Procurement.UI.Forms
 {
-    /// <summary>Order-detailscherm (spec §8.4).</summary>
+    /// <summary>
+    /// Order-detailscherm (spec §8.4). A PurchaseOrder now has exactly one supplier but can bundle
+    /// lines from several PurchaseRequests (spec correction, aug 2026: grouped by supplier via
+    /// "Order plaatsen", never per request) — so this screen doesn't own a 1-op-1
+    /// PurchaseRequest-&gt;PurchaseOrder relation anymore. It shows every PO that contains at least
+    /// one line of the selected aanvraag, found by joining on that aanvraag's own line IDs.
+    /// </summary>
     public class OrderDetailForm : Form
     {
+        private readonly PurchaseRequestRepository _purchaseRequestRepository;
         private readonly PurchaseOrderRepository _purchaseOrderRepository;
-        private readonly SupplierOrderRepository _supplierOrderRepository;
         private readonly int _purchaseRequestId;
 
         private DataGridView _purchaseOrdersGrid;
-        private DataGridView _supplierOrdersGrid;
+        private DataGridView _linesGrid;
         private Label _statusBar;
+        private IReadOnlyList<PurchaseOrder> _loadedOrders = new List<PurchaseOrder>();
 
-        public OrderDetailForm(PurchaseOrderRepository purchaseOrderRepository, SupplierOrderRepository supplierOrderRepository, int purchaseRequestId)
+        public OrderDetailForm(PurchaseRequestRepository purchaseRequestRepository, PurchaseOrderRepository purchaseOrderRepository, int purchaseRequestId)
         {
+            _purchaseRequestRepository = purchaseRequestRepository ?? throw new ArgumentNullException(nameof(purchaseRequestRepository));
             _purchaseOrderRepository = purchaseOrderRepository ?? throw new ArgumentNullException(nameof(purchaseOrderRepository));
-            _supplierOrderRepository = supplierOrderRepository ?? throw new ArgumentNullException(nameof(supplierOrderRepository));
             _purchaseRequestId = purchaseRequestId;
             InitializeComponent();
             Load += async (s, e) => await RefreshAsync();
@@ -32,7 +41,7 @@ namespace Procurement.UI.Forms
             Height = 600;
             StartPosition = FormStartPosition.CenterParent;
 
-            var poLabel = new Label { Text = "ERP Purchase Orders:", Dock = DockStyle.Top, Height = 20, Padding = new Padding(4) };
+            var poLabel = new Label { Text = "Purchase Orders (1 per leverancier) met een regel van deze aanvraag:", Dock = DockStyle.Top, Height = 20, Padding = new Padding(4) };
             _purchaseOrdersGrid = new DataGridView
             {
                 Dock = DockStyle.Top,
@@ -45,8 +54,8 @@ namespace Procurement.UI.Forms
             };
             _purchaseOrdersGrid.SelectionChanged += PurchaseOrdersGrid_SelectionChanged;
 
-            var soLabel = new Label { Text = "Supplier Orders voor geselecteerde PO:", Dock = DockStyle.Top, Height = 20, Padding = new Padding(4) };
-            _supplierOrdersGrid = new DataGridView
+            var linesLabel = new Label { Text = "Regels van geselecteerde PO (kunnen ook van andere aanvragen zijn):", Dock = DockStyle.Top, Height = 20, Padding = new Padding(4) };
+            _linesGrid = new DataGridView
             {
                 Dock = DockStyle.Fill,
                 ReadOnly = true,
@@ -58,8 +67,8 @@ namespace Procurement.UI.Forms
 
             _statusBar = new Label { Dock = DockStyle.Bottom, Height = 24, Padding = new Padding(4), BackColor = System.Drawing.SystemColors.ControlLight };
 
-            Controls.Add(_supplierOrdersGrid);
-            Controls.Add(soLabel);
+            Controls.Add(_linesGrid);
+            Controls.Add(linesLabel);
             Controls.Add(_purchaseOrdersGrid);
             Controls.Add(poLabel);
             Controls.Add(_statusBar);
@@ -67,65 +76,62 @@ namespace Procurement.UI.Forms
 
         private async System.Threading.Tasks.Task RefreshAsync()
         {
-            var orders = await _purchaseOrderRepository.GetByPurchaseRequestIdAsync(_purchaseRequestId);
+            var request = await _purchaseRequestRepository.GetByIdAsync(_purchaseRequestId);
+            var lineIds = request?.Lines.Select(l => l.Id).ToList() ?? new List<int>();
+            _loadedOrders = await _purchaseOrderRepository.GetByPurchaseRequestLineIdsAsync(lineIds);
 
-            // Assigning DataSource can itself raise SelectionChanged; detach first so that
-            // doesn't race with the explicit reload below against the same shared DbContext.
+            // Assigning DataSource can itself raise SelectionChanged; detach first so that doesn't
+            // race with LoadLinesForSelectedOrder below against the same in-memory list.
             _purchaseOrdersGrid.SelectionChanged -= PurchaseOrdersGrid_SelectionChanged;
-            _purchaseOrdersGrid.DataSource = orders.Select(po => new
+            _purchaseOrdersGrid.DataSource = _loadedOrders.Select(po => new
             {
                 po.Id,
                 po.ErpPoNumber,
+                po.SupplierCode,
+                po.SupplierOrderNumber,
                 Status = po.Status.ToString(),
                 po.CreatedAt,
+                po.OrderTotal,
+                po.Currency,
                 Regels = po.Lines.Count
             }).ToList();
             _purchaseOrdersGrid.SelectionChanged += PurchaseOrdersGrid_SelectionChanged;
 
-            await LoadSupplierOrdersAsync();
+            LoadLinesForSelectedOrder();
         }
 
-        private async void PurchaseOrdersGrid_SelectionChanged(object sender, EventArgs e)
-        {
-            try
-            {
-                await LoadSupplierOrdersAsync();
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(this, ex.Message, "Fout bij laden van supplier orders", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-        }
+        private void PurchaseOrdersGrid_SelectionChanged(object sender, EventArgs e) => LoadLinesForSelectedOrder();
 
-        private async System.Threading.Tasks.Task LoadSupplierOrdersAsync()
+        private void LoadLinesForSelectedOrder()
         {
             if (_purchaseOrdersGrid.CurrentRow == null)
             {
-                _supplierOrdersGrid.DataSource = null;
+                _linesGrid.DataSource = null;
                 _statusBar.Text = string.Empty;
                 return;
             }
 
             var poId = (int)_purchaseOrdersGrid.CurrentRow.Cells["Id"].Value;
-            var supplierOrders = await _supplierOrderRepository.GetByErpPoIdAsync(poId);
-
-            _supplierOrdersGrid.DataSource = supplierOrders.Select(so => new
+            var order = _loadedOrders.FirstOrDefault(o => o.Id == poId);
+            if (order == null)
             {
-                so.Id,
-                so.SupplierCode,
-                so.SupplierOrderNumber,
-                Status = so.Status.ToString(),
-                so.IdempotencyKey,
-                so.OrderVersion,
-                so.OrderTotal,
-                so.Currency,
-                so.SubmittedAt,
-                so.ConfirmedAt
+                _linesGrid.DataSource = null;
+                _statusBar.Text = string.Empty;
+                return;
+            }
+
+            _linesGrid.DataSource = order.Lines.Select(l => new
+            {
+                l.PurchaseRequestLineId,
+                l.SupplierPartNumber,
+                l.Quantity,
+                l.ConfirmedQuantity,
+                l.UnitPrice,
+                l.LineTotal
             }).ToList();
 
-            _statusBar.Text = supplierOrders.Count == 0
-                ? "Nog geen supplier order geplaatst voor deze PO."
-                : $"Status: {string.Join(", ", supplierOrders.Select(o => $"{o.SupplierCode}={o.Status}"))}";
+            _statusBar.Text = $"{order.SupplierCode}: {order.Status}"
+                + (string.IsNullOrEmpty(order.SupplierOrderNumber) ? string.Empty : $" (ordernummer {order.SupplierOrderNumber})");
         }
     }
 }

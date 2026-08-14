@@ -7,7 +7,7 @@ namespace Procurement.Core.Models
     {
         public bool Success { get; set; }
         public string SupplierOrderNumber { get; set; }
-        public SupplierOrderStatusEnum Status { get; set; }
+        public PurchaseOrderStatus Status { get; set; }
         public decimal OrderTotal { get; set; }
         public string Currency { get; set; }
         public DateTime SubmittedAt { get; set; }
