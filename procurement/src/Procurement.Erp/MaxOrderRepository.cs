@@ -100,7 +100,7 @@ ORDER BY dbo.Order_Master.ORDNUM_10";
                         {
                             OrderNumber = reader["Order"].ToString().Trim(),
                             OrderLong = ToDisplayString(reader["OrderLong"]),
-                            PartId = reader["PartID"].ToString().Trim(),
+                            PartId = CleanCodeField(reader["PartID"]),
                             CurrentQty = Convert.ToInt32(reader["CurrentQty"]),
                             Firm = ToBool(reader["Firm"]),
                             Status = reader["Status"].ToString().Trim(),
@@ -112,7 +112,7 @@ ORDER BY dbo.Order_Master.ORDNUM_10";
                             Reference = ToDisplayString(reader["Reference"]),
                             Desc1 = ToDisplayString(reader["Desc1"]),
                             Desc2 = ToDisplayString(reader["Desc2"]),
-                            ManufacturerPartNumber = ToDisplayString(reader["ManufacturingPart"]),
+                            ManufacturerPartNumber = CleanCodeField(reader["ManufacturingPart"]),
                             Customer = ToDisplayString(reader["Customer"]),
                             PartType = ToDisplayString(reader["PartType"])
                         });
@@ -148,6 +148,17 @@ ORDER BY dbo.Order_Master.ORDNUM_10";
 
         private static string ToDisplayString(object value) =>
             value == null || value == DBNull.Value ? null : value.ToString().Trim();
+
+        // PRTNUM_10/VIEWER_01 turned out to be padded with trailing periods (not just spaces) in
+        // this MAX environment — plain .Trim() only strips whitespace, so "5100565..." survived it
+        // and showed up as-is in the grid (which looked like leftover DataGridView truncation, but
+        // wasn't). Scoped to just these two short "code" fields rather than every string field,
+        // since a free-text field like Desc1/Reference could legitimately end in a real period.
+        private static string CleanCodeField(object value)
+        {
+            var text = ToDisplayString(value);
+            return text?.TrimEnd('.', ' ');
+        }
 
         private static decimal? ToNullableDecimal(object value) =>
             value == null || value == DBNull.Value ? (decimal?)null : Convert.ToDecimal(value);

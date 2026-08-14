@@ -223,11 +223,14 @@ namespace Procurement.UI.Forms
 
         /// <summary>
         /// GroupBox.AutoSize with a manually-positioned (non-Dock) child turned out unreliable in
-        /// practice — the box didn't shrink to fit even after tightening the child's own content.
-        /// This instead reads the child's own (properly computed) PreferredSize and sizes the
-        /// GroupBox explicitly around it, so the box is always exactly as big as its content needs
-        /// — plus enough width for the title text itself, which a too-narrow GroupBox would
-        /// otherwise just clip.
+        /// practice — the box didn't shrink to fit even after tightening the child's own content,
+        /// and a manually-positioned child left the border not fully painted along one edge
+        /// (nothing was reserving that strip for the border to draw into). This instead reads the
+        /// child's own (properly computed) PreferredSize, sizes the GroupBox explicitly around it —
+        /// so the box is always exactly as big as its content needs, plus enough width for the
+        /// title text itself — and then Dock=Fill's the child inside the GroupBox's own Padding,
+        /// which (unlike a manual Location) is a layout combination WinForms actually keeps clear
+        /// of the border on every edge.
         /// </summary>
         private static GroupBox WrapInGroupBox(string title, Control content)
         {
@@ -237,11 +240,14 @@ namespace Procurement.UI.Forms
             // slack than left/top to compensate.
             const int left = 10, top = 18, right = 16, bottom = 14;
 
-            var group = new GroupBox { Text = title, Margin = new Padding(4) };
-            content.Location = new Point(left, top);
+            // Measure the content's natural size *before* switching it to Dock=Fill (which would
+            // otherwise report whatever size it's currently forced into, not what it actually needs).
+            var contentSize = content.PreferredSize;
+
+            var group = new GroupBox { Text = title, Margin = new Padding(4), Padding = new Padding(left, top, right, bottom) };
+            content.Dock = DockStyle.Fill;
             group.Controls.Add(content);
 
-            var contentSize = content.PreferredSize;
             var titleWidth = TextRenderer.MeasureText(title, group.Font).Width + 24;
             group.Size = new Size(Math.Max(contentSize.Width + left + right, titleWidth), contentSize.Height + top + bottom);
 

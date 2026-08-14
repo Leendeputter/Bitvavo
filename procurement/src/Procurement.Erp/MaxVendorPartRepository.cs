@@ -53,9 +53,12 @@ WHERE PRTNUM_07 IN ({string.Join(",", paramNames)})";
                     {
                         results.Add(new MaxVendorPart
                         {
-                            PartId = reader["PartID"].ToString(),
-                            VendorId = reader["VendorID"] as string,
-                            VendorPart = reader["VendorPart"] as string
+                            // PRTNUM_07 is the same MAX part-number field family as Order_Master's
+                            // PRTNUM_10, which turned out to be padded with trailing periods (not
+                            // just spaces) — strip both, not just whitespace.
+                            PartId = (reader["PartID"] as string ?? reader["PartID"].ToString())?.Trim().TrimEnd('.', ' '),
+                            VendorId = (reader["VendorID"] as string)?.Trim(),
+                            VendorPart = (reader["VendorPart"] as string)?.Trim()
                         });
                     }
                 }
