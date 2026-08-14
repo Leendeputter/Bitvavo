@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
+using System.Reflection;
 using System.Windows.Forms;
 using Procurement.Core.Entities;
 using Procurement.Core.Enums;
@@ -120,13 +121,24 @@ namespace Procurement.UI.Forms
                 Height = 300,
                 ReadOnly = true,
                 AllowUserToAddRows = false,
-                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.AllCells,
+                // AllCells meet de tekstbreedte van élke cel in élke rij om kolombreedtes te bepalen
+                // — bij een paar honderd rijen is dat traag genoeg om zichtbaar te haperen, en het
+                // grid herberekent dat opnieuw zodra rijen zichtbaar worden tijdens het scrollen,
+                // wat als "verspringende velden" oogt. Fill verdeelt de resterende breedte enkel
+                // proportioneel (FillWeight), zonder ook maar één cel te hoeven meten, en blijft dus
+                // stabiel ongeacht het aantal rijen — de kolommen met een expliciete breedte
+                // (ApplyMaxColumnWidths, AutoSizeMode.None) doen niet mee met die verdeling.
+                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
+                // Rijnummers worden hier niet gebruikt maar tellen bij Fill-kolomherberekening
+                // (venster resizen) alsnog mee als er geen vaste breedte staat.
+                RowHeadersWidthSizeMode = DataGridViewRowHeadersWidthSizeMode.DisableResizing,
                 SelectionMode = DataGridViewSelectionMode.FullRowSelect,
                 // Ctrl/Shift-klik om meerdere aanvragen tegelijk te selecteren voor "Sourcing
                 // starten (selectie)" — het regels-grid onder de detailweergave blijft altijd de
                 // regels van de laatst-actieve rij tonen (CurrentRow), ook met meerdere geselecteerd.
                 MultiSelect = true
             };
+            EnableDoubleBuffering(_requestsGrid);
             _requestsGrid.SelectionChanged += RequestsGrid_SelectionChanged;
 
             var linesLabel = new Label { Text = "Regels van geselecteerde aanvraag:", Dock = DockStyle.Top, Height = 20, Padding = new Padding(4) };
@@ -136,10 +148,12 @@ namespace Procurement.UI.Forms
                 Dock = DockStyle.Fill,
                 ReadOnly = true,
                 AllowUserToAddRows = false,
-                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.AllCells,
+                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
+                RowHeadersWidthSizeMode = DataGridViewRowHeadersWidthSizeMode.DisableResizing,
                 SelectionMode = DataGridViewSelectionMode.FullRowSelect,
                 MultiSelect = false
             };
+            EnableDoubleBuffering(_linesGrid);
             _linesGrid.CellDoubleClick += (s, e) => ShowOffersForSelectedLine();
 
             // Dock=Bottom op de knop zelf zou 'm over de hele breedte uitrekken (zag er dan niet
@@ -391,7 +405,16 @@ namespace Procurement.UI.Forms
             ApplyMaxColumnWidths(_requestsGrid);
         }
 
-        /// <summary>Column widths shared by both grids (see PopulateRequestsGrid/LoadLinesForSelectedRequestAsync) — AllCells autosize fits the *widest* value in the whole result set, which makes these columns wider than their typical content needs. Capping their initial width instead still leaves them user-resizable (Resizable stays the default).</summary>
+        /// <summary>
+        /// Column widths shared by both grids (see PopulateRequestsGrid/LoadLinesForSelectedRequestAsync).
+        /// Every column named here gets AutoSizeMode.None, i.e. is excluded from the grid-level Fill
+        /// distribution — without that, Fill would spread the remaining width evenly across short
+        /// fixed-format columns (Status, Firm, Quantity, DueDate, ...) and long free-text ones
+        /// (Desc1, Reference) alike, which looks arbitrary. Only genuinely variable-length text
+        /// columns (Desc1, Reference — and whichever unnamed column each grid happens to have) are
+        /// left to Fill. SetHeaderText calls for missing columns are harmless no-ops (see those
+        /// helpers), so this one method still safely serves both grids' different column sets.
+        /// </summary>
         private static void ApplyMaxColumnWidths(DataGridView grid)
         {
             // PartID/ManufacturingPart were originally given a flat pixel width, but that turned
@@ -403,6 +426,37 @@ namespace Procurement.UI.Forms
             SetFixedColumnWidth(grid, "Rev", 45);
             SetCharacterBasedColumnWidth(grid, "ManufacturingPart", 22);
             SetCharacterBasedColumnWidth(grid, "Desc2", 30);
+
+            SetCharacterBasedColumnWidth(grid, "Order", 16);
+            SetCharacterBasedColumnWidth(grid, "Status", 8);
+            SetCharacterBasedColumnWidth(grid, "Firm", 6);
+            SetCharacterBasedColumnWidth(grid, "Type", 8);
+            SetCharacterBasedColumnWidth(grid, "Quantity", 10);
+            SetCharacterBasedColumnWidth(grid, "Cost", 10);
+            SetCharacterBasedColumnWidth(grid, "Cnv", 10);
+            SetCharacterBasedColumnWidth(grid, "DueDate", 12);
+            SetCharacterBasedColumnWidth(grid, "Customer", 14);
+            SetCharacterBasedColumnWidth(grid, "StockID", 14);
+            SetCharacterBasedColumnWidth(grid, "Workflow", 16);
+            SetCharacterBasedColumnWidth(grid, "Manufacturer", 16);
+            SetCharacterBasedColumnWidth(grid, "Packaging", 14);
+            SetCharacterBasedColumnWidth(grid, "ReelRequirement", 8);
+            // Desc1/Reference (variable-length free text) are deliberately left out — those are the
+            // columns Fill actually distributes the remaining window width across.
+        }
+
+        /// <summary>
+        /// DataGridView.DoubleBuffered is protected — Control's own public one isn't enough because
+        /// DataGridView draws its cells itself instead of going through the normal Paint pipeline —
+        /// so without this every scroll/scrollbar-drag repaints row by row instead of as one buffered
+        /// frame, which reads as flicker/redraw on top of the AllCells→Fill fix above. Reflection is
+        /// the standard way around this (no supported public API exists); safe to no-op if a future
+        /// .NET Framework version ever renames/removes the property.
+        /// </summary>
+        private static void EnableDoubleBuffering(DataGridView grid)
+        {
+            var property = typeof(DataGridView).GetProperty("DoubleBuffered", BindingFlags.Instance | BindingFlags.NonPublic);
+            property?.SetValue(grid, true, null);
         }
 
         private static void SetHeaderText(DataGridView grid, string columnName, string headerText)
