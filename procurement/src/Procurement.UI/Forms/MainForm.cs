@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
 using Procurement.Core.Entities;
+using Procurement.Core.Enums;
 using Procurement.Erp;
 using Procurement.UI.Composition;
 
@@ -35,6 +36,7 @@ namespace Procurement.UI.Forms
 
         private Button _newRequestButton;
         private Button _startSourcingButton;
+        private Button _sourceAllButton;
         private Button _viewOffersButton;
         private Button _orderDetailButton;
         private Button _approvalsButton;
@@ -66,8 +68,14 @@ namespace Procurement.UI.Forms
             var toolPanel = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 40, FlowDirection = FlowDirection.LeftToRight };
             _newRequestButton = new Button { Text = "Nieuwe testaanvraag toevoegen", AutoSize = true };
             _newRequestButton.Click += async (s, e) => await NewRequestAsync();
-            _startSourcingButton = new Button { Text = "Sourcing starten", AutoSize = true };
-            _startSourcingButton.Click += async (s, e) => await StartSourcingAsync();
+            // Elke rij is een MAX-order voor precies 1 artikel — bij tientallen open orders is 1
+            // voor 1 klikken onwerkbaar. Sourcing starten verwerkt daarom alle geselecteerde
+            // aanvragen (Ctrl/Shift-klik in het grid); Alles sourcen verwerkt de hele lijst zonder
+            // eerst te hoeven selecteren.
+            _startSourcingButton = new Button { Text = "Sourcing starten (selectie)", AutoSize = true };
+            _startSourcingButton.Click += async (s, e) => await SourceRequestsAsync(GetSelectedRequestIds(), confirmIfMoreThan: 1);
+            _sourceAllButton = new Button { Text = "Alles sourcen", AutoSize = true };
+            _sourceAllButton.Click += async (s, e) => await SourceRequestsAsync(GetAllRequestIds(), confirmIfMoreThan: 1);
             _orderDetailButton = new Button { Text = "Order details", AutoSize = true };
             _orderDetailButton.Click += (s, e) => ShowOrderDetail();
             _approvalsButton = new Button { Text = "Goedkeuringen...", AutoSize = true };
@@ -81,7 +89,7 @@ namespace Procurement.UI.Forms
 
             toolPanel.Controls.AddRange(new Control[]
             {
-                _newRequestButton, _startSourcingButton, _orderDetailButton,
+                _newRequestButton, _startSourcingButton, _sourceAllButton, _orderDetailButton,
                 _approvalsButton, _supplierMappingButton, _settingsButton, _auditLogButton
             });
 
@@ -107,7 +115,10 @@ namespace Procurement.UI.Forms
                 AllowUserToAddRows = false,
                 AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.AllCells,
                 SelectionMode = DataGridViewSelectionMode.FullRowSelect,
-                MultiSelect = false
+                // Ctrl/Shift-klik om meerdere aanvragen tegelijk te selecteren voor "Sourcing
+                // starten (selectie)" — het regels-grid onder de detailweergave blijft altijd de
+                // regels van de laatst-actieve rij tonen (CurrentRow), ook met meerdere geselecteerd.
+                MultiSelect = true
             };
             _requestsGrid.SelectionChanged += RequestsGrid_SelectionChanged;
 
@@ -475,6 +486,12 @@ namespace Procurement.UI.Forms
             return (int)_requestsGrid.CurrentRow.Cells["Id"].Value;
         }
 
+        private List<int> GetSelectedRequestIds() =>
+            _requestsGrid.SelectedRows.Cast<DataGridViewRow>().Select(r => (int)r.Cells["Id"].Value).Distinct().ToList();
+
+        private List<int> GetAllRequestIds() =>
+            _requestsGrid.Rows.Cast<DataGridViewRow>().Where(r => !r.IsNewRow).Select(r => (int)r.Cells["Id"].Value).ToList();
+
         private int? GetSelectedLineId()
         {
             if (_linesGrid.CurrentRow == null) return null;
@@ -492,34 +509,80 @@ namespace Procurement.UI.Forms
             }
         }
 
-        private async System.Threading.Tasks.Task StartSourcingAsync()
+        /// <summary>
+        /// Sourcet één of meerdere aanvragen na elkaar (nooit parallel — de app deelt toch al één
+        /// ProcurementDbContext die alles serialiseert via RunGuardedAsync, dus gelijktijdig
+        /// aanroepen zou geen tijd schelen, enkel de voortgangsmelding minder duidelijk maken).
+        /// Gebruikt door zowel "Sourcing starten (selectie)" als "Alles sourcen". Eén mislukte
+        /// aanvraag stopt de rest niet — aan het eind volgt een samenvatting i.p.v. per aanvraag
+        /// een los berichtvenster.
+        /// </summary>
+        private async System.Threading.Tasks.Task SourceRequestsAsync(IReadOnlyList<int> requestIds, int confirmIfMoreThan)
         {
-            var requestId = GetSelectedRequestId();
-            if (requestId == null)
+            if (requestIds.Count == 0)
             {
-                MessageBox.Show(this, "Selecteer eerst een aanvraag.", "Geen selectie", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(this, "Selecteer eerst een of meer aanvragen.", "Geen selectie", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
-            // Guard against a double-click firing two overlapping SourcePurchaseRequestAsync
-            // calls — also makes clear to the user that something is happening, instead of a
-            // click that appears to do nothing while sourcing runs in the background.
+            if (requestIds.Count > confirmIfMoreThan)
+            {
+                var confirm = MessageBox.Show(this,
+                    $"Sourcing starten voor {requestIds.Count} aanvragen?",
+                    "Bevestigen", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                if (confirm != DialogResult.Yes) return;
+            }
+
             _startSourcingButton.Enabled = false;
-            SetStatus("Sourcing wordt gestart (DigiKey + Farnell parallel)...");
-            try
+            _sourceAllButton.Enabled = false;
+            UseWaitCursor = true;
+
+            var ordered = 0;
+            var waitingApproval = 0;
+            var exceptionCount = 0;
+            var failed = 0;
+            var skipped = 0;
+
+            for (var i = 0; i < requestIds.Count; i++)
             {
-                await _composition.Engine.SourcePurchaseRequestAsync(requestId.Value);
-                SetStatus("Sourcing voltooid.");
+                SetStatus($"Sourcing {i + 1}/{requestIds.Count}...");
+                try
+                {
+                    // Re-sourcing a request that's already WaitingApproval would re-run every line
+                    // that hasn't been decided on yet — SourceAndProcessLineAsync only skips a line
+                    // once it has a SupplierSelection, which a line awaiting approval doesn't have
+                    // yet, so it would get sourced again and end up with a second, duplicate
+                    // ApprovalRequest. Harmless to re-run for Pending (never sourced) or Exception
+                    // (worth retrying).
+                    var current = await _composition.PurchaseRequestRepository.GetByIdAsync(requestIds[i]);
+                    if (current == null) continue;
+                    if (current.Status == PurchaseRequestStatus.WaitingApproval)
+                    {
+                        skipped++;
+                        continue;
+                    }
+
+                    await _composition.Engine.SourcePurchaseRequestAsync(requestIds[i]);
+                    var updated = await _composition.PurchaseRequestRepository.GetByIdAsync(requestIds[i]);
+                    if (updated == null) continue;
+                    if (updated.Status == PurchaseRequestStatus.Ordered) ordered++;
+                    else if (updated.Status == PurchaseRequestStatus.WaitingApproval) waitingApproval++;
+                    else if (updated.Status == PurchaseRequestStatus.Exception) exceptionCount++;
+                }
+                catch (Exception)
+                {
+                    failed++;
+                }
             }
-            catch (Exception ex)
-            {
-                MessageBox.Show(this, ex.Message, "Fout tijdens sourcing", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                SetStatus("Sourcing mislukt.");
-            }
-            finally
-            {
-                _startSourcingButton.Enabled = true;
-            }
+
+            UseWaitCursor = false;
+            _startSourcingButton.Enabled = true;
+            _sourceAllButton.Enabled = true;
+
+            var summary = $"Sourcing klaar: {ordered} besteld, {waitingApproval} wacht op goedkeuring, {exceptionCount} met fout";
+            if (failed > 0) summary += $", {failed} mislukt";
+            if (skipped > 0) summary += $", {skipped} overgeslagen (al in afwachting van goedkeuring)";
+            SetStatus(summary + ".");
 
             await LoadLocalRequestsAsync();
         }

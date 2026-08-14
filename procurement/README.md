@@ -209,6 +209,15 @@ het hoofdscherm (`MainForm`, Purchase Requests-overzicht) met de gekozen adminis
 titelbalk. Via "Nieuwe testaanvraag toevoegen" kan een testmatige aanvraag worden ingevoerd,
 waarna "Sourcing starten" de volledige workflow doorloopt.
 
+**Sourcing van meerdere aanvragen tegelijk**: elke rij in het grid komt van precies 1 MAX-order
+(dus altijd 1 regel) — één voor één sourcen is bij veel open orders onwerkbaar. Het requests-grid
+is daarom multi-select (Ctrl/Shift-klik); **"Sourcing starten (selectie)"** verwerkt alle
+geselecteerde aanvragen na elkaar (nooit parallel, want de app deelt toch al één `ProcurementDbContext`
+die alles serialiseert), **"Alles sourcen"** verwerkt de hele grid zonder eerst te hoeven selecteren.
+Beide tonen na afloop een samenvatting (aantal besteld/wacht op goedkeuring/fout) i.p.v. een los
+berichtvenster per aanvraag, en slaan aanvragen over die al `WaitingApproval` zijn — opnieuw sourcen
+zou anders een tweede, dubbele `ApprovalRequest` aanmaken voor regels die nog niet besloten zijn.
+
 ### Tests
 
 ```powershell
