@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Windows.Forms;
 using Procurement.Data.Repositories;
+using static Procurement.UI.Support.GridFormatting;
 
 namespace Procurement.UI.Forms
 {
@@ -72,6 +73,7 @@ namespace Procurement.UI.Forms
                 SelectionMode = DataGridViewSelectionMode.FullRowSelect,
                 MultiSelect = false
             };
+            EnableDoubleBuffering(_grid);
 
             Controls.Add(_grid);
             Controls.Add(filterPanel);
@@ -99,6 +101,7 @@ namespace Procurement.UI.Forms
                 e.ResponsePayload,
                 e.Error
             }).ToList();
+            ApplyDateTimeColumns(_grid, "Timestamp");
         }
     }
 }

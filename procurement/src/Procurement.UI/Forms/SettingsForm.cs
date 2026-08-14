@@ -4,6 +4,7 @@ using System.Linq;
 using System.Windows.Forms;
 using Procurement.Core.Entities;
 using Procurement.Data.Repositories;
+using static Procurement.UI.Support.GridFormatting;
 
 namespace Procurement.UI.Forms
 {
@@ -63,6 +64,7 @@ namespace Procurement.UI.Forms
                 AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
                 AllowUserToAddRows = false
             };
+            EnableDoubleBuffering(_suppliersGrid);
             var hint = new Label
             {
                 Dock = DockStyle.Top,
@@ -88,6 +90,7 @@ namespace Procurement.UI.Forms
                 AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
                 AllowUserToAddRows = true
             };
+            EnableDoubleBuffering(_supplierPreferenceGrid);
             var saveButton = new Button { Text = "Opslaan", Dock = DockStyle.Bottom, AutoSize = true };
             saveButton.Click += async (s, e) => await SaveSupplierPreferencesAsync();
 
@@ -105,6 +108,7 @@ namespace Procurement.UI.Forms
                 AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
                 AllowUserToAddRows = true
             };
+            EnableDoubleBuffering(_packagingPolicyGrid);
             var hint = new Label
             {
                 Dock = DockStyle.Top,
@@ -156,6 +160,7 @@ namespace Procurement.UI.Forms
                 AllowUserToAddRows = false,
                 AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill
             };
+            EnableDoubleBuffering(_capabilitiesGrid);
             page.Controls.Add(_capabilitiesGrid);
             return page;
         }
@@ -194,6 +199,7 @@ namespace Procurement.UI.Forms
                 _packagingPolicyGrid.Columns["AllowedPackaging"].Visible = false;
             if (_packagingPolicyGrid.Columns["AllowedPackagingCsv"] != null)
                 _packagingPolicyGrid.Columns["AllowedPackagingCsv"].HeaderText = "AllowedPackaging (csv)";
+            ApplyQuantityColumns(_packagingPolicyGrid, "MinimumQuantity");
 
             _approvalPolicy = await _policyRepository.GetApprovalPolicyAsync() ?? new ApprovalPolicy();
             _maxOrderValueBox.Value = _approvalPolicy.MaxOrderValueForAutoApproval;

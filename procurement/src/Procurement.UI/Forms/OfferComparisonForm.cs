@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Windows.Forms;
 using Procurement.Engine;
+using static Procurement.UI.Support.GridFormatting;
 
 namespace Procurement.UI.Forms
 {
@@ -50,6 +51,7 @@ namespace Procurement.UI.Forms
                 SelectionMode = DataGridViewSelectionMode.FullRowSelect,
                 MultiSelect = false
             };
+            EnableDoubleBuffering(_offersGrid);
 
             var overridePanel = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 60, FlowDirection = FlowDirection.LeftToRight };
             overridePanel.Controls.Add(new Label { Text = "Reden voor handmatige keuze (verplicht):", AutoSize = true, Padding = new Padding(0, 8, 4, 0) });
@@ -87,8 +89,11 @@ namespace Procurement.UI.Forms
                 o.LandedCost,
                 o.LeadTimeDays,
                 o.AvailableQuantity,
-                LevertDatum = o.EstimatedDeliveryDate.ToShortDateString()
+                LevertDatum = o.EstimatedDeliveryDate
             }).ToList();
+            ApplyQuantityColumns(_offersGrid, "OfferedQuantity", "AvailableQuantity");
+            ApplyCurrencyColumns(_offersGrid, "UnitPrice", "LandedCost");
+            ApplyDateColumns(_offersGrid, "LevertDatum");
 
             _reasonLabel.Text = selection != null
                 ? $"Voorgesteld door de engine ({selection.Mode}):\n{selection.ReasonSummary}"
@@ -116,7 +121,7 @@ namespace Procurement.UI.Forms
             {
                 _statusLabel.Text = "Bezig met verwerken...";
                 await _engine.SelectOfferManuallyAsync(_purchaseRequestLineId, offerId, _overrideReasonBox.Text, Environment.UserName);
-                _statusLabel.Text = "Handmatige keuze verwerkt en order geplaatst (indien mogelijk).";
+                _statusLabel.Text = "Handmatige keuze verwerkt. Gebruik \"Order plaatsen (selectie)\" om de order daadwerkelijk te plaatsen.";
                 await RefreshAsync();
             }
             catch (Exception ex)

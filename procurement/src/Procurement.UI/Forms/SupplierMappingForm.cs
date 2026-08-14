@@ -3,6 +3,7 @@ using System.Linq;
 using System.Windows.Forms;
 using Procurement.Core.Enums;
 using Procurement.Data.Repositories;
+using static Procurement.UI.Support.GridFormatting;
 
 namespace Procurement.UI.Forms
 {
@@ -47,6 +48,7 @@ namespace Procurement.UI.Forms
                 SelectionMode = DataGridViewSelectionMode.FullRowSelect,
                 MultiSelect = false
             };
+            EnableDoubleBuffering(_grid);
 
             _verifyButton = new Button { Text = "Markeer als Verified", Dock = DockStyle.Bottom, AutoSize = true };
             _verifyButton.Click += async (s, e) => await VerifySelectedAsync();
@@ -74,6 +76,7 @@ namespace Procurement.UI.Forms
                 MatchConfidence = m.MatchConfidence.ToString(),
                 m.CreatedAt
             }).ToList();
+            ApplyDateTimeColumns(_grid, "CreatedAt");
         }
 
         private async System.Threading.Tasks.Task VerifySelectedAsync()

@@ -2,12 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
-using System.Reflection;
 using System.Windows.Forms;
 using Procurement.Core.Entities;
 using Procurement.Core.Enums;
 using Procurement.Erp;
 using Procurement.UI.Composition;
+using static Procurement.UI.Support.GridFormatting;
 
 namespace Procurement.UI.Forms
 {
@@ -424,8 +424,9 @@ namespace Procurement.UI.Forms
         /// fixed-format columns (Status, Firm, Quantity, DueDate, ...) and long free-text ones
         /// (Desc1, Reference) alike, which looks arbitrary. Only genuinely variable-length text
         /// columns (Desc1, Reference — and whichever unnamed column each grid happens to have) are
-        /// left to Fill. SetHeaderText calls for missing columns are harmless no-ops (see those
-        /// helpers), so this one method still safely serves both grids' different column sets.
+        /// left to Fill. SetHeaderText/SetFixedColumnWidth calls for missing columns are harmless
+        /// no-ops (see GridFormatting), so this one method still safely serves both grids' different
+        /// column sets.
         /// </summary>
         private static void ApplyMaxColumnWidths(DataGridView grid)
         {
@@ -439,10 +440,13 @@ namespace Procurement.UI.Forms
             SetCharacterBasedColumnWidth(grid, "ManufacturingPart", 22);
             SetCharacterBasedColumnWidth(grid, "Desc2", 30);
 
-            SetCharacterBasedColumnWidth(grid, "Order", 16);
-            SetCharacterBasedColumnWidth(grid, "Status", 8);
+            // Order/Status/Type only ever hold a short code (order number, single MAX status digit,
+            // single part-type letter) — these should never grow/shrink with content, so a tight
+            // character count instead of the earlier, too-generous guess.
+            SetCharacterBasedColumnWidth(grid, "Order", 11);
+            SetCharacterBasedColumnWidth(grid, "Status", 7);
             SetCharacterBasedColumnWidth(grid, "Firm", 6);
-            SetCharacterBasedColumnWidth(grid, "Type", 8);
+            SetCharacterBasedColumnWidth(grid, "Type", 6);
             SetCharacterBasedColumnWidth(grid, "Quantity", 10);
             SetCharacterBasedColumnWidth(grid, "Cost", 12);
             SetCharacterBasedColumnWidth(grid, "Cnv", 12);
@@ -457,56 +461,13 @@ namespace Procurement.UI.Forms
             // Desc1/Reference (variable-length free text) are deliberately left out — those are the
             // columns Fill actually distributes the remaining window width across.
 
-            // Cost/Cnv (Cost Conv) come straight from MAX; ExtCost (Quantity * Cost / Cost Conv) is
-            // computed here. All three are shown with 4 decimals rather than the framework's default
-            // ("N2"/currency-style rounding), since these are conversion factors/unit costs where the
-            // 3rd/4th decimal actually matters.
-            SetDecimalFormat(grid, "Cost", 4);
-            SetDecimalFormat(grid, "Cnv", 4);
-            SetDecimalFormat(grid, "ExtCost", 4);
-        }
-
-        private static void SetDecimalFormat(DataGridView grid, string columnName, int decimals)
-        {
-            var column = grid.Columns[columnName];
-            if (column == null) return;
-            column.DefaultCellStyle.Format = "N" + decimals;
-        }
-
-        /// <summary>
-        /// DataGridView.DoubleBuffered is protected — Control's own public one isn't enough because
-        /// DataGridView draws its cells itself instead of going through the normal Paint pipeline —
-        /// so without this every scroll/scrollbar-drag repaints row by row instead of as one buffered
-        /// frame, which reads as flicker/redraw on top of the AllCells→Fill fix above. Reflection is
-        /// the standard way around this (no supported public API exists); safe to no-op if a future
-        /// .NET Framework version ever renames/removes the property.
-        /// </summary>
-        private static void EnableDoubleBuffering(DataGridView grid)
-        {
-            var property = typeof(DataGridView).GetProperty("DoubleBuffered", BindingFlags.Instance | BindingFlags.NonPublic);
-            property?.SetValue(grid, true, null);
-        }
-
-        private static void SetHeaderText(DataGridView grid, string columnName, string headerText)
-        {
-            if (grid.Columns[columnName] != null)
-                grid.Columns[columnName].HeaderText = headerText;
-        }
-
-        private static void SetFixedColumnWidth(DataGridView grid, string columnName, int width)
-        {
-            var column = grid.Columns[columnName];
-            if (column == null) return;
-            column.AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
-            column.Width = width;
-        }
-
-        private static void SetCharacterBasedColumnWidth(DataGridView grid, string columnName, int characterCount)
-        {
-            var column = grid.Columns[columnName];
-            if (column == null) return;
-            column.AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
-            column.Width = TextRenderer.MeasureText(new string('n', characterCount), grid.Font).Width + 12;
+            // App-wide conventions (GridFormatting): quantities at 4 decimals, cost/price fields at
+            // 4 decimals with a € prefix, Cnv (Cost Conv, a conversion factor rather than a price) at
+            // 2, DueDate as d-MM-yyyy — all right-aligned.
+            ApplyQuantityColumns(grid, "Quantity");
+            ApplyCurrencyColumns(grid, "Cost", "ExtCost");
+            ApplyDecimalColumns(grid, 2, "Cnv");
+            ApplyDateColumns(grid, "DueDate");
         }
 
         private async void RequestsGrid_SelectionChanged(object sender, EventArgs e)

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Windows.Forms;
 using Procurement.Core.Entities;
 using Procurement.Data.Repositories;
+using static Procurement.UI.Support.GridFormatting;
 
 namespace Procurement.UI.Forms
 {
@@ -52,6 +53,7 @@ namespace Procurement.UI.Forms
                 SelectionMode = DataGridViewSelectionMode.FullRowSelect,
                 MultiSelect = false
             };
+            EnableDoubleBuffering(_purchaseOrdersGrid);
             _purchaseOrdersGrid.SelectionChanged += PurchaseOrdersGrid_SelectionChanged;
 
             var linesLabel = new Label { Text = "Regels van geselecteerde PO (kunnen ook van andere aanvragen zijn):", Dock = DockStyle.Top, Height = 20, Padding = new Padding(4) };
@@ -64,6 +66,7 @@ namespace Procurement.UI.Forms
                 SelectionMode = DataGridViewSelectionMode.FullRowSelect,
                 MultiSelect = false
             };
+            EnableDoubleBuffering(_linesGrid);
 
             _statusBar = new Label { Dock = DockStyle.Bottom, Height = 24, Padding = new Padding(4), BackColor = System.Drawing.SystemColors.ControlLight };
 
@@ -96,6 +99,8 @@ namespace Procurement.UI.Forms
                 Regels = po.Lines.Count
             }).ToList();
             _purchaseOrdersGrid.SelectionChanged += PurchaseOrdersGrid_SelectionChanged;
+            ApplyCurrencyColumns(_purchaseOrdersGrid, "OrderTotal");
+            ApplyDateTimeColumns(_purchaseOrdersGrid, "CreatedAt");
 
             LoadLinesForSelectedOrder();
         }
@@ -129,6 +134,8 @@ namespace Procurement.UI.Forms
                 l.UnitPrice,
                 l.LineTotal
             }).ToList();
+            ApplyQuantityColumns(_linesGrid, "Quantity", "ConfirmedQuantity");
+            ApplyCurrencyColumns(_linesGrid, "UnitPrice", "LineTotal");
 
             _statusBar.Text = $"{order.SupplierCode}: {order.Status}"
                 + (string.IsNullOrEmpty(order.SupplierOrderNumber) ? string.Empty : $" (ordernummer {order.SupplierOrderNumber})");

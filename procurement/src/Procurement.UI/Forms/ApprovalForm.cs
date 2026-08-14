@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Windows.Forms;
 using Procurement.Engine;
+using static Procurement.UI.Support.GridFormatting;
 
 namespace Procurement.UI.Forms
 {
@@ -39,6 +40,7 @@ namespace Procurement.UI.Forms
                 SelectionMode = DataGridViewSelectionMode.FullRowSelect,
                 MultiSelect = false
             };
+            EnableDoubleBuffering(_grid);
 
             var actionPanel = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 70, FlowDirection = FlowDirection.LeftToRight };
             actionPanel.Controls.Add(new Label { Text = "Commentaar:", AutoSize = true, Padding = new Padding(0, 8, 4, 0) });
@@ -72,6 +74,9 @@ namespace Procurement.UI.Forms
                 Reden = a.Reasons,
                 a.CreatedAt
             }).ToList();
+            ApplyQuantityColumns(_grid, "Aangeboden");
+            ApplyCurrencyColumns(_grid, "Prijs");
+            ApplyDateTimeColumns(_grid, "CreatedAt");
 
             _statusLabel.Text = $"{pending.Count} regel(s) wachten op goedkeuring.";
         }
