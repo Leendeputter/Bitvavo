@@ -171,8 +171,8 @@ namespace Procurement.UI.Forms
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
             _dueDateEnableCheckBox = new CheckBox { Text = "Enable", AutoSize = true };
-            _dueDateStartPicker = new DateTimePicker { Format = DateTimePickerFormat.Short, Width = 90, Enabled = false };
-            _dueDateEndPicker = new DateTimePicker { Format = DateTimePickerFormat.Short, Width = 90, Enabled = false };
+            _dueDateStartPicker = new DateTimePicker { Format = DateTimePickerFormat.Short, Width = 105, Enabled = false };
+            _dueDateEndPicker = new DateTimePicker { Format = DateTimePickerFormat.Short, Width = 105, Enabled = false };
             _dueDateEnableCheckBox.CheckedChanged += (s, e) =>
             {
                 _dueDateStartPicker.Enabled = _dueDateEnableCheckBox.Checked;
@@ -192,11 +192,11 @@ namespace Procurement.UI.Forms
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
-            _rangeFieldCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 90 };
+            _rangeFieldCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 105 };
             _rangeFieldCombo.Items.AddRange(new object[] { "Order Number", "Customer", "Part" });
             _rangeFieldCombo.SelectedIndex = 0;
-            _rangeStartBox = new TextBox { Width = 90 };
-            _rangeEndBox = new TextBox { Width = 90 };
+            _rangeStartBox = new TextBox { Width = 105 };
+            _rangeEndBox = new TextBox { Width = 105 };
 
             AddFilterRow(layout, "Select By", _rangeFieldCombo);
             AddFilterRow(layout, "Start", _rangeStartBox);
@@ -231,9 +231,13 @@ namespace Procurement.UI.Forms
         /// </summary>
         private static GroupBox WrapInGroupBox(string title, Control content)
         {
-            const int left = 8, top = 16, right = 6, bottom = 6;
+            // content.PreferredSize doesn't leave quite enough room in practice for a
+            // DateTimePicker/ComboBox's own dropdown glyph at the right edge, or for the group
+            // box's border/rounded corners at the bottom — right/bottom get noticeably more
+            // slack than left/top to compensate.
+            const int left = 10, top = 18, right = 16, bottom = 14;
 
-            var group = new GroupBox { Text = title, Margin = new Padding(3) };
+            var group = new GroupBox { Text = title, Margin = new Padding(4) };
             content.Location = new Point(left, top);
             group.Controls.Add(content);
 
