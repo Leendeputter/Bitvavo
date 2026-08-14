@@ -18,6 +18,12 @@ namespace Procurement.Data.Configurations
             Property(s => s.Name).HasMaxLength(200);
             Property(s => s.VendorId).HasMaxLength(20);
 
+            // Base64(IV + AES-256 ciphertext) is comfortably longer than the plaintext it replaces —
+            // 500 leaves headroom for any credential length SecretProtector produces.
+            Property(s => s.ClientIdEncrypted).HasMaxLength(500);
+            Property(s => s.ClientSecretEncrypted).HasMaxLength(500);
+            Property(s => s.ApiKeyEncrypted).HasMaxLength(500);
+
             HasMany(s => s.Capabilities)
                 .WithRequired(c => c.Supplier)
                 .HasForeignKey(c => c.SupplierId)

@@ -1,8 +1,10 @@
 namespace Procurement.Suppliers.Farnell
 {
     /// <summary>
-    /// TODO: once real Farnell/element14 API credentials are available, move ApiKey out of
-    /// App.config into a proper secrets manager. Never write it to the audit log.
+    /// ApiKey is populated by CompositionRoot from the encrypted Supplier row
+    /// (Procurement.Core.Security.SecretProtector, editable via Instellingen's "Credentials
+    /// bewerken" dialog) — never from App.config or source control. Never write it to the audit
+    /// log either.
     /// </summary>
     public class FarnellOptions
     {

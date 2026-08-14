@@ -72,12 +72,17 @@ namespace Procurement.UI.Forms
                 Padding = new Padding(4),
                 Text = "VendorId: MAX Part_Vendor.VENID_07 voor deze leverancier (bv. Farnell = 0349, DigiKey = 10194) — gebruikt om de Part_Vendor-koppeltabel te vertalen naar herkende supplier-mappings."
             };
-            var saveButton = new Button { Text = "Opslaan", Dock = DockStyle.Bottom, AutoSize = true };
+            var buttonPanel = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true };
+            var saveButton = new Button { Text = "Opslaan", AutoSize = true };
             saveButton.Click += async (s, e) => await SaveSuppliersAsync();
+            var credentialsButton = new Button { Text = "Credentials bewerken...", AutoSize = true };
+            credentialsButton.Click += async (s, e) => await EditCredentialsForSelectedSupplierAsync();
+            buttonPanel.Controls.Add(saveButton);
+            buttonPanel.Controls.Add(credentialsButton);
 
             page.Controls.Add(_suppliersGrid);
             page.Controls.Add(hint);
-            page.Controls.Add(saveButton);
+            page.Controls.Add(buttonPanel);
             return page;
         }
 
@@ -178,11 +183,17 @@ namespace Procurement.UI.Forms
         {
             var suppliersForGrid = await _supplierRepository.GetAllAsync();
             _suppliersGrid.DataSource = new BindingList<Supplier>(suppliersForGrid.ToList());
-            foreach (var column in new[] { "Id", "SupplierCode", "Name", "IsSandbox", "UseMockData" })
+            foreach (var column in new[] { "Id", "SupplierCode", "Name" })
                 if (_suppliersGrid.Columns[column] != null)
                     _suppliersGrid.Columns[column].ReadOnly = true;
-            if (_suppliersGrid.Columns["Capabilities"] != null)
-                _suppliersGrid.Columns["Capabilities"].Visible = false;
+            // IsSandbox/UseMockData are directly editable here (saved by SaveSuppliersAsync below).
+            // Credentials never appear in this grid at all, encrypted or not — a raw ciphertext
+            // column would be noise, and a decrypted one would put a secret in plain view on
+            // screen; both are edited exclusively through the write-only "Credentials bewerken"
+            // dialog instead (EditCredentialsForSelectedSupplier).
+            foreach (var column in new[] { "Capabilities", "ClientIdEncrypted", "ClientSecretEncrypted", "ApiKeyEncrypted", "ClientId", "ClientSecret", "ApiKey" })
+                if (_suppliersGrid.Columns[column] != null)
+                    _suppliersGrid.Columns[column].Visible = false;
 
             var preferences = await _policyRepository.GetSupplierPreferencesAsync();
             _supplierPreferenceGrid.DataSource = new BindingList<SupplierPreference>(preferences.ToList());
@@ -224,10 +235,82 @@ namespace Procurement.UI.Forms
         {
             var items = (BindingList<Supplier>)_suppliersGrid.DataSource;
             foreach (var item in items)
-                await _supplierRepository.UpdateVendorIdAsync(item.Id, item.VendorId);
+                await _supplierRepository.UpdateSettingsAsync(item.Id, item.VendorId, item.IsSandbox, item.UseMockData);
 
             await RefreshAllAsync();
             MessageBox.Show(this, "Suppliers opgeslagen.", "Opgeslagen", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        /// <summary>
+        /// Credentials worden bewust nooit in de suppliers-grid getoond (versleuteld of niet) —
+        /// dit losse, write-only dialoogvenster is de enige plek waar ze bewerkt worden. Velden
+        /// staan altijd leeg bij openen (een bestaande waarde wordt nooit teruggetoond, ook niet
+        /// ontsleuteld) en leeg laten = ongewijzigd laten; alleen invullen overschrijft. DigiKey
+        /// gebruikt ClientId+ClientSecret, Farnell enkel ApiKey — het dialoogvenster toont voor
+        /// beide gewoon alle drie velden, het niet-toepasselijke veld blijft dan leeg.
+        /// </summary>
+        private async System.Threading.Tasks.Task EditCredentialsForSelectedSupplierAsync()
+        {
+            if (_suppliersGrid.CurrentRow == null)
+            {
+                MessageBox.Show(this, "Selecteer eerst een supplier.", "Geen selectie", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var supplierId = (int)_suppliersGrid.CurrentRow.Cells["Id"].Value;
+            var supplierCode = (string)_suppliersGrid.CurrentRow.Cells["SupplierCode"].Value;
+
+            using (var dialog = new Form
+            {
+                Text = $"Credentials bewerken – {supplierCode}",
+                Width = 420,
+                Height = 260,
+                StartPosition = FormStartPosition.CenterParent,
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                MinimizeBox = false,
+                MaximizeBox = false
+            })
+            {
+                var layout = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 2, AutoSize = true, Padding = new Padding(10) };
+                var clientIdBox = new TextBox { Width = 220 };
+                var clientSecretBox = new TextBox { Width = 220, PasswordChar = '●' };
+                var apiKeyBox = new TextBox { Width = 220, PasswordChar = '●' };
+                AddRow(layout, "Client Id (DigiKey):", clientIdBox);
+                AddRow(layout, "Client Secret (DigiKey):", clientSecretBox);
+                AddRow(layout, "Api Key (Farnell):", apiKeyBox);
+
+                var hint = new Label
+                {
+                    Dock = DockStyle.Top,
+                    Height = 40,
+                    Padding = new Padding(10, 0, 10, 0),
+                    Text = "Leeg laten = ongewijzigd. Bestaande waarden worden hier nooit getoond."
+                };
+
+                var buttonPanel = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(10) };
+                var saveButton = new Button { Text = "Opslaan", AutoSize = true, DialogResult = DialogResult.OK };
+                var cancelButton = new Button { Text = "Annuleren", AutoSize = true, DialogResult = DialogResult.Cancel };
+                buttonPanel.Controls.Add(cancelButton);
+                buttonPanel.Controls.Add(saveButton);
+
+                dialog.Controls.Add(layout);
+                dialog.Controls.Add(hint);
+                dialog.Controls.Add(buttonPanel);
+                dialog.AcceptButton = saveButton;
+                dialog.CancelButton = cancelButton;
+
+                if (dialog.ShowDialog(this) != DialogResult.OK) return;
+
+                try
+                {
+                    await _supplierRepository.UpdateCredentialsAsync(supplierId, clientIdBox.Text, clientSecretBox.Text, apiKeyBox.Text);
+                    MessageBox.Show(this, "Credentials opgeslagen.", "Opgeslagen", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(this, ex.Message, "Fout", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
         }
 
         private async System.Threading.Tasks.Task SaveSupplierPreferencesAsync()

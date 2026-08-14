@@ -78,14 +78,17 @@ namespace Procurement.UI
                 bool schemaExists;
                 try
                 {
-                    // Checking for the PurchaseOrder table alone isn't enough to catch a schema
-                    // that's out of date rather than merely missing — e.g. the aug-2026 merge of
-                    // PurchaseOrder+SupplierOrder into one entity added a SupplierCode column to
-                    // Procurement_PurchaseOrder, so an older database still has the table but not
-                    // that column. Checking for the column catches both "never created" and "needs
-                    // to be recreated for a reshaped model" with the same query.
+                    // Checking for a table's mere existence isn't enough to catch a schema that's
+                    // out of date rather than missing outright — each past model change added a
+                    // column to an already-existing table (aug-2026: PurchaseOrder+SupplierOrder
+                    // merge added PurchaseOrder.SupplierCode; the DigiKey/Farnell credential storage
+                    // added Supplier.ClientIdEncrypted), so an older database still has the table but
+                    // not that column. Checking for the newest column of each catches "never
+                    // created" and "needs to be recreated for a reshaped model" with the same query.
                     schemaExists = context.Database.SqlQuery<int>(
-                        "SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Procurement_PurchaseOrder') AND name = 'SupplierCode'").Single() > 0;
+                        "SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Procurement_PurchaseOrder') AND name = 'SupplierCode'"
+                        + " UNION ALL SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Procurement_Supplier') AND name = 'ClientIdEncrypted'")
+                        .All(count => count > 0);
                 }
                 catch (Exception ex)
                 {
@@ -133,15 +136,17 @@ namespace Procurement.UI
         // Every Procurement_-prefixed table this app currently creates — dropped ahead of recreating
         // the schema from the current model. Needed even for tables whose shape didn't change,
         // because CreateDatabaseScript() always emits CREATE TABLE for the whole model (it's not an
-        // ALTER/diff tool). Most recently needed by the aug-2026 PurchaseOrder+SupplierOrder merge
+        // ALTER/diff tool). Most recently needed by: the aug-2026 PurchaseOrder+SupplierOrder merge
         // (dropped Procurement_SupplierOrder/Procurement_SupplierOrderLine, reshaped
         // Procurement_PurchaseOrder/Procurement_PurchaseOrderLine, added
-        // Procurement_PurchaseOrderDelivery) — same clean-slate approach agreed for the earlier
-        // Procurement_-prefix rename, now reused for later schema churn during this prototype phase.
-        // Drops every foreign key touching one of these tables first (by name, via sys.foreign_keys)
-        // instead of hand-ordering the DROP TABLEs around their dependencies. Every statement is
-        // guarded so the same script can run against a database that never had some/any of these
-        // tables (e.g. Unitron_test) without failing.
+        // Procurement_PurchaseOrderDelivery); and the DigiKey/Farnell credential storage (added
+        // ClientIdEncrypted/ClientSecretEncrypted/ApiKeyEncrypted to Procurement_Supplier) — same
+        // clean-slate approach agreed for the earlier Procurement_-prefix rename, now reused for
+        // later schema churn during this prototype phase. Drops every foreign key touching one of
+        // these tables first (by name, via sys.foreign_keys) instead of hand-ordering the DROP
+        // TABLEs around their dependencies. Every statement is guarded so the same script can run
+        // against a database that never had some/any of these tables (e.g. Unitron_test) without
+        // failing.
         private const string SchemaRecreateCleanupSql = @"
 DECLARE @oldTables TABLE (Name NVARCHAR(128));
 INSERT INTO @oldTables (Name) VALUES

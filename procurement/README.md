@@ -245,6 +245,42 @@ conform spec §5), een standaard `SupplierPreference` per leverancier, een defau
 en een default `ApprovalPolicy` (`Procurement.Data/SeedData.cs`, aangeroepen vanuit `Program.cs` —
 dit was voorheen EF6 migrations' `Seed()`-callback).
 
+### Supplier-credentials
+
+DigiKey (ClientId + ClientSecret, OAuth2 client-credentials) en Farnell/element14 (ApiKey) staan
+versleuteld in `Procurement_Supplier` (`ClientIdEncrypted`/`ClientSecretEncrypted`/`ApiKeyEncrypted`)
+in plaats van in `App.config` of code — zo kan een rotatie/wijziging van een van deze sleutels
+zonder rebuild of redeploy via **Instellingen → Suppliers → "Credentials bewerken..."**, en staat er
+nergens een sleutel in leesbare vorm in de database of in source control.
+
+**Hoe dat versleutelen werkt** (`Procurement.Core.Security.SecretProtector`): AES-256, met de
+sleutel gelezen uit de omgevingsvariabele **`PROCUREMENT_SECRET_KEY`** — die staat dus zelf nergens
+in de database of in `App.config`. Zet 'm (dezelfde waarde) op elke machine die deze app draait, bv.
+als System Environment Variable of via GPO. Dit is bewust geen volwaardige secrets-manager (geen
+rotatie-tooling, geen audit van wie de sleutel gebruikt heeft, zoals Azure Key Vault wél zou geven)
+— het lost het concrete probleem op (geen credentials in platte tekst in de database/source control)
+tegen vrijwel geen extra bouwkosten. Mocht dit ooit naar een echte secrets-manager moeten, is dat een
+kleine, geïsoleerde wijziging (enkel `SecretProtector.GetKey()`), niets in de rest van de app hoeft
+dan te veranderen.
+
+Twee dingen die *niet* hetzelfde zijn, ondanks dat ze allebei "de sleutel wijzigen" heten:
+- **De credentials zelf wijzigen** (bv. na een DigiKey/Farnell-sleutelrotatie) — dat hoort vaak voor
+  te komen, en is precies waarom dit uit `App.config` gehaald is: een paar klikken in Instellingen,
+  geen rebuild.
+- **`PROCUREMENT_SECRET_KEY` zelf wijzigen** — dat is geen routinehandeling: alle al opgeslagen
+  credentials worden daarmee onleesbaar (er is geen sleutel-versionering), dus dat betekent ze
+  allemaal opnieuw invoeren via Instellingen. Behandel dat als een incident-response-scenario, niet
+  als iets om regelmatig te doen.
+
+**Nog niet gebouwd**: de daadwerkelijke HTTP-aanroepen naar DigiKey/Farnell zelf
+(`Http/*HttpClientWrapper.cs`) blijven een stub met `NotImplementedException` — dat vult zich pas in
+zodra er echte (sandbox-)credentials zijn om tegen te testen, om te voorkomen dat er ongeziene fouten
+in de requeststructuur blijven zitten die pas bij een eerste live test aan het licht komen. Zolang
+een supplier op `UseMockData=true` staat (default, ook al zijn er credentials opgeslagen) raakt de
+app deze HTTP-laag nooit aan; zet je 'm op `false` zonder dat de HTTP-laag al is ingevuld, dan geeft
+de adapter een nette `SupplierException` in plaats van een halve/onjuiste implementatie stilletjes te
+laten draaien.
+
 ### Starten
 
 Zet `Procurement.UI` als startproject en start (F5). Eerst verschijnt het inlogscherm
@@ -296,9 +332,11 @@ Supplier C re-reel 4.000 @ €0,105) letterlijk reproduceert, inclusief de twee 
 - **Mock-modus**: `DigiKeyAdapter`/`FarnellAdapter` draaien met `UseMockData = true` en retourneren
   deterministische testdata (`DigiKeyMockDataProvider`/`FarnellMockDataProvider`) — één "bekend"
   testonderdeel reproduceert de spec §7-casus exact, elk ander ingevoerd onderdeel krijgt
-  deterministische (dus reproduceerbare) pseudo-realistische offers. De echte HTTP-laag
-  (`Http/*HttpClientWrapper.cs`) is als stub aanwezig met een `NotImplementedException` en een
-  `TODO`, zodat alleen die klasse hoeft te worden ingevuld zodra er echte credentials zijn.
+  deterministische (dus reproduceerbare) pseudo-realistische offers. `IsSandbox`/`UseMockData` en de
+  (versleutelde) credentials komen nu uit de `Supplier`-tabel i.p.v. hardcoded in `CompositionRoot`
+  — zie "Supplier-credentials" hierboven. De echte HTTP-laag (`Http/*HttpClientWrapper.cs`) is als
+  stub aanwezig met een `NotImplementedException`, zodat alleen die klasse hoeft te worden ingevuld
+  zodra er echte credentials zijn om tegen te testen.
 - **Business-regels als data**: `SupplierPreference`, `PackagingPolicy` en `ApprovalPolicy` zijn
   SQL Server-tabellen, beheerd via het Instellingen-scherm (§8.6) — niet hard-coded.
 - **`PurchaseOrder` = `SupplierOrder`** (spec-correctie, aug 2026): wat eerst twee entiteiten waren

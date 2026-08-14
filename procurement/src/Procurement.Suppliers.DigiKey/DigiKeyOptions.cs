@@ -1,10 +1,11 @@
 namespace Procurement.Suppliers.DigiKey
 {
     /// <summary>
-    /// TODO: once real DigiKey API credentials are available, move ClientId/ClientSecret out of
-    /// App.config into a proper secrets manager. Never write them to the audit log
-    /// (DbAuditLogger already masks common secret key names, but keep this in mind for any new
-    /// fields added here).
+    /// ClientId/ClientSecret are populated by CompositionRoot from the encrypted Supplier row
+    /// (Procurement.Core.Security.SecretProtector, editable via Instellingen's "Credentials
+    /// bewerken" dialog) — never from App.config or source control. Never write them to the audit
+    /// log either (DbAuditLogger already masks common secret key names, but keep this in mind for
+    /// any new fields added here).
     /// </summary>
     public class DigiKeyOptions
     {

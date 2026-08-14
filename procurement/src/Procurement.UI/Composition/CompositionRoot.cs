@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Procurement.Core.Interfaces;
 using Procurement.Core.Session;
 using Procurement.Data;
@@ -48,8 +49,28 @@ namespace Procurement.UI.Composition
             SupplierRepository = new SupplierRepository(DbContext);
             ProcurementEventRepository = new ProcurementEventRepository(DbContext);
 
-            var digiKeyAdapter = new DigiKeyAdapter(new DigiKeyOptions { UseMockData = true, IsSandbox = true });
-            var farnellAdapter = new FarnellAdapter(new FarnellOptions { UseMockData = true, IsSandbox = true });
+            // Blocking on purpose: this is startup-only, single-user, and reads 2 rows — the same
+            // trade-off Program.cs already makes with its own synchronous schema check right before
+            // this constructor runs. IsSandbox/UseMockData/credentials all now come from the
+            // Supplier row (editable via Instellingen -> Suppliers) instead of being hardcoded here,
+            // so flipping a supplier out of mock mode there actually takes effect on next restart.
+            var suppliers = SupplierRepository.GetAllAsync().GetAwaiter().GetResult();
+            var digiKeySupplier = suppliers.FirstOrDefault(s => s.SupplierCode == "DIGIKEY");
+            var farnellSupplier = suppliers.FirstOrDefault(s => s.SupplierCode == "FARNELL");
+
+            var digiKeyAdapter = new DigiKeyAdapter(new DigiKeyOptions
+            {
+                ClientId = digiKeySupplier?.ClientId,
+                ClientSecret = digiKeySupplier?.ClientSecret,
+                IsSandbox = digiKeySupplier?.IsSandbox ?? true,
+                UseMockData = digiKeySupplier?.UseMockData ?? true
+            });
+            var farnellAdapter = new FarnellAdapter(new FarnellOptions
+            {
+                ApiKey = farnellSupplier?.ApiKey,
+                IsSandbox = farnellSupplier?.IsSandbox ?? true,
+                UseMockData = farnellSupplier?.UseMockData ?? true
+            });
             Adapters = new List<ISupplierAdapter> { digiKeyAdapter, farnellAdapter };
 
             var maxOrderRepository = new MaxOrderRepository(Session);
