@@ -219,16 +219,29 @@ zoals Unitron eerst beoordeeld moeten kunnen worden voordat ze worden toegepast.
    `DbMigrator.Update()` aangeroepen. Ontbreekt de migratie nog (model gewijzigd, maar stap 1 niet
    gedaan), dan volgt een duidelijke melding i.p.v. een generieke connectiefout.
 
-**Let op bij de eerstvolgende migratie**: de tabellen bestonden al (aangemaakt door de oude
-automatische migraties, vóór het `Procurement_`-prefix) — de eerste `Add-Migration` erna scaffoldt
-dus in feite een *hernoeming* van alle 17 tabellen. EF6's scaffolder herkent een hernoeming niet
-automatisch en genereert standaard een `DropTable` + `CreateTable`-paar per tabel, wat de huidige
-testdata in die tabellen zou weggooien. Wil je de huidige data behouden, wijzig dan in het
-gegenereerde migratiebestand elk `DropTable`/`CreateTable`-paar naar `RenameTable(name: "dbo.<oude
-naam>", newName: "Procurement_<naam>")` vóór je 'm toepast. Ook de overstap van automatische naar
-code-based migraties kan bij de allereerste `Add-Migration` wat wrijving geven (EF6 kent dan nog geen
-migratiebestand dat overeenkomt met wat er al in `__MigrationHistory` staat) — stuur de exacte
-foutmelding door als dat gebeurt, dan lossen we 'm samen op.
+**Eerstvolgende migratie — schone lei (gekozen i.p.v. de oude data behouden)**: de tabellen bestonden
+al onder hun oude namen (aangemaakt door de oude automatische migraties, vóór het `Procurement_`-
+prefix). De eerste `Add-Migration` erna zal daarom waarschijnlijk een `DropTable` + `CreateTable`-paar
+per tabel scaffolden — precies wat we hier willen, want de oude data mag weg, voor zowel `Unitron` als
+`Unitron_test`. Eén addertje: het gescaffolde bestand is gebaseerd op de staat van de database
+waartegen je `Add-Migration` draait; als `Unitron_test` de oude tabellen niet (allemaal) heeft, laat
+`DropTable("dbo.<oude naam>")` daar de migratie mislukken. Maak de `Up()`-methode daarom sowieso
+robuust tegen "tabel bestaat niet", zodat hetzelfde bestand veilig tegen beide databases kan:
+
+1. Draai `Add-Migration Procurement_InitialSchema -ConnectionString "...Unitron..." -ConnectionProviderName "System.Data.SqlClient"`.
+2. Open het gegenereerde bestand. Vervang elke regel `DropTable("dbo.<Naam>");` (in dezelfde volgorde
+   als gegenereerd — die volgorde respecteert de foreign keys al correct) door:
+   ```csharp
+   Sql("IF OBJECT_ID('dbo.<Naam>', 'U') IS NOT NULL DROP TABLE dbo.<Naam>;");
+   ```
+   Laat de `CreateTable(...)`-aanroepen ongewijzigd.
+3. Pas toe op `Unitron` (`Update-Database -ConnectionString "...Unitron..." -ConnectionProviderName "System.Data.SqlClient"`, of gewoon de app normaal starten en het bevestigingsvenster met "Ja" bevestigen).
+4. Pas hetzelfde bestand toe op `Unitron_test` (`Update-Database -ConnectionString "...Unitron_test..." -ConnectionProviderName "System.Data.SqlClient"`, of de app één keer in testmodus starten).
+
+De overstap van automatische naar code-based migraties kan bij deze allereerste `Add-Migration` wat
+wrijving geven (EF6 kent dan nog geen migratiebestand dat overeenkomt met wat er al in
+`__MigrationHistory` staat) — stuur de exacte foutmelding door als dat gebeurt, dan lossen we 'm samen
+op.
 
 Bij een eerste start op een lege `Unitron`-database worden na de migratie ook de policy-tabellen
 geseed: `Procurement_Supplier`/`Procurement_SupplierCapability` (DigiKey + Farnell, conform spec §5),
