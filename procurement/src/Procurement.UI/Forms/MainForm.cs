@@ -222,32 +222,25 @@ namespace Procurement.UI.Forms
         }
 
         /// <summary>
-        /// GroupBox.AutoSize with a manually-positioned (non-Dock) child turned out unreliable in
-        /// practice — the box didn't shrink to fit even after tightening the child's own content,
-        /// and a manually-positioned child left the border not fully painted along one edge
-        /// (nothing was reserving that strip for the border to draw into). This instead reads the
-        /// child's own (properly computed) PreferredSize, sizes the GroupBox explicitly around it —
-        /// so the box is always exactly as big as its content needs, plus enough width for the
-        /// title text itself — and then Dock=Fill's the child inside the GroupBox's own Padding,
-        /// which (unlike a manual Location) is a layout combination WinForms actually keeps clear
-        /// of the border on every edge.
+        /// GroupBox.AutoSize with a manually-positioned (non-Dock) child turned out unreliable, so
+        /// this reads the child's own (properly computed) PreferredSize and sizes the GroupBox
+        /// explicitly around it instead. Dock=Fill for the child (tried in an earlier round) turned
+        /// out worse, not better: GroupBox reserves its own built-in space for the border/label on
+        /// top of whatever Padding is set, so a Dock=Fill child ends up squeezed into less room than
+        /// this method actually sized the box for. A manually-placed (non-Dock) child at an explicit
+        /// Location doesn't hit that double reservation, so that's what this goes back to — sized
+        /// generously on the right/bottom since content clipping is a much worse failure mode than
+        /// a little unused space in the box.
         /// </summary>
         private static GroupBox WrapInGroupBox(string title, Control content)
         {
-            // content.PreferredSize doesn't leave quite enough room in practice for a
-            // DateTimePicker/ComboBox's own dropdown glyph at the right edge, or for the group
-            // box's border/rounded corners at the bottom — right/bottom get noticeably more
-            // slack than left/top to compensate.
-            const int left = 10, top = 18, right = 16, bottom = 14;
+            const int left = 12, top = 20, right = 24, bottom = 20;
 
-            // Measure the content's natural size *before* switching it to Dock=Fill (which would
-            // otherwise report whatever size it's currently forced into, not what it actually needs).
-            var contentSize = content.PreferredSize;
-
-            var group = new GroupBox { Text = title, Margin = new Padding(4), Padding = new Padding(left, top, right, bottom) };
-            content.Dock = DockStyle.Fill;
+            var group = new GroupBox { Text = title, Margin = new Padding(4) };
+            content.Location = new Point(left, top);
             group.Controls.Add(content);
 
+            var contentSize = content.PreferredSize;
             var titleWidth = TextRenderer.MeasureText(title, group.Font).Width + 24;
             group.Size = new Size(Math.Max(contentSize.Width + left + right, titleWidth), contentSize.Height + top + bottom);
 
@@ -358,7 +351,11 @@ namespace Procurement.UI.Forms
                         Reference = r.Project,
                         ManufacturingPart = line?.ManufacturerPartNumber,
                         Customer = line?.Customer,
-                        StockID = line?.StockId
+                        StockID = line?.StockId,
+                        // Niet uit de MAX-query — dit is dit prototype's eigen workflow-status
+                        // (Pending/Sourcing/WaitingApproval/ReadyToOrder/Ordered/Exception), los van
+                        // de ruwe MAX Order_Master.STATUS_10 die in de "Status"-kolom staat.
+                        Workflow = r.Status.ToString()
                     };
                 })
                 .ToList();

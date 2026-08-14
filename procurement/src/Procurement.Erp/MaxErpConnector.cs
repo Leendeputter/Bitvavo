@@ -186,6 +186,13 @@ namespace Procurement.Erp
             // actually clears for rows synced by an older build, instead of keeping the stale,
             // un-trimmed text forever.
             line.Description = Truncate(order.Description, 500);
+            // Same reasoning applies to these two: a row synced before the trailing-period cleanup
+            // (MaxOrderRepository.CleanCodeField) was added kept showing "5100565..." forever,
+            // because ErpArticleId/ManufacturerPartNumber were originally treated as
+            // "workflow-relevant, set once at creation" — but they're really just a MAX mirror same
+            // as everything else in this method, so they belong here too.
+            line.ErpArticleId = Truncate(order.PartId, 50);
+            line.ManufacturerPartNumber = Truncate(order.ManufacturerPartNumber, 100);
         }
 
         /// <summary>

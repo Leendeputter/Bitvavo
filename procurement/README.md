@@ -122,11 +122,20 @@ Cost, Cnv, DueDate, Reference, Manufacturing Part, Customer, StockID — 1-op-1 
 Order_Master/Part_Master-query (`FRMPLN_10`, `REVLEV_10`, `COST_10`, `CSTCNV_10`, `STK_10`,
 `COMCDE_01`, ...). Deze velden zijn puur informatief en worden meegesynchroniseerd naar
 `PurchaseRequestLine` (niet gebruikt door de sourcing/matching-logica). `Status` toont hier het ruwe
-`Order_Master.STATUS_10` (`PurchaseRequest.MaxOrderStatus`), niet dit prototype's eigen workflow-
-status (`PurchaseRequest.Status`, zichtbaar via Order details/Goedkeuringen). Het regels-grid onder
-het hoofdscherm (regels van de geselecteerde aanvraag) gebruikt dezelfde kolomnamen/-breedtes,
+`Order_Master.STATUS_10` (`PurchaseRequest.MaxOrderStatus`). Achteraan staat een aparte kolom
+**Workflow**, met dit prototype's eigen voortgangsstatus (`PurchaseRequest.Status`: Pending, Sourcing,
+WaitingApproval, ReadyToOrder, Ordered, Exception) — dat is een heel ander veld dan de MAX-`Status`-
+kolom en de enige plek op het hoofdscherm waar je ziet of een aanvraag al gesourced/besteld is zonder
+Order details of Goedkeuringen te openen. Het regels-grid onder het hoofdscherm (regels van de
+geselecteerde aanvraag) gebruikt dezelfde kolomnamen/-breedtes als PartID/Manufacturing Part/etc.,
 aangevuld met de workflow-specifieke velden Manufacturer/Packaging/ReelRequirement die niet uit de
-MAX-query komen.
+MAX-query komen (maar niet de Workflow-kolom, want per regel is dat altijd de status van de hele
+aanvraag).
+
+**Bekend gat**: eenmaal automatisch bestelde aanvragen (`PurchaseRequest.Status == Ordered`) vallen uit
+`GetOpenAsync()` en dus uit dit grid — en daarmee ook uit bereik van de "Order details"-knop, die enkel
+werkt voor de op dat moment in dit grid geselecteerde aanvraag. Er is momenteel geen scherm dat *alle*
+aanvragen (ook afgeronde) laat opzoeken.
 
 **Hoe dit samenwerkt met de rest van de engine**: `ProcurementEngine`, de approval-flow en het
 plaatsen van orders werken volledig in termen van dit prototype's eigen `PurchaseRequest`-tabel
