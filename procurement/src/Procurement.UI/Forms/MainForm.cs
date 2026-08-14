@@ -373,9 +373,14 @@ namespace Procurement.UI.Forms
         /// <summary>Column widths shared by both grids (see PopulateRequestsGrid/LoadLinesForSelectedRequestAsync) — AllCells autosize fits the *widest* value in the whole result set, which makes these columns wider than their typical content needs. Capping their initial width instead still leaves them user-resizable (Resizable stays the default).</summary>
         private static void ApplyMaxColumnWidths(DataGridView grid)
         {
-            SetFixedColumnWidth(grid, "PartID", 90);
+            // PartID/ManufacturingPart were originally given a flat pixel width, but that turned
+            // out too narrow for real values — DataGridView doesn't drop the overflow, it shows an
+            // ellipsis ("...") instead, which looked like the trimming fix hadn't actually run.
+            // Character-based widths (like Desc2 already used) size to actual typical content
+            // instead of a guessed pixel number.
+            SetCharacterBasedColumnWidth(grid, "PartID", 14);
             SetFixedColumnWidth(grid, "Rev", 45);
-            SetFixedColumnWidth(grid, "ManufacturingPart", 150);
+            SetCharacterBasedColumnWidth(grid, "ManufacturingPart", 22);
             SetCharacterBasedColumnWidth(grid, "Desc2", 30);
         }
 
