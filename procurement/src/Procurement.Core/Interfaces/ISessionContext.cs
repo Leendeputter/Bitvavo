@@ -19,5 +19,15 @@ namespace Procurement.Core.Interfaces
         string AdminConnectionString { get; }
 
         bool TestMode { get; }
+
+        // The four below are only needed to construct a MAX50 MaxOrderModule instance for writing
+        // (MaxPurchaseOrderRepository) — LoginForm already resolves/caches all of them at login,
+        // this just exposes them through the interface instead of the ISessionContext consumer
+        // reaching into the static ProcurementSession class directly.
+        /// <summary>MAX "primary" connection — same one LoginForm used to look up ExactRMCompanies.</summary>
+        string PrimaryConnectionString { get; }
+        string LicensePath { get; }
+        string LogPath { get; }
+        string LogFile { get; }
     }
 }

@@ -16,5 +16,9 @@ namespace Procurement.Core.Session
         public string SharedConnectionString => ProcurementSession.SharedConnectionString;
         public string AdminConnectionString => ProcurementSession.AdminConnectionString;
         public bool TestMode => ProcurementSession.TestMode;
+        public string PrimaryConnectionString => ProcurementSession.PrimaryConnectionString;
+        public string LicensePath => ProcurementSession.LicensePath;
+        public string LogPath => ProcurementSession.LogPath;
+        public string LogFile => ProcurementSession.LogFile;
     }
 }

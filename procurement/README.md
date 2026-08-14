@@ -350,15 +350,20 @@ Supplier C re-reel 4.000 @ €0,105) letterlijk reproduceert, inclusief de twee 
 - **Audit log**: elke stap van de workflow schrijft een `ProcurementEvent`; `DbAuditLogger` maskeert
   bekende secret-sleutelnamen (`apiKey`, `secret`, `password`, `token`, ...) voordat een payload
   wordt weggeschreven.
-- **MAX PO-aanmaak: scaffolding klaar, implementatie nog niet** — `MaxErpConnector.UseMockPurchaseOrders`
-  (default `true`) bepaalt of "Order plaatsen" naar dit prototype's eigen `Procurement_PurchaseOrder`
-  blijft schrijven, of straks naar een echte MAX-PO via `MaxPurchaseOrderRepository`. Die laatste
-  gooit voorlopig bewust een `NotImplementedException` — in tegenstelling tot de
-  Order_Master/Part_Master-leeskant (`MaxOrderRepository`), waarvan de exacte tabel-/kolomstructuur
-  vooraf is aangeleverd, is er voor MAX's PO-aanmaak nog geen geverifieerd schema. Zie de
-  class-comment van `MaxPurchaseOrderRepository` voor precies welke informatie daarvoor nodig is
-  (tabellen/kolommen of liever een MAX-eigen API/stored procedure, PO-nummergeneratie, statuswaarden,
-  een testomgeving) voordat dit ingevuld kan worden.
+- **MAX PO-aanmaak: header geïmplementeerd, regel/koppeling nog niet geverifieerd** —
+  `MaxErpConnector.UseMockPurchaseOrders` (default `true`) bepaalt of "Order plaatsen" naar dit
+  prototype's eigen `Procurement_PurchaseOrder` blijft schrijven, of naar een echte MAX-PO via
+  `MaxPurchaseOrderRepository`. Die laatste roept, in plaats van rechtstreeks tabellen te
+  benaderen, `MaxOrderNET.MaxOrderModule.AddPOHeading`/`AddPODetail` aan (aangeleverd als werkend
+  VB.NET-voorbeeld) — dat is de veilige aanpak, want MAX's eigen validaties/business rules blijven
+  dan intact. **Zet `UseMockPurchaseOrders` nog niet op `false`**: het aangeleverde voorbeeld toont
+  het aanmaken van een header en een regel als twee onafhankelijke, losse demo's (beide met een
+  leeg ordernummer), dus het is nog niet bevestigd hoe een regel daadwerkelijk aan de zojuist
+  aangemaakte header gekoppeld wordt. Zie de class-comment van `MaxPurchaseOrderRepository` voor de
+  volledige lijst openstaande vragen (regel/header-koppeling, de betekenis van `AddPODetail`'s
+  laatste 4 parameters, welke headervelden per leverancier uit Vendor_Master moeten komen i.p.v.
+  vaste waarden, en hoe de oorspronkelijke MAX-order na PO-aanmaak verwijderd/afgesloten wordt zodat
+  die niet als open aanvraag in de query blijft staan).
 
 ## Bekende beperkingen van dit prototype
 

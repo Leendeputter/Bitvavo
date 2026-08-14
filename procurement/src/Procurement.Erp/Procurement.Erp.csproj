@@ -13,6 +13,30 @@
     <Reference Include="System.Data" />
   </ItemGroup>
 
+  <!--
+    Same MAX50 (Exact MAX ERP .NET Update SDK) transitive dependencies as Procurement.UI.csproj —
+    needed here too now that MaxPurchaseOrderRepository calls MaxOrderNET's MaxOrderModule
+    directly (AddPOHeading/AddPODetail) instead of raw SQL. See Procurement.UI.csproj's own
+    comment for the same "discovered one FileNotFoundException at a time" caveat.
+  -->
+  <ItemGroup>
+    <PackageReference Include="NLog" Version="4.7.15" />
+    <PackageReference Include="Dapper" Version="1.40.0" />
+    <PackageReference Include="DapperExtensions" Version="1.4.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="MAXCore">
+      <HintPath>F:\Software\MAX\MAX Update\MAXUpdateNet VB.NET Sample Code\bin\MAXCore.dll</HintPath>
+    </Reference>
+    <Reference Include="MaxOrderNET">
+      <HintPath>F:\Software\MAX\MAX Update\MAXUpdateNet VB.NET Sample Code\bin\MaxOrderNET.dll</HintPath>
+    </Reference>
+    <Reference Include="MaxTransNET">
+      <HintPath>F:\Software\MAX\MAX Update\MAXUpdateNet VB.NET Sample Code\bin\MaxTransNET.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Procurement.Core\Procurement.Core.csproj" />
     <ProjectReference Include="..\Procurement.Data\Procurement.Data.csproj" />

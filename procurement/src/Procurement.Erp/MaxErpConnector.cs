@@ -46,10 +46,16 @@ namespace Procurement.Erp
 
         /// <summary>
         /// Whether "Order plaatsen" writes to this app's own Procurement_PurchaseOrder table (true,
-        /// the default and only currently-working option) or attempts a real MAX PO via
-        /// MaxPurchaseOrderRepository (false). See that class's comment for what's still needed
-        /// before the real path works — flipping this before then throws a clear
-        /// NotImplementedException instead of silently doing the wrong thing.
+        /// the default and only currently-verified option) or attempts a real MAX PO via
+        /// MaxPurchaseOrderRepository (false).
+        ///
+        /// DO NOT flip this to false yet. MaxPurchaseOrderRepository's PO header creation
+        /// (AddPOHeading) is implemented from a working example, but line creation (AddPODetail)
+        /// and — critically — how a line actually gets linked to the header it's meant to belong to
+        /// are still unconfirmed (see that class's comment for the exact open questions). Flipping
+        /// this now would call real MAX API methods against the live administration with that
+        /// linkage unverified, which is exactly the "silently wrong data in a shared ERP" risk this
+        /// flag exists to prevent.
         /// </summary>
         public bool UseMockPurchaseOrders { get; set; } = true;
 
