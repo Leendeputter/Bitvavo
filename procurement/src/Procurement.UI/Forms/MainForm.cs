@@ -48,6 +48,15 @@ namespace Procurement.UI.Forms
         private Button _auditLogButton;
         private Label _statusLabel;
 
+        // Every action button shares this one "an operation is in flight" gate (SetBusy) instead of
+        // each handler only disabling itself — with only the triggering button disabled, every other
+        // button stayed clickable during a Query/sourcing/etc., so e.g. clicking "Orderbevestiging
+        // verwerken" while a Query was still running fired two overlapping operations against the
+        // same MAX SqlConnections (those aren't behind the ProcurementDbContext gate that serializes
+        // EF6 access — see ProcurementDbContext.RunGuardedAsync), and the query could get interrupted
+        // outright — reported directly by the user, not a hypothetical.
+        private bool _isBusy;
+
         public MainForm(CompositionRoot composition)
         {
             _composition = composition ?? throw new ArgumentNullException(nameof(composition));
@@ -344,8 +353,8 @@ namespace Procurement.UI.Forms
 
         private async System.Threading.Tasks.Task QueryOrdersAsync()
         {
-            _queryButton.Enabled = false;
-            UseWaitCursor = true;
+            if (_isBusy) return;
+            SetBusy(true);
             try
             {
                 await RefreshRequestsAsync();
@@ -356,8 +365,7 @@ namespace Procurement.UI.Forms
             }
             finally
             {
-                UseWaitCursor = false;
-                _queryButton.Enabled = true;
+                SetBusy(false);
             }
         }
 
@@ -576,6 +584,8 @@ namespace Procurement.UI.Forms
         /// </summary>
         private async System.Threading.Tasks.Task SourceRequestsAsync(IReadOnlyList<int> requestIds, int confirmIfMoreThan)
         {
+            if (_isBusy) return;
+
             if (requestIds.Count == 0)
             {
                 MessageBox.Show(this, "Selecteer eerst een of meer aanvragen.", "Geen selectie", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -590,58 +600,58 @@ namespace Procurement.UI.Forms
                 if (confirm != DialogResult.Yes) return;
             }
 
-            _startSourcingButton.Enabled = false;
-            _sourceAllButton.Enabled = false;
-            UseWaitCursor = true;
-
-            var readyToOrder = 0;
-            var waitingApproval = 0;
-            var exceptionCount = 0;
-            var failed = 0;
-            var skipped = 0;
-
-            for (var i = 0; i < requestIds.Count; i++)
+            SetBusy(true);
+            try
             {
-                SetStatus($"Sourcing {i + 1}/{requestIds.Count}...");
-                try
+                var readyToOrder = 0;
+                var waitingApproval = 0;
+                var exceptionCount = 0;
+                var failed = 0;
+                var skipped = 0;
+
+                for (var i = 0; i < requestIds.Count; i++)
                 {
-                    // Re-sourcing a request that's already WaitingApproval would re-run every line
-                    // that hasn't been decided on yet — SourceAndProcessLineAsync only skips a line
-                    // once it has a SupplierSelection, which a line awaiting approval doesn't have
-                    // yet, so it would get sourced again and end up with a second, duplicate
-                    // ApprovalRequest. Harmless to re-run for Pending (never sourced) or Exception
-                    // (worth retrying).
-                    var current = await _composition.PurchaseRequestRepository.GetByIdAsync(requestIds[i]);
-                    if (current == null) continue;
-                    if (current.Status == PurchaseRequestStatus.WaitingApproval)
+                    SetStatus($"Sourcing {i + 1}/{requestIds.Count}...");
+                    try
                     {
-                        skipped++;
-                        continue;
+                        // Re-sourcing a request that's already WaitingApproval would re-run every line
+                        // that hasn't been decided on yet — SourceAndProcessLineAsync only skips a line
+                        // once it has a SupplierSelection, which a line awaiting approval doesn't have
+                        // yet, so it would get sourced again and end up with a second, duplicate
+                        // ApprovalRequest. Harmless to re-run for Pending (never sourced) or Exception
+                        // (worth retrying).
+                        var current = await _composition.PurchaseRequestRepository.GetByIdAsync(requestIds[i]);
+                        if (current == null) continue;
+                        if (current.Status == PurchaseRequestStatus.WaitingApproval)
+                        {
+                            skipped++;
+                            continue;
+                        }
+
+                        await _composition.Engine.SourcePurchaseRequestAsync(requestIds[i]);
+                        var updated = await _composition.PurchaseRequestRepository.GetByIdAsync(requestIds[i]);
+                        if (updated == null) continue;
+                        if (updated.Status == PurchaseRequestStatus.ReadyToOrder) readyToOrder++;
+                        else if (updated.Status == PurchaseRequestStatus.WaitingApproval) waitingApproval++;
+                        else if (updated.Status == PurchaseRequestStatus.Exception) exceptionCount++;
                     }
+                    catch (Exception)
+                    {
+                        failed++;
+                    }
+                }
 
-                    await _composition.Engine.SourcePurchaseRequestAsync(requestIds[i]);
-                    var updated = await _composition.PurchaseRequestRepository.GetByIdAsync(requestIds[i]);
-                    if (updated == null) continue;
-                    if (updated.Status == PurchaseRequestStatus.ReadyToOrder) readyToOrder++;
-                    else if (updated.Status == PurchaseRequestStatus.WaitingApproval) waitingApproval++;
-                    else if (updated.Status == PurchaseRequestStatus.Exception) exceptionCount++;
-                }
-                catch (Exception)
-                {
-                    failed++;
-                }
+                var summary = $"Sourcing klaar: {readyToOrder} klaar om te bestellen, {waitingApproval} wacht op goedkeuring, {exceptionCount} met fout";
+                if (failed > 0) summary += $", {failed} mislukt";
+                if (skipped > 0) summary += $", {skipped} overgeslagen (al in afwachting van goedkeuring)";
+                SetStatus(summary + ".");
+
+                await LoadLocalRequestsAsync();
             }
-
-            UseWaitCursor = false;
-            _startSourcingButton.Enabled = true;
-            _sourceAllButton.Enabled = true;
-
-            var summary = $"Sourcing klaar: {readyToOrder} klaar om te bestellen, {waitingApproval} wacht op goedkeuring, {exceptionCount} met fout";
-            if (failed > 0) summary += $", {failed} mislukt";
-            if (skipped > 0) summary += $", {skipped} overgeslagen (al in afwachting van goedkeuring)";
-            SetStatus(summary + ".");
-
-            await LoadLocalRequestsAsync();
+            finally
+            {
+                SetBusy(false);
+            }
         }
 
         /// <summary>
@@ -653,6 +663,8 @@ namespace Procurement.UI.Forms
         /// </summary>
         private async System.Threading.Tasks.Task PlaceOrdersAsync(IReadOnlyList<int> requestIds)
         {
+            if (_isBusy) return;
+
             if (requestIds.Count == 0)
             {
                 MessageBox.Show(this, "Selecteer eerst een of meer aanvragen.", "Geen selectie", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -664,8 +676,7 @@ namespace Procurement.UI.Forms
                 "Bevestigen", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
             if (confirm != DialogResult.Yes) return;
 
-            _placeOrdersButton.Enabled = false;
-            UseWaitCursor = true;
+            SetBusy(true);
             try
             {
                 await _composition.Engine.PlaceOrdersAsync(requestIds, _composition.Session.UserName);
@@ -677,11 +688,12 @@ namespace Procurement.UI.Forms
             }
             finally
             {
-                UseWaitCursor = false;
-                _placeOrdersButton.Enabled = true;
+                // Refreshed unconditionally, success or failure — a partial batch (some supplier
+                // groups placed before one failed) should still show what did go through instead of
+                // only refreshing on a clean run.
+                await LoadLocalRequestsAsync();
+                SetBusy(false);
             }
-
-            await LoadLocalRequestsAsync();
         }
 
         /// <summary>
@@ -692,43 +704,46 @@ namespace Procurement.UI.Forms
         /// </summary>
         private async System.Threading.Tasks.Task ProcessOrderConfirmationsAsync()
         {
-            _processConfirmationsButton.Enabled = false;
-            UseWaitCursor = true;
+            if (_isBusy) return;
+            SetBusy(true);
+            Core.Models.OrderConfirmationResult result;
             try
             {
-                var result = await _composition.Engine.ProcessOrderConfirmationsAsync(_composition.Session.UserName);
-
-                var summary = $"Orderbevestiging verwerkt: {result.CheckedOrderCount} order(s) gecontroleerd";
-                if (result.SkippedOrderCount > 0) summary += $", {result.SkippedOrderCount} overgeslagen (geen OrderStatus-ondersteuning of nog niet bij leverancier ingediend)";
-                if (result.Exceptions.Count > 0) summary += $", {result.Exceptions.Count} afwijking(en)";
-                SetStatus(summary + ".");
-
-                if (result.Exceptions.Count > 0)
-                {
-                    using (var form = new OrderConfirmationExceptionsForm(result.Exceptions))
-                    {
-                        form.ShowDialog(this);
-                    }
-                }
-                else if (result.CheckedOrderCount > 0)
-                {
-                    MessageBox.Show(this, "Alle gecontroleerde orders zijn bevestigd zoals besteld — geen afwijkingen.",
-                        "Orderbevestiging verwerkt", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                }
-                else
-                {
-                    MessageBox.Show(this, "Geen orders gevonden die op een bevestiging wachten.",
-                        "Orderbevestiging verwerkt", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                }
+                result = await _composition.Engine.ProcessOrderConfirmationsAsync(_composition.Session.UserName);
             }
             catch (Exception ex)
             {
                 MessageBox.Show(this, ex.Message, "Fout bij verwerken van orderbevestiging", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
             }
             finally
             {
-                UseWaitCursor = false;
-                _processConfirmationsButton.Enabled = true;
+                SetBusy(false);
+            }
+
+            var summary = $"Orderbevestiging verwerkt: {result.CheckedOrderCount} order(s) gecontroleerd";
+            if (result.SkippedOrderCount > 0) summary += $", {result.SkippedOrderCount} overgeslagen (geen OrderStatus-ondersteuning of nog niet bij leverancier ingediend)";
+            if (result.Exceptions.Count > 0) summary += $", {result.Exceptions.Count} afwijking(en)";
+            SetStatus(summary + ".");
+
+            // Shown only after SetBusy(false) — a modal dialog on top of a still-busy wait cursor
+            // looked like the cursor was stuck for as long as the user kept the dialog open.
+            if (result.Exceptions.Count > 0)
+            {
+                using (var form = new OrderConfirmationExceptionsForm(result.Exceptions))
+                {
+                    form.ShowDialog(this);
+                }
+            }
+            else if (result.CheckedOrderCount > 0)
+            {
+                MessageBox.Show(this, "Alle gecontroleerde orders zijn bevestigd zoals besteld — geen afwijkingen.",
+                    "Orderbevestiging verwerkt", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            else
+            {
+                MessageBox.Show(this, "Geen orders gevonden die op een bevestiging wachten.",
+                    "Orderbevestiging verwerkt", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
         }
 
@@ -796,5 +811,29 @@ namespace Procurement.UI.Forms
         }
 
         private void SetStatus(string text) => _statusLabel.Text = text;
+
+        /// <summary>
+        /// Every action-button handler calls this instead of managing its own Enabled/UseWaitCursor
+        /// — see the _isBusy field comment for why "only disable the button that was clicked" isn't
+        /// enough. SetBusy(true) at the start of a handler (before the first await) and
+        /// SetBusy(false) in that handler's finally.
+        /// </summary>
+        private void SetBusy(bool busy)
+        {
+            _isBusy = busy;
+            UseWaitCursor = busy;
+            var enabled = !busy;
+            _queryButton.Enabled = enabled;
+            _newRequestButton.Enabled = enabled;
+            _startSourcingButton.Enabled = enabled;
+            _sourceAllButton.Enabled = enabled;
+            _placeOrdersButton.Enabled = enabled;
+            _processConfirmationsButton.Enabled = enabled;
+            _orderDetailButton.Enabled = enabled;
+            _approvalsButton.Enabled = enabled;
+            _supplierMappingButton.Enabled = enabled;
+            _settingsButton.Enabled = enabled;
+            _auditLogButton.Enabled = enabled;
+        }
     }
 }
