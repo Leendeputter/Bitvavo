@@ -38,24 +38,33 @@ namespace Procurement.Erp
     ///     correctly placed at that point, and aborting the whole batch over a leftover PR row would
     ///     be a worse outcome than leaving that one row for manual cleanup.
     ///
+    /// Confirmed against MaxOrderModule's full source (supplied directly): GetErrors() is a public
+    /// method (used below the same way AddPOHeading/DeletePurchaseRequisitionLineItem use it
+    /// internally for their own out-parameters), and PR rows use "00" for both LINNUM_10 and
+    /// DELNUM_10 (not "01" — confirmed throughout, e.g. AddPurReq), which is what
+    /// RemoveOriginalOrder's fallback now matches.
+    ///
     /// Still open / worth confirming before relying on this in production:
     ///  1. MaxOrderModule.AssignPRsToPO(int, string TargetOrder, List&lt;OrderAssign&gt;, bool, bool,
-    ///     bool, bool, bool, string) looks like it may be the more "correct", atomic way to do this
-    ///     — converting an existing PR row in place (re-keying it onto the target PO, which would
-    ///     fold step 2 into step 1 as a single MAX-native operation) rather than inserting a brand
-    ///     new row and separately deleting the old one. Not used here because OrderAssign's full
-    ///     field list isn't known, TargetOrder's exact semantics (must it already exist, or can it
-    ///     be created inline — the AddPOHeading call visible inside AssignPRsToPO's decompiled body
-    ///     sits behind a condition that looks permanently false) aren't confirmed, and it's unclear
-    ///     whether it lets the caller override quantity/price (vs. always carrying over the PR's own
-    ///     CURQTY_10) — which matters here, since sourcing can compute an OfferedQuantity that
-    ///     differs from the PR's originally requested quantity (order multiples/MOQ rounding).
+    ///     bool, bool, bool, string) — and its sibling AssignPONumber, which wraps a bulk
+    ///     "auto-assign every pending/approved PR to POs" operation rather than a caller-chosen
+    ///     batch — look like they may be the more "correct", atomic way to do this: converting an
+    ///     existing PR row in place (re-keying it onto the target PO, folding step 2 into step 1 as
+    ///     a single MAX-native operation) rather than inserting a brand new row and separately
+    ///     deleting the old one. Not used here because OrderAssign's full field list isn't known,
+    ///     TargetOrder's exact semantics (must it already exist, or can it be created inline — the
+    ///     AddPOHeading call visible inside AssignPRsToPO's decompiled body sits behind a condition
+    ///     that looks permanently false) aren't confirmed, and it's unclear whether either lets the
+    ///     caller override quantity/price (vs. always carrying over the PR's own CURQTY_10) — which
+    ///     matters here, since sourcing can compute an OfferedQuantity that differs from the PR's
+    ///     originally requested quantity (order multiples/MOQ rounding). ChangePurReq(Order_Master,
+    ///     bool AssignPO, bool ApprovePR) also showed up and looks closer to MAX's own PR-approval
+    ///     workflow (quantity/status adjustments on the PR itself) than to PR-to-PO conversion.
     ///  2. FixVar ("F") and RoundType (3) — passed through unchanged from the supplied working
     ///     example; still don't know precisely what they control.
-    ///  3. GetErrors() is assumed to be a public MaxOrderModule method (called internally by
-    ///     AddPOHeading/DeletePurchaseRequisitionLineItem's own error-message out-parameters) — used
-    ///     below to get a message after an AddPODetail failure, which has no out-param of its own.
-    ///  4. No status-update method has been found yet — UpdateStatusAsync stays unimplemented.
+    ///  3. No status-update method has been found yet — UpdateStatusAsync stays unimplemented.
+    ///     ChangePOHeading(Purchase_Order_Code, out errMsg)/ChangePODetail(Order_Master, bool) exist
+    ///     and look plausible for this, but aren't confirmed.
     /// </summary>
     public class MaxPurchaseOrderRepository
     {
@@ -141,7 +150,11 @@ namespace Procurement.Erp
                 return;
             }
 
-            var deleted = maxOrderModule.DeletePurchaseRequisitionLineItem(ordnum, requestLine.MaxLineNumber, requestLine.MaxDeliveryNumber ?? "01", out var deleteErrorMessage);
+            // "01" as a fallback would have been wrong: PR rows use "00" for both LINNUM_10 and
+            // DELNUM_10 (confirmed throughout MaxOrderModule's own source, e.g. AddPurReq), unlike
+            // PO lines which start at "01" — this fallback only matters for rows synced before
+            // MaxDeliveryNumber existed anyway, since it's otherwise always the real synced value.
+            var deleted = maxOrderModule.DeletePurchaseRequisitionLineItem(ordnum, requestLine.MaxLineNumber, requestLine.MaxDeliveryNumber ?? "00", out var deleteErrorMessage);
             if (!deleted)
                 log.Warn($"MAX DeletePurchaseRequisitionLineItem is mislukt voor {ordnum}-{requestLine.MaxLineNumber}-{requestLine.MaxDeliveryNumber}: {deleteErrorMessage}");
         }

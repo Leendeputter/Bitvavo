@@ -372,15 +372,19 @@ Supplier C re-reel 4.000 @ €0,105) letterlijk reproduceert, inclusief de twee 
      regel voor handmatige opruiming te laten staan.
 
   **Zet `UseMockPurchaseOrders` nog niet op `false`** — niet omdat de aanpak nog giswerk is (die is
-  nu gebaseerd op `MaxOrderModule`'s eigen gedecompileerde broncode voor beide methodes, aangeleverd
-  door de klant), maar omdat nog niets hiervan tegen een echte MAX-administratie getest is. Zie de
-  class-comment van `MaxPurchaseOrderRepository` voor de resterende openstaande punten:
-  `AssignPRsToPO` lijkt mogelijk een correctere, atomaire aanpak (PR direct ombouwen naar PO-regel
-  i.p.v. nieuw aanmaken + apart verwijderen) maar het volledige veldenoverzicht van `OrderAssign` en
-  het exacte gedrag van `TargetOrder` zijn niet bevestigd; de betekenis van `AddPODetail`'s
-  `FixVar`/`RoundType`-parameters staat nog niet vast; en er is nog geen methode gevonden voor
-  PO-statusupdates. Test dit bij voorkeur eerst één keer tegen een MAX test-/sandbox-administratie
-  voordat het tegen een live administratie draait.
+  nu gebaseerd op `MaxOrderModule`'s volledige, aangeleverde broncode, niet meer op één geïsoleerd
+  voorbeeld), maar omdat nog niets hiervan tegen een echte MAX-administratie getest is. Bevestigd via
+  de volledige module-code: `GetErrors()` is publiek (gebruikt voor foutmeldingen na een mislukte
+  `AddPODetail`), en een PR-rij gebruikt `"00"` voor zowel `LINNUM_10` als `DELNUM_10` (niet `"01"`
+  zoals eerst aangenomen). Zie de class-comment van `MaxPurchaseOrderRepository` voor de resterende
+  openstaande punten: `AssignPRsToPO` (en de verwante bulkmethode `AssignPONumber`) lijken mogelijk
+  een correctere, atomaire aanpak (PR direct ombouwen naar PO-regel i.p.v. nieuw aanmaken + apart
+  verwijderen), maar `OrderAssign`'s volledige veldenoverzicht, `TargetOrder`'s exacte gedrag, en of
+  een eigen hoeveelheid meegegeven kan worden (nodig na order-multiples/MOQ-afronding) zijn niet
+  bevestigd; de betekenis van `AddPODetail`'s `FixVar`/`RoundType`-parameters staat nog niet vast; en
+  voor PO-statusupdates zijn `ChangePOHeading`/`ChangePODetail` kandidaten maar nog niet bevestigd.
+  Test dit bij voorkeur eerst één keer tegen een MAX test-/sandbox-administratie voordat het tegen
+  een live administratie draait.
 
 ## Bekende beperkingen van dit prototype
 
