@@ -42,7 +42,13 @@ namespace Procurement.Erp
     /// method (used below the same way AddPOHeading/DeletePurchaseRequisitionLineItem use it
     /// internally for their own out-parameters), and PR rows use "00" for both LINNUM_10 and
     /// DELNUM_10 (not "01" — confirmed throughout, e.g. AddPurReq), which is what
-    /// RemoveOriginalOrder's fallback now matches.
+    /// RemoveOriginalOrder's fallback now matches. Also confirmed: inside AddPODetail's
+    /// CreateHeader:true branch, right after minting the PO number, it sets
+    /// OM.LINNUM_10 = "01"/OM.DELNUM_10 = "01" and ORDER_10 = ORDNUM_10+LINNUM_10+DELNUM_10 itself
+    /// — matches leaving those blank on the first line here and letting AddPODetail fill them in.
+    /// For every later line (CreateHeader:false) that same ORDER_10 assignment is NOT reached
+    /// (it's inside the CreateHeader branch only), so BuildPurchaseOrderLine computes it the same
+    /// way itself for those lines instead of risking a blank ORDER_10 on the inserted row.
     ///
     /// Still open / worth confirming before relying on this in production:
     ///  1. MaxOrderModule.AssignPRsToPO(int, string TargetOrder, List&lt;OrderAssign&gt;, bool, bool,
@@ -190,7 +196,13 @@ namespace Procurement.Erp
                 ORDNUM_10 = isFirstLine ? "" : erpPoNumber,
                 LINNUM_10 = isFirstLine ? "" : $"{lineNumber:D2}",
                 DELNUM_10 = isFirstLine ? "" : "01",
-                ORDER_10 = "",
+                // AddPODetail computes ORDER_10 = ORDNUM_10 + LINNUM_10 + DELNUM_10 itself when
+                // CreateHeader:true (confirmed in the decompiled source, right after it mints the
+                // new PO number) — but that assignment sits inside the CreateHeader-only branch, so
+                // for every later line of the same PO (CreateHeader:false, ORDNUM_10/LINNUM_10/
+                // DELNUM_10 already known here) it's built the same way ourselves rather than risk
+                // an inserted row with this field left blank.
+                ORDER_10 = isFirstLine ? "" : $"{erpPoNumber}{lineNumber:D2}01",
                 PRTNUM_10 = requestLine.ErpArticleId,
                 CURDUE_10 = requestLine.RequiredDate ?? now,
                 RECFLG_10 = "N",

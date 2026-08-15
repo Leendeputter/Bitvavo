@@ -53,9 +53,8 @@ namespace Procurement.Erp
         /// DeletePurchaseRequisitionLineItem, not hand-waving), but because none of it has been
         /// exercised against a real MAX administration yet. See MaxPurchaseOrderRepository's class
         /// comment for the specific remaining open questions (AssignPRsToPO as a possibly-better
-        /// alternative, FixVar/RoundType's exact meaning, an unconfirmed numeric-type assumption on
-        /// FORCUR_10) before trusting this against live data — ideally test it once against a MAX
-        /// test/sandbox company first, if one exists.
+        /// alternative, FixVar/RoundType's exact meaning) before trusting this against live data —
+        /// ideally test it once against a MAX test/sandbox company first, if one exists.
         /// </summary>
         public bool UseMockPurchaseOrders { get; set; } = true;
 
