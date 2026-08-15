@@ -2,7 +2,7 @@ using System;
 using System.Data.SqlClient;
 using System.Threading.Tasks;
 using MAX50;
-using MaxOrderNET;
+using MaxOrder;
 using Procurement.Core.Entities;
 using Procurement.Core.Interfaces;
 using Procurement.Core.Models;
@@ -101,37 +101,42 @@ namespace Procurement.Erp
                 admin.Open();
 
                 var log = MyLogManager.Create(_session.LogFile, _session.LogPath, true).GetCurrentClassLogger();
-                var maxOrderModule = new MaxOrderModule(primary, admin, _session.CompanyId, log, _session.LicensePath, _session.UserName);
 
-                string erpPoNumber = null;
-                var lineNumber = 1;
-
-                foreach (var draftLine in draft.Lines)
+                // MaxOrderModule implements IDisposable (confirmed in the decompiled source) —
+                // disposed here even though the SqlConnections it wraps are already closed by the
+                // outer using blocks, since it's unclear whether it holds any other unmanaged state.
+                using (var maxOrderModule = new MaxOrderModule(primary, admin, _session.CompanyId, log, _session.LicensePath, _session.UserName))
                 {
-                    var requestLine = await _purchaseRequestRepository.GetLineByIdAsync(draftLine.PurchaseRequestLineId);
-                    if (requestLine == null)
-                        throw new InvalidOperationException($"PurchaseRequestLine {draftLine.PurchaseRequestLineId} niet gevonden — kan geen MAX PO-regel aanmaken.");
+                    string erpPoNumber = null;
+                    var lineNumber = 1;
 
-                    var isFirstLine = erpPoNumber == null;
-                    var poLine = BuildPurchaseOrderLine(supplier.VendorId, requestLine, draftLine, erpPoNumber, lineNumber, isFirstLine);
-
-                    var added = maxOrderModule.AddPODetail(poLine, IncOrdRev: true, CreateHeader: isFirstLine, FixVar: "F", RoundType: 3);
-                    if (!added)
+                    foreach (var draftLine in draft.Lines)
                     {
-                        var errorMessage = maxOrderModule.GetErrors();
-                        throw new InvalidOperationException(
-                            $"MAX AddPODetail is mislukt voor regel {draftLine.PurchaseRequestLineId}" +
-                            (erpPoNumber != null ? $" (PO {erpPoNumber})" : "") + $": {errorMessage}");
+                        var requestLine = await _purchaseRequestRepository.GetLineByIdAsync(draftLine.PurchaseRequestLineId);
+                        if (requestLine == null)
+                            throw new InvalidOperationException($"PurchaseRequestLine {draftLine.PurchaseRequestLineId} niet gevonden — kan geen MAX PO-regel aanmaken.");
+
+                        var isFirstLine = erpPoNumber == null;
+                        var poLine = BuildPurchaseOrderLine(supplier.VendorId, requestLine, draftLine, erpPoNumber, lineNumber, isFirstLine);
+
+                        var added = maxOrderModule.AddPODetail(poLine, IncOrdRev: true, CreateHeader: isFirstLine, FixVar: "F", RoundType: 3);
+                        if (!added)
+                        {
+                            var errorMessage = maxOrderModule.GetErrors();
+                            throw new InvalidOperationException(
+                                $"MAX AddPODetail is mislukt voor regel {draftLine.PurchaseRequestLineId}" +
+                                (erpPoNumber != null ? $" (PO {erpPoNumber})" : "") + $": {errorMessage}");
+                        }
+
+                        if (isFirstLine)
+                            erpPoNumber = poLine.ORDNUM_10;
+                        lineNumber++;
+
+                        RemoveOriginalOrder(maxOrderModule, log, requestLine);
                     }
 
-                    if (isFirstLine)
-                        erpPoNumber = poLine.ORDNUM_10;
-                    lineNumber++;
-
-                    RemoveOriginalOrder(maxOrderModule, log, requestLine);
+                    return erpPoNumber;
                 }
-
-                return erpPoNumber;
             }
         }
 
