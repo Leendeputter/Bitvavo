@@ -18,5 +18,19 @@ namespace Procurement.Core.Interfaces
         Task<string> CreatePurchaseOrderAsync(PurchaseOrderDraft draft);
 
         Task UpdatePurchaseOrderStatusAsync(string erpPoNumber, string status);
+
+        /// <summary>
+        /// Applies a fetched supplier order-status/confirmation to a placed PO: local tracking
+        /// fields always get updated (ConfirmedQuantity/ConfirmedUnitPrice per line, a
+        /// PurchaseOrderDelivery for the estimated ship date). In real MAX mode this also writes the
+        /// three MAX fields the business actually uses for this (spec, confirmed directly by the
+        /// user rather than guessed): Purchase_Order_Code.CONFRM_16 (supplier's own order/
+        /// confirmation number), Order_Master.ORDREF_10 (prefixed with "O "/"OP " — see
+        /// MaxPurchaseOrderRepository.BuildConfirmedReference), and Order_Master.CURDUE_10 (updated
+        /// to the confirmed ship date when it differs). Never throws for a single line's mismatch —
+        /// deviations are reported back via the caller's own comparison against
+        /// OrderConfirmationException, not by this method refusing to apply anything.
+        /// </summary>
+        Task ApplyOrderConfirmationAsync(PurchaseOrder order, SupplierOrderStatus supplierStatus);
     }
 }

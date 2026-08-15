@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Procurement.Core.Enums;
 using Procurement.Core.Exceptions;
 using Procurement.Core.Interfaces;
+using Procurement.Core.Mocking;
 using Procurement.Core.Models;
 
 namespace Procurement.Suppliers.Other
@@ -25,8 +26,11 @@ namespace Procurement.Suppliers.Other
         private readonly string _datasheetHost;
         private readonly GenericMockSupplierOptions _options;
 
-        private readonly ConcurrentDictionary<string, SupplierOrderResult> _ordersByIdempotencyKey =
-            new ConcurrentDictionary<string, SupplierOrderResult>();
+        // Lines kept alongside the result so GetOrderStatusAsync can echo a per-line mock
+        // confirmation back (MockOrderConfirmationBuilder) — CreateOrderAsync's own result has no
+        // line-level detail, only totals.
+        private readonly ConcurrentDictionary<string, (SupplierOrderResult Result, List<SupplierOrderRequestLine> Lines)> _ordersByIdempotencyKey =
+            new ConcurrentDictionary<string, (SupplierOrderResult Result, List<SupplierOrderRequestLine> Lines)>();
 
         public string SupplierCode => _supplierCode;
 
@@ -114,7 +118,7 @@ namespace Procurement.Suppliers.Other
             EnsureMockMode();
 
             if (_ordersByIdempotencyKey.TryGetValue(idempotencyKey, out var existing))
-                return Task.FromResult(existing);
+                return Task.FromResult(existing.Result);
 
             if (request.Lines == null || request.Lines.Count == 0)
             {
@@ -142,7 +146,7 @@ namespace Procurement.Suppliers.Other
                 SubmittedAt = DateTime.UtcNow
             };
 
-            _ordersByIdempotencyKey[idempotencyKey] = result;
+            _ordersByIdempotencyKey[idempotencyKey] = (result, request.Lines);
             return Task.FromResult(result);
         }
 
@@ -150,8 +154,8 @@ namespace Procurement.Suppliers.Other
         {
             EnsureMockMode();
 
-            var placed = _ordersByIdempotencyKey.Values.FirstOrDefault(o => o.SupplierOrderNumber == supplierOrderNumber);
-            if (placed == null)
+            var placed = _ordersByIdempotencyKey.Values.FirstOrDefault(o => o.Result.SupplierOrderNumber == supplierOrderNumber);
+            if (placed.Result == null)
             {
                 throw new SupplierException(_supplierCode, SupplierErrorCode.ProductNotFound,
                     $"No mock order found with number {supplierOrderNumber}.");
@@ -161,14 +165,15 @@ namespace Procurement.Suppliers.Other
             {
                 SupplierOrderNumber = supplierOrderNumber,
                 Status = PurchaseOrderStatus.Confirmed,
-                ConfirmedAt = DateTime.UtcNow
+                ConfirmedAt = DateTime.UtcNow,
+                Lines = placed.Lines.Select(l => MockOrderConfirmationBuilder.BuildLine(supplierOrderNumber, l)).ToList()
             });
         }
 
         public Task<bool> CancelOrderAsync(string supplierOrderNumber)
         {
             EnsureMockMode();
-            var key = _ordersByIdempotencyKey.FirstOrDefault(kv => kv.Value.SupplierOrderNumber == supplierOrderNumber).Key;
+            var key = _ordersByIdempotencyKey.FirstOrDefault(kv => kv.Value.Result.SupplierOrderNumber == supplierOrderNumber).Key;
             if (key == null) return Task.FromResult(false);
             return Task.FromResult(_ordersByIdempotencyKey.TryRemove(key, out _));
         }

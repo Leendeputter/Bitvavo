@@ -7,6 +7,7 @@ using Newtonsoft.Json;
 using Procurement.Core.Enums;
 using Procurement.Core.Exceptions;
 using Procurement.Core.Interfaces;
+using Procurement.Core.Mocking;
 using Procurement.Core.Models;
 using Procurement.Suppliers.Farnell.Http;
 
@@ -19,8 +20,11 @@ namespace Procurement.Suppliers.Farnell
         private readonly FarnellOptions _options;
         private readonly ISupplierHttpClient _httpClient;
 
-        private static readonly ConcurrentDictionary<string, SupplierOrderResult> OrdersByIdempotencyKey =
-            new ConcurrentDictionary<string, SupplierOrderResult>();
+        // Lines kept alongside the result so GetOrderStatusAsync can echo a per-line mock
+        // confirmation back (MockOrderConfirmationBuilder) — CreateOrderAsync's own result has no
+        // line-level detail, only totals.
+        private static readonly ConcurrentDictionary<string, (SupplierOrderResult Result, List<SupplierOrderRequestLine> Lines)> OrdersByIdempotencyKey =
+            new ConcurrentDictionary<string, (SupplierOrderResult Result, List<SupplierOrderRequestLine> Lines)>();
 
         public string SupplierCode => Code;
 
@@ -261,7 +265,7 @@ namespace Procurement.Suppliers.Farnell
             }
 
             if (OrdersByIdempotencyKey.TryGetValue(idempotencyKey, out var existing))
-                return Task.FromResult(existing);
+                return Task.FromResult(existing.Result);
 
             if (request.Lines == null || request.Lines.Count == 0)
             {
@@ -289,7 +293,7 @@ namespace Procurement.Suppliers.Farnell
                 SubmittedAt = DateTime.UtcNow
             };
 
-            OrdersByIdempotencyKey[idempotencyKey] = result;
+            OrdersByIdempotencyKey[idempotencyKey] = (result, request.Lines);
             return Task.FromResult(result);
         }
 
@@ -301,8 +305,8 @@ namespace Procurement.Suppliers.Farnell
                     "Farnell real-mode order status is not implemented — see CreateOrderAsync.");
             }
 
-            var placed = OrdersByIdempotencyKey.Values.FirstOrDefault(o => o.SupplierOrderNumber == supplierOrderNumber);
-            if (placed == null)
+            var placed = OrdersByIdempotencyKey.Values.FirstOrDefault(o => o.Result.SupplierOrderNumber == supplierOrderNumber);
+            if (placed.Result == null)
             {
                 throw new SupplierException(Code, SupplierErrorCode.ProductNotFound,
                     $"No mock order found with number {supplierOrderNumber}.");
@@ -312,7 +316,8 @@ namespace Procurement.Suppliers.Farnell
             {
                 SupplierOrderNumber = supplierOrderNumber,
                 Status = PurchaseOrderStatus.Confirmed,
-                ConfirmedAt = DateTime.UtcNow
+                ConfirmedAt = DateTime.UtcNow,
+                Lines = placed.Lines.Select(l => MockOrderConfirmationBuilder.BuildLine(supplierOrderNumber, l)).ToList()
             });
         }
 
@@ -324,7 +329,7 @@ namespace Procurement.Suppliers.Farnell
                     "Farnell real-mode order cancellation is not implemented — see CreateOrderAsync.");
             }
 
-            var key = OrdersByIdempotencyKey.FirstOrDefault(kv => kv.Value.SupplierOrderNumber == supplierOrderNumber).Key;
+            var key = OrdersByIdempotencyKey.FirstOrDefault(kv => kv.Value.Result.SupplierOrderNumber == supplierOrderNumber).Key;
             if (key == null) return Task.FromResult(false);
             return Task.FromResult(OrdersByIdempotencyKey.TryRemove(key, out _));
         }

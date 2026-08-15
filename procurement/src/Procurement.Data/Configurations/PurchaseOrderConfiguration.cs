@@ -41,6 +41,8 @@ namespace Procurement.Data.Configurations
             HasKey(l => l.Id);
 
             Property(l => l.SupplierPartNumber).HasMaxLength(100);
+            Property(l => l.MaxLineNumber).HasMaxLength(10);
+            Property(l => l.MaxDeliveryNumber).HasMaxLength(10);
 
             HasMany(l => l.Deliveries)
                 .WithRequired(d => d.PurchaseOrderLine)

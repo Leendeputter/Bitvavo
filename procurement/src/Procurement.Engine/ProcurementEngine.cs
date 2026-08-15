@@ -590,6 +590,77 @@ namespace Procurement.Engine
             await _erp.UpdatePurchaseOrderStatusAsync(erpPoNumber, result.Status.ToString());
         }
 
+        /// <summary>
+        /// "Orderbevestiging verwerken" (MainForm): checks every PO awaiting confirmation with its
+        /// supplier, applies whatever comes back automatically (local tracking always, plus MAX's
+        /// Confirming/Reference/duedate fields in real mode — see IErpConnector.
+        /// ApplyOrderConfirmationAsync), and returns only the lines that need a human look —
+        /// quantity/price deviating from what was ordered, or a delivery date confirmed later than
+        /// requested. Everything else was already handled by the time this returns; there's nothing
+        /// further to review for a "clean" confirmation. A PO whose adapter doesn't support
+        /// OrderStatus, or that was never actually submitted to the supplier (no
+        /// SupplierOrderNumber — e.g. a ManualProcess adapter), is skipped rather than attempted.
+        /// </summary>
+        public async Task<OrderConfirmationResult> ProcessOrderConfirmationsAsync(string user)
+        {
+            var result = new OrderConfirmationResult();
+            var candidates = await _purchaseOrderRepository.GetAwaitingConfirmationAsync();
+
+            foreach (var order in candidates)
+            {
+                var adapter = _adapters.FirstOrDefault(a => a.SupplierCode == order.SupplierCode);
+                if (adapter == null || adapter.Capabilities.OrderStatus != CapabilityStatus.Supported)
+                {
+                    result.SkippedOrderCount++;
+                    continue;
+                }
+
+                SupplierOrderStatus status;
+                try
+                {
+                    status = await adapter.GetOrderStatusAsync(order.SupplierOrderNumber);
+                }
+                catch (SupplierException ex)
+                {
+                    await _auditLogger.LogAsync("PurchaseOrder", order.ErpPoNumber, "ORDER_CONFIRMATION_CHECK_FAILED", "Error",
+                        order.SupplierCode, error: $"{ex.ErrorCode}: {ex.Message}", userOrSystem: user);
+                    result.SkippedOrderCount++;
+                    continue;
+                }
+
+                await _erp.ApplyOrderConfirmationAsync(order, status);
+                result.CheckedOrderCount++;
+                await _auditLogger.LogAsync("PurchaseOrder", order.ErpPoNumber, "ORDER_CONFIRMATION_APPLIED", "Success",
+                    order.SupplierCode, responsePayload: $"Status={status.Status}", userOrSystem: user);
+
+                foreach (var line in order.Lines)
+                {
+                    var statusLine = status.Lines?.FirstOrDefault(l => l.SupplierPartNumber == line.SupplierPartNumber);
+                    if (statusLine == null) continue;
+
+                    var requestLine = await _purchaseRequestRepository.GetLineByIdAsync(line.PurchaseRequestLineId);
+
+                    var exception = new OrderConfirmationException
+                    {
+                        ErpPoNumber = order.ErpPoNumber,
+                        SupplierCode = order.SupplierCode,
+                        SupplierPartNumber = line.SupplierPartNumber,
+                        OrderedQuantity = line.Quantity,
+                        ConfirmedQuantity = statusLine.ConfirmedQuantity,
+                        OrderedUnitPrice = line.UnitPrice,
+                        ConfirmedUnitPrice = statusLine.ConfirmedUnitPrice,
+                        RequiredDate = requestLine?.RequiredDate,
+                        ConfirmedShipDate = statusLine.EstimatedShipDate
+                    };
+
+                    if (exception.QuantityMismatch || exception.PriceMismatch || exception.DeliveryIsLate)
+                        result.Exceptions.Add(exception);
+                }
+            }
+
+            return result;
+        }
+
         /// <summary>A request only moves to Ordered once every one of its lines is covered by a PO — a request whose ReadyToOrder lines only partially made it into this batch (the caller chose a subset) stays as-is instead of being marked done early.</summary>
         private async Task RecomputeRequestStatusAfterOrderPlacementAsync(int purchaseRequestId)
         {

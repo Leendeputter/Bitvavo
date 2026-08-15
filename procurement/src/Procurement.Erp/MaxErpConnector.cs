@@ -26,14 +26,20 @@ namespace Procurement.Erp
     /// nothing downstream reads them and refreshing keeps MainForm's grid showing current MAX
     /// values instead of whatever was captured the first time that order was seen.
     ///
-    /// CreatePurchaseOrderAsync/UpdatePurchaseOrderStatusAsync (spec §6 step 9) delegate to
+    /// CreatePurchaseOrderAsync/ApplyOrderConfirmationAsync (spec §6 step 9) delegate to
     /// MockErpConnector by default (UseMockPurchaseOrders=true — this prototype's own
-    /// PurchaseOrder tracking) or to MaxPurchaseOrderRepository once that's implemented and the
-    /// flag is flipped to false — see that class's comment for why it isn't yet.
+    /// PurchaseOrder tracking) or to MaxPurchaseOrderRepository once the flag is flipped to false —
+    /// see that class's comment for why it isn't yet. Either way, a local Procurement_PurchaseOrder/
+    /// PurchaseOrderLine row always gets created/updated — real mode additionally writes MAX's own
+    /// Confirming/Reference/duedate fields once a confirmation comes back from the supplier.
+    /// UpdatePurchaseOrderStatusAsync is a relic of the pre-confirmation-flow design (a plain
+    /// status-text update MAX has no field for) — MockErpConnector still honors it for its own local
+    /// status column, MaxPurchaseOrderRepository's implementation is a no-op.
     /// </summary>
     public class MaxErpConnector : IErpConnector
     {
         private readonly PurchaseRequestRepository _purchaseRequestRepository;
+        private readonly PurchaseOrderRepository _purchaseOrderRepository;
         private readonly MaxOrderRepository _maxOrderRepository;
         private readonly MaxVendorPartRepository _maxVendorPartRepository;
         private readonly SupplierRepository _supplierRepository;
@@ -80,6 +86,7 @@ namespace Procurement.Erp
             MaxPurchaseOrderRepository maxPurchaseOrderRepository)
         {
             _purchaseRequestRepository = purchaseRequestRepository ?? throw new ArgumentNullException(nameof(purchaseRequestRepository));
+            _purchaseOrderRepository = purchaseOrderRepository ?? throw new ArgumentNullException(nameof(purchaseOrderRepository));
             _maxOrderRepository = maxOrderRepository ?? throw new ArgumentNullException(nameof(maxOrderRepository));
             _maxVendorPartRepository = maxVendorPartRepository ?? throw new ArgumentNullException(nameof(maxVendorPartRepository));
             _supplierRepository = supplierRepository ?? throw new ArgumentNullException(nameof(supplierRepository));
@@ -263,11 +270,73 @@ namespace Procurement.Erp
 
         public Task<string> CreatePurchaseOrderAsync(PurchaseOrderDraft draft) => UseMockPurchaseOrders
             ? _inner.CreatePurchaseOrderAsync(draft)
-            : _maxPurchaseOrderRepository.CreatePurchaseOrderAsync(draft);
+            : CreateRealPurchaseOrderAsync(draft);
+
+        /// <summary>
+        /// Real-mode PO creation used to delegate to MaxPurchaseOrderRepository alone and stop
+        /// there — which meant no local Procurement_PurchaseOrder/PurchaseOrderLine row ever got
+        /// created for a real order, unlike mock mode (_inner does that itself). That's a real bug,
+        /// not just an omission: ProcurementEngine.PlaceSupplierPurchaseOrderAsync immediately does
+        /// _purchaseOrderRepository.GetByErpPoNumberAsync(erpPoNumber) right after this returns and
+        /// dereferences the result — a NullReferenceException on every real order placement, right
+        /// after MAX has already accepted the real PO. Fixed by creating the same local tracking row
+        /// mock mode creates, using the real ErpPoNumber/MaxLineNumber/MaxDeliveryNumber MAX handed
+        /// back instead of a generated one.
+        /// </summary>
+        private async Task<string> CreateRealPurchaseOrderAsync(PurchaseOrderDraft draft)
+        {
+            var result = await _maxPurchaseOrderRepository.CreatePurchaseOrderAsync(draft);
+
+            var order = new PurchaseOrder
+            {
+                ErpPoNumber = result.ErpPoNumber,
+                SupplierCode = draft.SupplierCode,
+                Currency = draft.Currency ?? "EUR",
+                IdempotencyKey = draft.IdempotencyKey,
+                Status = PurchaseOrderStatus.Submitted,
+                OrderTotal = draft.Lines.Sum(l => l.LineTotal),
+                Lines = draft.Lines.Select(l =>
+                {
+                    var lineResult = result.Lines.FirstOrDefault(r => r.PurchaseRequestLineId == l.PurchaseRequestLineId);
+                    return new PurchaseOrderLine
+                    {
+                        PurchaseRequestLineId = l.PurchaseRequestLineId,
+                        SupplierPartNumber = l.SupplierPartNumber,
+                        Quantity = l.Quantity,
+                        UnitPrice = l.UnitPrice,
+                        LineTotal = l.LineTotal,
+                        MaxLineNumber = lineResult?.MaxLineNumber,
+                        MaxDeliveryNumber = lineResult?.MaxDeliveryNumber
+                    };
+                }).ToList()
+            };
+
+            await _purchaseOrderRepository.AddAsync(order);
+            return result.ErpPoNumber;
+        }
 
         public Task UpdatePurchaseOrderStatusAsync(string erpPoNumber, string status) => UseMockPurchaseOrders
             ? _inner.UpdatePurchaseOrderStatusAsync(erpPoNumber, status)
             : _maxPurchaseOrderRepository.UpdateStatusAsync(erpPoNumber, status);
+
+        /// <summary>
+        /// Local tracking (ConfirmedQuantity/ConfirmedUnitPrice/PurchaseOrderDelivery, PO status)
+        /// always gets updated, same as mock mode — the real-mode-only extra step is writing MAX's
+        /// own Confirming/Reference/duedate fields (MaxPurchaseOrderRepository.ApplyConfirmationAsync),
+        /// which needs the just-updated local order (for SupplierOrderNumber/MaxLineNumber) so the
+        /// local update runs first.
+        /// </summary>
+        public async Task ApplyOrderConfirmationAsync(PurchaseOrder order, SupplierOrderStatus supplierStatus)
+        {
+            if (order == null) throw new ArgumentNullException(nameof(order));
+            await _purchaseOrderRepository.ApplyOrderConfirmationAsync(order.Id, supplierStatus);
+
+            if (UseMockPurchaseOrders) return;
+
+            var refreshed = await _purchaseOrderRepository.GetByIdAsync(order.Id);
+            if (refreshed != null)
+                await _maxPurchaseOrderRepository.ApplyConfirmationAsync(refreshed, supplierStatus);
+        }
 
         private static string Truncate(string value, int maxLength) =>
             string.IsNullOrEmpty(value) || value.Length <= maxLength ? value : value.Substring(0, maxLength);

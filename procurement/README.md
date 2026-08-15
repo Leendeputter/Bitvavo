@@ -431,6 +431,14 @@ raken dat mock-modus zelf nooit aanraakt:
   bewijst niet dat TME's server de aanroep accepteert, maar wel dat het encode/sorteer/HMAC/base64-
   algoritme zelf klopt en dat een toekomstige regressie hier hard faalt in plaats van stilletjes een
   andere-maar-ook-base64-vormige signature te produceren.
+- `MaxPurchaseOrderRepositoryTests` (`tests/Procurement.Tests/Erp/`) test `BuildPurchaseOrderLine`
+  (nu `internal static`, `userName` als parameter i.p.v. via `_session` — puur om dit testbaar te
+  maken zonder een echte SqlConnection/DbContext) en `BuildConfirmedReference` — precies de twee
+  plekken waar dit project al twee keer een verkeerde-maar-plausibele aanname pas bij een echte
+  rebuild ontdekte (`FORCUR_10`'s cast, `ORDER_10` leeg op niet-eerste regels). Dit testproject
+  verwijst nu ook rechtstreeks naar `MAXCore.dll`/`MaxOrderNET.dll` (zelfde vaste pad als
+  `Procurement.Erp.csproj`) — `dotnet test` werkt dus alleen op een machine met de MAX50 SDK
+  geïnstalleerd, wat op elke machine waar deze app draait sowieso het geval is.
 
 ## Belangrijkste ontwerpkeuzes
 
@@ -491,10 +499,37 @@ raken dat mock-modus zelf nooit aanraakt:
   een correctere, atomaire aanpak (PR direct ombouwen naar PO-regel i.p.v. nieuw aanmaken + apart
   verwijderen), maar `OrderAssign`'s volledige veldenoverzicht, `TargetOrder`'s exacte gedrag, en of
   een eigen hoeveelheid meegegeven kan worden (nodig na order-multiples/MOQ-afronding) zijn niet
-  bevestigd; de betekenis van `AddPODetail`'s `FixVar`/`RoundType`-parameters staat nog niet vast; en
-  voor PO-statusupdates zijn `ChangePOHeading`/`ChangePODetail` kandidaten maar nog niet bevestigd.
+  bevestigd; de betekenis van `AddPODetail`'s `FixVar`/`RoundType`-parameters staat nog niet vast.
   Test dit bij voorkeur eerst één keer tegen een MAX test-/sandbox-administratie voordat het tegen
   een live administratie draait.
+
+- **Orderbevestiging verwerken** (MainForm-knop, `ProcurementEngine.ProcessOrderConfirmationsAsync`):
+  haalt voor elke PO die nog op een leveranciersbevestiging wacht (`PurchaseOrderRepository.
+  GetAwaitingConfirmationAsync`, alleen suppliers met `OrderStatus`-capability en een
+  `SupplierOrderNumber`) de status op via `ISupplierAdapter.GetOrderStatusAsync`, werkt lokaal altijd
+  de `PurchaseOrderLine`-bevestigingsvelden bij (`ConfirmedQuantity`/`ConfirmedUnitPrice`/een
+  `PurchaseOrderDelivery`), en toont enkel de regels die afwijken (aantal, prijs, of een bevestigde
+  leverdatum later dan gevraagd) in een apart venster — alles wat zonder afwijking binnenkomt wordt
+  stilzwijgend verwerkt, geen los bevestigingsvenster per order.
+
+  In real-mode (`UseMockPurchaseOrders=false`) schrijft dit ook drie specifieke MAX-velden — door de
+  gebruiker zelf opgegeven, niet afgeleid uit gedecompileerde bron zoals de rest van deze sectie:
+  - `Purchase_Order_Code.CONFRM_16` (char(15)): het SalesOrder-/confirmation-nummer van de
+    leverancier.
+  - `Order_Master.ORDREF_10` (char(25)) per regel: krijgt een `"O "`-prefix (bevestigd zoals besteld)
+    of `"OP "`-prefix (bevestigde leverdatum wijkt af) vóór de bestaande tekst, afgekapt op 25 tekens
+    — idempotent, een latere herverwerking vervangt een eerdere `O`/`OP`-prefix in plaats van er nóg
+    een voor te plakken (`MaxPurchaseOrderRepository.BuildConfirmedReference`, met unit tests).
+  - `Order_Master.CURDUE_10`: bijgewerkt naar de bevestigde leverdatum, alleen bij afwijking.
+
+  Dit is de eerste plek in dit project die een **bestaande** MAX-rij wijzigt (`ChangePOHeading`/
+  `ChangePODetail`) in plaats van alleen nieuwe rijen toe te voegen (`AddPODetail`) — dus een verkeerd
+  veld raakt hier in potentie een al geplaatste order, in plaats van alleen een nieuw aangemaakte rij.
+  Bewust smal gehouden: alleen de drie velden hierboven worden ooit aangepast, de rest van de
+  MAX-rij wordt ongewijzigd teruggeschreven. `ChangePODetail`'s eigen interne herberekeningslogica bij
+  een `CURDUE_10`-wijziging (bv. rond `DUEQTY_10`/`Requirement_Detail`) is niet losgetraceerd uit de
+  sterk geobfusceerde gedecompileerde bron — de gebruiker heeft bevestigd dat dat voor dit gebruik
+  acceptabel is, o.a. omdat de dagelijkse MRP-run `Requirement_Detail` sowieso weer bijwerkt.
 
 ## Bekende beperkingen van dit prototype
 

@@ -1,6 +1,8 @@
 using System;
 using System.Data.SqlClient;
+using System.Linq;
 using System.Threading.Tasks;
+using Dapper;
 using MAX50;
 using MaxOrder;
 using Procurement.Core.Entities;
@@ -68,9 +70,8 @@ namespace Procurement.Erp
     ///     workflow (quantity/status adjustments on the PR itself) than to PR-to-PO conversion.
     ///  2. FixVar ("F") and RoundType (3) — passed through unchanged from the supplied working
     ///     example; still don't know precisely what they control.
-    ///  3. No status-update method has been found yet — UpdateStatusAsync stays unimplemented.
-    ///     ChangePOHeading(Purchase_Order_Code, out errMsg)/ChangePODetail(Order_Master, bool) exist
-    ///     and look plausible for this, but aren't confirmed.
+    ///  3. IncOrdRev on ChangePODetail (used by ApplyConfirmationAsync below) — passed through as
+    ///     true, same value AddPODetail already uses, but its exact effect isn't confirmed either.
     /// </summary>
     public class MaxPurchaseOrderRepository
     {
@@ -88,8 +89,8 @@ namespace Procurement.Erp
             _purchaseRequestRepository = purchaseRequestRepository ?? throw new ArgumentNullException(nameof(purchaseRequestRepository));
         }
 
-        /// <summary>Returns MAX's own PO number, minted by AddPODetail on the first line (CreateHeader:true).</summary>
-        public async Task<string> CreatePurchaseOrderAsync(PurchaseOrderDraft draft)
+        /// <summary>Returns MAX's own PO number (minted by AddPODetail on the first line, CreateHeader:true) plus each line's MAX LINNUM_10/DELNUM_10, so the caller can persist them for a later confirmation update (see ApplyConfirmationAsync).</summary>
+        public async Task<PurchaseOrderCreationResult> CreatePurchaseOrderAsync(PurchaseOrderDraft draft)
         {
             if (draft == null) throw new ArgumentNullException(nameof(draft));
             if (draft.Lines == null || draft.Lines.Count == 0)
@@ -99,6 +100,8 @@ namespace Procurement.Erp
             if (supplier == null || string.IsNullOrEmpty(supplier.VendorId))
                 throw new InvalidOperationException(
                     $"Supplier '{draft.SupplierCode}' heeft geen VendorId (MAX Part_Vendor.VENID_07) ingesteld — nodig om een PO in MAX aan te maken. Stel dit in via Instellingen -> Suppliers.");
+
+            var result = new PurchaseOrderCreationResult();
 
             using (var primary = new SqlConnection(_session.PrimaryConnectionString))
             using (var admin = new SqlConnection(_session.AdminConnectionString))
@@ -123,7 +126,7 @@ namespace Procurement.Erp
                             throw new InvalidOperationException($"PurchaseRequestLine {draftLine.PurchaseRequestLineId} niet gevonden — kan geen MAX PO-regel aanmaken.");
 
                         var isFirstLine = erpPoNumber == null;
-                        var poLine = BuildPurchaseOrderLine(supplier.VendorId, requestLine, draftLine, erpPoNumber, lineNumber, isFirstLine);
+                        var poLine = BuildPurchaseOrderLine(supplier.VendorId, requestLine, draftLine, erpPoNumber, lineNumber, isFirstLine, _session.UserName);
 
                         var added = maxOrderModule.AddPODetail(poLine, IncOrdRev: true, CreateHeader: isFirstLine, FixVar: "F", RoundType: 3);
                         if (!added)
@@ -138,10 +141,18 @@ namespace Procurement.Erp
                             erpPoNumber = poLine.ORDNUM_10;
                         lineNumber++;
 
+                        result.Lines.Add(new PurchaseOrderCreationResultLine
+                        {
+                            PurchaseRequestLineId = draftLine.PurchaseRequestLineId,
+                            MaxLineNumber = poLine.LINNUM_10,
+                            MaxDeliveryNumber = poLine.DELNUM_10
+                        });
+
                         RemoveOriginalOrder(maxOrderModule, log, requestLine);
                     }
 
-                    return erpPoNumber;
+                    result.ErpPoNumber = erpPoNumber;
+                    return result;
                 }
             }
         }
@@ -170,12 +181,144 @@ namespace Procurement.Erp
                 log.Warn($"MAX DeletePurchaseRequisitionLineItem is mislukt voor {ordnum}-{requestLine.MaxLineNumber}-{requestLine.MaxDeliveryNumber}: {deleteErrorMessage}");
         }
 
-        public Task UpdateStatusAsync(string erpPoNumber, string status)
+        /// <summary>
+        /// No longer used for a plain status-text update — MAX has no confirmed field for that, and
+        /// this app's own PurchaseOrder.Status already tracks it locally. Kept as a safe no-op
+        /// (rather than the NotImplementedException it used to throw) purely so
+        /// ProcurementEngine.PlaceSupplierPurchaseOrderAsync's automatic post-placement call doesn't
+        /// crash real-mode order placement right after MAX has already accepted the real PO — the
+        /// actual MAX-visible confirmation write is ApplyConfirmationAsync below, run later/separately
+        /// once the supplier has actually responded.
+        /// </summary>
+        public Task UpdateStatusAsync(string erpPoNumber, string status) => Task.CompletedTask;
+
+        /// <summary>
+        /// Writes a supplier's order confirmation into the three specific MAX fields the business
+        /// actually tracks this in (confirmed directly by the user, not guessed):
+        /// Purchase_Order_Code.CONFRM_16 (leverancier's SalesOrder/confirmation nummer, char(15)),
+        /// Order_Master.ORDREF_10 per regel (char(25), "O "/"OP " prefix — zie
+        /// BuildConfirmedReference), en Order_Master.CURDUE_10 (bijgewerkt naar de bevestigde
+        /// leverdatum, alleen bij afwijking). Read-modify-write on an EXISTING row via
+        /// ChangePOHeading/ChangePODetail — unlike AddPODetail (always a new row), a wrong field here
+        /// touches a real, already-placed PO, so this stays deliberately narrow: only the fields
+        /// above are ever changed, everything else on the row is read back unmodified. The user
+        /// confirmed that a plain CURDUE_10 update (without chasing whatever else ChangePODetail
+        /// might recalculate internally) is acceptable here — any Requirement_Detail side effect
+        /// gets corrected by the daily MRP run regardless.
+        ///
+        /// Best-effort per line/header, same reasoning as RemoveOriginalOrder: a failed write is
+        /// logged, not thrown — the confirmation data itself is already safely recorded locally by
+        /// the caller (ProcurementEngine.ProcessOrderConfirmationsAsync) before this runs, so a MAX
+        /// write failure here shouldn't also lose that.
+        ///
+        /// The current-row reads below run as plain Dapper queries on the same `admin` connection
+        /// MaxOrderModule itself uses — confirmed safe from the decompiled source: MaxOrderModule
+        /// only opens its own transaction lazily, inside each top-level call (a nesting counter that
+        /// begins the transaction on entry and commits when it returns to zero), not for the
+        /// lifetime of the MaxOrderModule instance. As long as a read here never runs concurrently
+        /// with an in-flight ChangePOHeading/ChangePODetail call on the same instance (it doesn't —
+        /// everything below is sequential await, never parallel), there's no pending transaction on
+        /// `admin` when the read executes.
+        /// </summary>
+        public async Task ApplyConfirmationAsync(PurchaseOrder order, SupplierOrderStatus supplierStatus)
         {
-            // No MaxOrderModule method for this has been identified yet in the source supplied so far.
-            throw new NotImplementedException(
-                "MAX PO-statusupdate is nog niet geïmplementeerd — welke MaxOrderModule-methode hiervoor is, is nog niet bevestigd.");
+            if (order == null) throw new ArgumentNullException(nameof(order));
+            if (supplierStatus == null) throw new ArgumentNullException(nameof(supplierStatus));
+            if (string.IsNullOrEmpty(order.ErpPoNumber)) return;
+
+            using (var primary = new SqlConnection(_session.PrimaryConnectionString))
+            using (var admin = new SqlConnection(_session.AdminConnectionString))
+            {
+                primary.Open();
+                admin.Open();
+
+                var log = MyLogManager.Create(_session.LogFile, _session.LogPath, true).GetCurrentClassLogger();
+
+                using (var maxOrderModule = new MaxOrderModule(primary, admin, _session.CompanyId, log, _session.LicensePath, _session.UserName))
+                {
+                    await ApplyHeaderConfirmationAsync(admin, maxOrderModule, order, log);
+
+                    foreach (var line in order.Lines)
+                    {
+                        // Placed while UseMockPurchaseOrders=true (or synced before this field
+                        // existed) — no real MAX row to point at.
+                        if (string.IsNullOrEmpty(line.MaxLineNumber)) continue;
+
+                        var statusLine = supplierStatus.Lines?.FirstOrDefault(l => l.SupplierPartNumber == line.SupplierPartNumber);
+                        await ApplyLineConfirmationAsync(admin, maxOrderModule, order, line, statusLine, log);
+                    }
+                }
+            }
         }
+
+        private static async Task ApplyHeaderConfirmationAsync(SqlConnection admin, MaxOrderModule maxOrderModule, PurchaseOrder order, NLog.Logger log)
+        {
+            if (string.IsNullOrEmpty(order.SupplierOrderNumber)) return;
+
+            var header = await admin.QuerySingleOrDefaultAsync<Purchase_Order_Code>(
+                "SELECT * FROM Purchase_Order_Code WHERE ORDNUM_16 = @Ordnum", new { Ordnum = order.ErpPoNumber });
+            if (header == null)
+            {
+                log.Warn($"Kan Purchase_Order_Code niet vinden voor PO {order.ErpPoNumber} — CONFRM_16 niet bijgewerkt.");
+                return;
+            }
+
+            header.CONFRM_16 = Truncate(order.SupplierOrderNumber, 15);
+
+            var changed = maxOrderModule.ChangePOHeading(header, out var errMsg);
+            if (!changed)
+                log.Warn($"MAX ChangePOHeading (CONFRM_16) is mislukt voor PO {order.ErpPoNumber}: {errMsg}");
+        }
+
+        private static async Task ApplyLineConfirmationAsync(
+            SqlConnection admin, MaxOrderModule maxOrderModule, PurchaseOrder order,
+            PurchaseOrderLine line, SupplierOrderStatusLine statusLine, NLog.Logger log)
+        {
+            var current = await admin.QuerySingleOrDefaultAsync<Order_Master>(
+                "SELECT * FROM Order_Master WHERE ORDNUM_10 = @Ordnum AND LINNUM_10 = @Linnum AND DELNUM_10 = @Delnum",
+                new { Ordnum = order.ErpPoNumber, Linnum = line.MaxLineNumber, Delnum = line.MaxDeliveryNumber });
+            if (current == null)
+            {
+                log.Warn($"Kan Order_Master niet vinden voor {order.ErpPoNumber}-{line.MaxLineNumber}-{line.MaxDeliveryNumber} — regel niet bijgewerkt.");
+                return;
+            }
+
+            var confirmedShipDate = statusLine?.EstimatedShipDate;
+            var dateChanged = confirmedShipDate.HasValue && confirmedShipDate.Value.Date != current.CURDUE_10.Date;
+
+            current.ORDREF_10 = BuildConfirmedReference(current.ORDREF_10, dateChanged);
+            if (dateChanged)
+                current.CURDUE_10 = confirmedShipDate.Value;
+
+            var changed = maxOrderModule.ChangePODetail(current, IncOrdRev: true);
+            if (!changed)
+            {
+                var errMsg = maxOrderModule.GetErrors();
+                log.Warn($"MAX ChangePODetail is mislukt voor {order.ErpPoNumber}-{line.MaxLineNumber}-{line.MaxDeliveryNumber}: {errMsg}");
+            }
+        }
+
+        /// <summary>
+        /// ORDREF_10 is char(25). Confirmed convention (user, not guessed): "O " prefix when the
+        /// order is confirmed as originally requested, "OP " when the confirmed leverdatum differs
+        /// — goes in front of whatever reference text is already there, truncated from the end if it
+        /// no longer fits. Idempotent: re-processing a confirmation (e.g. a later re-check that flips
+        /// the date verdict) strips any existing "O "/"OP " prefix first instead of stacking a new
+        /// one on top of the last run's marker.
+        /// </summary>
+        internal static string BuildConfirmedReference(string currentReference, bool dateChanged)
+        {
+            var existing = currentReference ?? "";
+            if (existing.StartsWith("OP ", StringComparison.Ordinal)) existing = existing.Substring(3);
+            else if (existing.StartsWith("O ", StringComparison.Ordinal)) existing = existing.Substring(2);
+
+            var marker = dateChanged ? "OP " : "O ";
+            var combined = marker + existing;
+            return combined.Length > 25 ? combined.Substring(0, 25) : combined;
+        }
+
+        private static string Truncate(string value, int maxLength) =>
+            string.IsNullOrEmpty(value) || value.Length <= maxLength ? value : value.Substring(0, maxLength);
 
         /// <summary>
         /// Field values map to already-known data where possible (PRTNUM_10 from the originating
@@ -185,10 +328,17 @@ namespace Procurement.Erp
         /// PO line rather than that example's own test data). ORDNUM_10/LINNUM_10/DELNUM_10 are left
         /// blank for the first line of a PO (AddPODetail assigns "01"/"01" and the new PO number
         /// itself when CreateHeader:true) and set explicitly for every line after that.
+        ///
+        /// Internal + static (userName passed explicitly instead of reading _session.UserName) so
+        /// MaxPurchaseOrderRepositoryTests can exercise this field-by-field mapping directly —
+        /// without that, this repository's own live SqlConnection/SupplierRepository/
+        /// PurchaseRequestRepository dependencies would make it untestable in isolation. This is
+        /// exactly the class of bug two rebuild cycles already caught here (FORCUR_10's decimal-to-
+        /// double cast, ORDER_10 left blank on non-first lines) — worth pinning down with a test.
         /// </summary>
-        private Order_Master BuildPurchaseOrderLine(
+        internal static Order_Master BuildPurchaseOrderLine(
             string vendorId, PurchaseRequestLine requestLine, PurchaseOrderDraftLine draftLine,
-            string erpPoNumber, int lineNumber, bool isFirstLine)
+            string erpPoNumber, int lineNumber, bool isFirstLine, string userName)
         {
             var now = DateTime.Now;
             return new Order_Master
@@ -243,8 +393,8 @@ namespace Procurement.Erp
                 XDFFLT_10 = 0,
                 XDFBOL_10 = "",
                 XDFTXT_10 = "",
-                CreatedBy = _session.UserName,
-                ModifiedBy = _session.UserName,
+                CreatedBy = userName,
+                ModifiedBy = userName,
                 SUBSHP_10 = 0
             };
         }

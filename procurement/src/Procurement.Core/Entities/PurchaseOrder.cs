@@ -55,7 +55,21 @@ namespace Procurement.Core.Entities
         public int Quantity { get; set; }
         public int? ConfirmedQuantity { get; set; }
         public decimal UnitPrice { get; set; }
+
+        /// <summary>Set when a supplier order-status response includes one (see SupplierOrderStatusLine.ConfirmedUnitPrice) — used to flag a price-deviation exception during confirmation processing.</summary>
+        public decimal? ConfirmedUnitPrice { get; set; }
         public decimal LineTotal { get; set; }
+
+        /// <summary>
+        /// MAX's own Order_Master.LINNUM_10/DELNUM_10 for this PO line (distinct from the
+        /// PurchaseRequestLine's MaxLineNumber/MaxDeliveryNumber, which point at the now-deleted
+        /// original PR row) — captured right after MaxPurchaseOrderRepository.CreatePurchaseOrderAsync
+        /// mints them, so a later confirmation can find the exact row to update via ChangePODetail
+        /// without having to re-derive the line sequence. Null for a PO placed while
+        /// UseMockPurchaseOrders=true, since there's no real MAX row to point at.
+        /// </summary>
+        public string MaxLineNumber { get; set; }
+        public string MaxDeliveryNumber { get; set; }
 
         /// <summary>Partial shipments against this line (spec correction, aug 2026: "eventueel per lijn nog verschillende deliveries").</summary>
         public virtual List<PurchaseOrderDelivery> Deliveries { get; set; } = new List<PurchaseOrderDelivery>();

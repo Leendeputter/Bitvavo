@@ -26,6 +26,24 @@
     <ProjectReference Include="..\..\src\Procurement.Suppliers.Mouser\Procurement.Suppliers.Mouser.csproj" />
     <ProjectReference Include="..\..\src\Procurement.Suppliers.TME\Procurement.Suppliers.TME.csproj" />
     <ProjectReference Include="..\..\src\Procurement.Suppliers.Other\Procurement.Suppliers.Other.csproj" />
+    <ProjectReference Include="..\..\src\Procurement.Erp\Procurement.Erp.csproj" />
+  </ItemGroup>
+
+  <!--
+    MaxPurchaseOrderRepositoryTests references MAX50's Order_Master type directly (to assert on
+    field mappings) — Procurement.Erp.csproj already carries this same reference, but the test
+    project needs its own compile-time visibility too, not just the transitive ProjectReference.
+    Only meaningful on a machine with MAX installed (confirmed always true here) — see
+    Procurement.Erp.csproj's own comment for the "discovered one FileNotFoundException at a time"
+    caveat, which applies here too.
+  -->
+  <ItemGroup>
+    <Reference Include="MAXCore">
+      <HintPath>F:\Software\MAX\MAX Update\MAXUpdateNet VB.NET Sample Code\bin\MAXCore.dll</HintPath>
+    </Reference>
+    <Reference Include="MaxOrderNET">
+      <HintPath>F:\Software\MAX\MAX Update\MAXUpdateNet VB.NET Sample Code\bin\MaxOrderNET.dll</HintPath>
+    </Reference>
   </ItemGroup>
 
 </Project>

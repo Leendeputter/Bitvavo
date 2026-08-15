@@ -39,6 +39,7 @@ namespace Procurement.UI.Forms
         private Button _startSourcingButton;
         private Button _sourceAllButton;
         private Button _placeOrdersButton;
+        private Button _processConfirmationsButton;
         private Button _viewOffersButton;
         private Button _orderDetailButton;
         private Button _approvalsButton;
@@ -84,6 +85,12 @@ namespace Procurement.UI.Forms
             // i.p.v. automatisch bij elke match meteen te bestellen.
             _placeOrdersButton = new Button { Text = "Order plaatsen (selectie)", AutoSize = true };
             _placeOrdersButton.Click += async (s, e) => await PlaceOrdersAsync(GetSelectedRequestIds());
+            // Eén knop voor alle nog te bevestigen orders — verwerkt bevestigingen automatisch
+            // (lokaal altijd, en in real-mode ook de MAX Confirming/Reference/duedate-velden) en
+            // toont enkel wat afwijkt (aantal/prijs/te late levering), niet elke geslaagde
+            // bevestiging apart (zie ProcurementEngine.ProcessOrderConfirmationsAsync).
+            _processConfirmationsButton = new Button { Text = "Orderbevestiging verwerken", AutoSize = true };
+            _processConfirmationsButton.Click += async (s, e) => await ProcessOrderConfirmationsAsync();
             _orderDetailButton = new Button { Text = "Order details", AutoSize = true };
             _orderDetailButton.Click += (s, e) => ShowOrderDetail();
             _approvalsButton = new Button { Text = "Goedkeuringen...", AutoSize = true };
@@ -97,7 +104,7 @@ namespace Procurement.UI.Forms
 
             toolPanel.Controls.AddRange(new Control[]
             {
-                _newRequestButton, _startSourcingButton, _sourceAllButton, _placeOrdersButton, _orderDetailButton,
+                _newRequestButton, _startSourcingButton, _sourceAllButton, _placeOrdersButton, _processConfirmationsButton, _orderDetailButton,
                 _approvalsButton, _supplierMappingButton, _settingsButton, _auditLogButton
             });
 
@@ -675,6 +682,54 @@ namespace Procurement.UI.Forms
             }
 
             await LoadLocalRequestsAsync();
+        }
+
+        /// <summary>
+        /// Checkt elke PO die nog op een leveranciersbevestiging wacht (spec, aug 2026: Confirming/
+        /// Reference/duedate direct in MAX bijwerken zodra dat bevestigd is — geen aparte "controleer
+        /// eerst"-stap nodig, alles wat schoon binnenkomt wordt automatisch verwerkt). Enkel wat
+        /// afwijkt (aantal/prijs/te late levering) verschijnt in een los venster ter beoordeling.
+        /// </summary>
+        private async System.Threading.Tasks.Task ProcessOrderConfirmationsAsync()
+        {
+            _processConfirmationsButton.Enabled = false;
+            UseWaitCursor = true;
+            try
+            {
+                var result = await _composition.Engine.ProcessOrderConfirmationsAsync(_composition.Session.UserName);
+
+                var summary = $"Orderbevestiging verwerkt: {result.CheckedOrderCount} order(s) gecontroleerd";
+                if (result.SkippedOrderCount > 0) summary += $", {result.SkippedOrderCount} overgeslagen (geen OrderStatus-ondersteuning of nog niet bij leverancier ingediend)";
+                if (result.Exceptions.Count > 0) summary += $", {result.Exceptions.Count} afwijking(en)";
+                SetStatus(summary + ".");
+
+                if (result.Exceptions.Count > 0)
+                {
+                    using (var form = new OrderConfirmationExceptionsForm(result.Exceptions))
+                    {
+                        form.ShowDialog(this);
+                    }
+                }
+                else if (result.CheckedOrderCount > 0)
+                {
+                    MessageBox.Show(this, "Alle gecontroleerde orders zijn bevestigd zoals besteld — geen afwijkingen.",
+                        "Orderbevestiging verwerkt", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                else
+                {
+                    MessageBox.Show(this, "Geen orders gevonden die op een bevestiging wachten.",
+                        "Orderbevestiging verwerkt", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message, "Fout bij verwerken van orderbevestiging", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                UseWaitCursor = false;
+                _processConfirmationsButton.Enabled = true;
+            }
         }
 
         private void ShowOffersForSelectedLine()

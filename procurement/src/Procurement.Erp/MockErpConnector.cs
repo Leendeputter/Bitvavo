@@ -69,5 +69,11 @@ namespace Procurement.Erp
 
             await _purchaseOrderRepository.UpdateStatusByErpPoNumberAsync(erpPoNumber, parsedStatus);
         }
+
+        public async Task ApplyOrderConfirmationAsync(PurchaseOrder order, SupplierOrderStatus supplierStatus)
+        {
+            if (order == null) throw new ArgumentNullException(nameof(order));
+            await _purchaseOrderRepository.ApplyOrderConfirmationAsync(order.Id, supplierStatus);
+        }
     }
 }

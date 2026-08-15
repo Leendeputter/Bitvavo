@@ -98,5 +98,56 @@ namespace Procurement.Data.Repositories
             var count = await _context.PurchaseOrders.CountAsync(o => o.CreatedAt.Year == year);
             return count + 1;
         });
+
+        /// <summary>Every PO not yet in a terminal or fully-confirmed state, for suppliers whose adapter actually got Ordering submitted (SupplierOrderNumber set) — used by ProcurementEngine.ProcessOrderConfirmationsAsync to know what's worth checking with the supplier.</summary>
+        public Task<IReadOnlyList<PurchaseOrder>> GetAwaitingConfirmationAsync() => _context.RunGuardedAsync(async () =>
+        {
+            var openStatuses = new[] { PurchaseOrderStatus.Submitted, PurchaseOrderStatus.Acknowledged, PurchaseOrderStatus.PartiallyConfirmed };
+            IReadOnlyList<PurchaseOrder> result = await _context.PurchaseOrders
+                .Include(po => po.Lines)
+                .Where(po => openStatuses.Contains(po.Status) && po.SupplierOrderNumber != null)
+                .ToListAsync();
+            return result;
+        });
+
+        /// <summary>
+        /// Local-only half of applying a supplier order-status/confirmation (used by both
+        /// MockErpConnector and MaxErpConnector — the real-mode-only MAX field write is a separate
+        /// step, MaxPurchaseOrderRepository.ApplyConfirmationAsync). Matches status lines to
+        /// PurchaseOrderLines by SupplierPartNumber; a line the supplier didn't mention just keeps
+        /// its previous confirmation data untouched rather than being cleared.
+        /// </summary>
+        public Task ApplyOrderConfirmationAsync(int purchaseOrderId, SupplierOrderStatus status) => _context.RunGuardedAsync(async () =>
+        {
+            var order = await _context.PurchaseOrders
+                .Include(po => po.Lines.Select(l => l.Deliveries))
+                .FirstOrDefaultAsync(po => po.Id == purchaseOrderId);
+            if (order == null || status == null) return;
+
+            foreach (var line in order.Lines)
+            {
+                var statusLine = status.Lines?.FirstOrDefault(l => l.SupplierPartNumber == line.SupplierPartNumber);
+                if (statusLine == null) continue;
+
+                line.ConfirmedQuantity = statusLine.ConfirmedQuantity;
+                if (statusLine.ConfirmedUnitPrice.HasValue) line.ConfirmedUnitPrice = statusLine.ConfirmedUnitPrice;
+
+                if (statusLine.EstimatedShipDate.HasValue)
+                {
+                    var delivery = line.Deliveries.FirstOrDefault();
+                    if (delivery == null)
+                    {
+                        delivery = new PurchaseOrderDelivery { PurchaseOrderLineId = line.Id, Quantity = statusLine.ConfirmedQuantity };
+                        _context.PurchaseOrderDeliveries.Add(delivery);
+                    }
+                    delivery.EstimatedShipDate = statusLine.EstimatedShipDate;
+                }
+            }
+
+            order.Status = status.Status;
+            if (status.ConfirmedAt.HasValue) order.ConfirmedAt = status.ConfirmedAt;
+
+            await _context.SaveChangesAsync();
+        });
     }
 }
