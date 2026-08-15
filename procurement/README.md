@@ -272,14 +272,41 @@ Twee dingen die *niet* hetzelfde zijn, ondanks dat ze allebei "de sleutel wijzig
   allemaal opnieuw invoeren via Instellingen. Behandel dat als een incident-response-scenario, niet
   als iets om regelmatig te doen.
 
-**Nog niet gebouwd**: de daadwerkelijke HTTP-aanroepen naar DigiKey/Farnell zelf
-(`Http/*HttpClientWrapper.cs`) blijven een stub met `NotImplementedException` — dat vult zich pas in
-zodra er echte (sandbox-)credentials zijn om tegen te testen, om te voorkomen dat er ongeziene fouten
-in de requeststructuur blijven zitten die pas bij een eerste live test aan het licht komen. Zolang
-een supplier op `UseMockData=true` staat (default, ook al zijn er credentials opgeslagen) raakt de
-app deze HTTP-laag nooit aan; zet je 'm op `false` zonder dat de HTTP-laag al is ingevuld, dan geeft
-de adapter een nette `SupplierException` in plaats van een halve/onjuiste implementatie stilletjes te
-laten draaien.
+**HTTP-laag (leesacties)**: `Http/DigiKeyHttpClientWrapper.cs` en `Http/FarnellHttpClientWrapper.cs`
+zijn geen stub meer — ze doen echte HTTP-aanroepen tegen elk supplier's publiek gedocumenteerde
+Product Information API zodra `UseMockData=false` staat voor die supplier:
+- **DigiKey** (V4 Product Information API): OAuth2 client-credentials token-aanvraag/caching tegen
+  `/v1/oauth2/token` (sandbox of productie, afhankelijk van `IsSandbox`), en de vereiste
+  `X-DIGIKEY-Client-Id`/`X-DIGIKEY-Locale-*`-headers op elke aanroep. Zoeken via
+  `POST /products/v4/search/keyword`, productdetails/prijzen/voorraad/verpakking via
+  `GET /products/v4/search/{deelnummer}/productdetails` (DigiKey's V4 API heeft geen aparte
+  endpoints per soort gegeven — één aanroep levert alles).
+- **Farnell/element14**: geen OAuth, de ApiKey gaat als query-string-parameter mee
+  (`callInfo.apiKey`/`callInfo.responseDataFormat`/`storeInfo.id`) op elke aanroep naar
+  `GET catalog/products`.
+- `DigiKeyAdapter`/`FarnellAdapter` hebben nu een echte tak (naast de mock-tak) voor
+  `SearchProductsAsync`/`GetProductAsync`/`GetAvailabilityAsync`/`GetPricingAsync`/
+  `GetPackagingOptionsAsync`, die de JSON-respons parst (`Http/*Dtos.cs`, `Newtonsoft.Json`) naar
+  de bestaande `SupplierProduct`/`SupplierPricing`/`SupplierAvailability`/`SupplierPackagingOption`-
+  modellen.
+
+**Belangrijk voorbehoud**: dit is geschreven op basis van elke supplier's publiek gedocumenteerde
+API-vorm, **niet** getest tegen een echte (sandbox-)aanroep — er zijn nog geen credentials
+beschikbaar. Veldnamen in `Http/DigiKeyDtos.cs`/`Http/FarnellDtos.cs`, de response-wrapper-naam bij
+Farnell (`premierFarnellPartNumberReturn` vs. varianten — de code probeert alle drie bekende namen),
+en de `LocaleSite`/`LocaleLanguage`/`LocaleCurrency`/`StoreId`-defaults in
+`DigiKeyOptions`/`FarnellOptions` moeten allemaal geverifieerd worden zodra er echt tegen de sandbox
+getest kan worden — zet dan een supplier op `UseMockData=false` en test één-voor-één (Zoeken →
+Product → Prijzen → Voorraad → Verpakking) voordat er op vertrouwd wordt.
+
+**Nog niet gebouwd — bestellen**: `CreateOrderAsync`/`GetOrderStatusAsync`/`CancelOrderAsync` blijven
+in real-mode (`UseMockData=false`) een expliciete `SupplierException` gooien in plaats van een gok te
+wagen. Beide suppliers' Ordering-API is aanzienlijk minder goed gedocumenteerd dan hun
+Product-Information-API en vergt vermoedelijk een aparte account-goedkeuring — een verkeerde aanname
+daar plaatst in het ergste geval een echte, verkeerde bestelling bij een leverancier, wat een heel
+ander risiconiveau is dan een mislukte leesaanroep. Bestellen blijft dus mock-only totdat het
+Ordering-contract van beide suppliers bevestigd is; zet een supplier dan ook alleen op
+`UseMockData=false` als je alleen de zoek/prijs/voorraad-kant wilt testen.
 
 ### Starten
 
@@ -334,9 +361,10 @@ Supplier C re-reel 4.000 @ €0,105) letterlijk reproduceert, inclusief de twee 
   testonderdeel reproduceert de spec §7-casus exact, elk ander ingevoerd onderdeel krijgt
   deterministische (dus reproduceerbare) pseudo-realistische offers. `IsSandbox`/`UseMockData` en de
   (versleutelde) credentials komen nu uit de `Supplier`-tabel i.p.v. hardcoded in `CompositionRoot`
-  — zie "Supplier-credentials" hierboven. De echte HTTP-laag (`Http/*HttpClientWrapper.cs`) is als
-  stub aanwezig met een `NotImplementedException`, zodat alleen die klasse hoeft te worden ingevuld
-  zodra er echte credentials zijn om tegen te testen.
+  — zie "Supplier-credentials" hierboven. De echte HTTP-laag (`Http/*HttpClientWrapper.cs`) is
+  geïmplementeerd voor de leesacties (zoeken/prijzen/voorraad/verpakking), ongetest tegen een echte
+  sandbox — zie "Supplier-credentials" hierboven voor het voorbehoud. Bestellen blijft altijd
+  mock-only (zie daar).
 - **Business-regels als data**: `SupplierPreference`, `PackagingPolicy` en `ApprovalPolicy` zijn
   SQL Server-tabellen, beheerd via het Instellingen-scherm (§8.6) — niet hard-coded.
 - **`PurchaseOrder` = `SupplierOrder`** (spec-correctie, aug 2026): wat eerst twee entiteiten waren

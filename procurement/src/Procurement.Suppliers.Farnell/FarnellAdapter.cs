@@ -3,10 +3,12 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Newtonsoft.Json;
 using Procurement.Core.Enums;
 using Procurement.Core.Exceptions;
 using Procurement.Core.Interfaces;
 using Procurement.Core.Models;
+using Procurement.Suppliers.Farnell.Http;
 
 namespace Procurement.Suppliers.Farnell
 {
@@ -28,6 +30,7 @@ namespace Procurement.Suppliers.Farnell
             Pricing = CapabilityStatus.Supported,
             Availability = CapabilityStatus.Supported,
             Packaging = CapabilityStatus.Supported,
+            // Ordering stays mock-only even when UseMockData=false — see CreateOrderAsync below.
             Ordering = CapabilityStatus.Supported,
             OrderStatus = CapabilityStatus.Supported,
             Shipment = CapabilityStatus.ManualProcess,
@@ -41,70 +44,221 @@ namespace Procurement.Suppliers.Farnell
             _httpClient = httpClient;
         }
 
-        public Task<IReadOnlyList<SupplierProduct>> SearchProductsAsync(ProductSearchRequest request)
+        public async Task<IReadOnlyList<SupplierProduct>> SearchProductsAsync(ProductSearchRequest request)
         {
             if (request == null) throw new ArgumentNullException(nameof(request));
-            EnsureMockMode();
 
             if (string.IsNullOrWhiteSpace(request.ManufacturerPartNumber))
             {
                 throw new SupplierException(Code, SupplierErrorCode.ProductNotFound,
-                    "ManufacturerPartNumber is required to search Farnell (mock).");
+                    "ManufacturerPartNumber is required to search Farnell.");
             }
 
-            var product = FarnellMockDataProvider.BuildProduct(request.Manufacturer, request.ManufacturerPartNumber);
-            IReadOnlyList<SupplierProduct> result = new List<SupplierProduct> { product };
-            return Task.FromResult(result);
-        }
-
-        public Task<SupplierProduct> GetProductAsync(string supplierPartNumber)
-        {
-            EnsureMockMode();
-            EnsureKnownPart(supplierPartNumber);
-
-            var isExample = supplierPartNumber == "FN-CRCW060310K0FKEA";
-            var product = new SupplierProduct
+            if (_options.UseMockData)
             {
-                SupplierPartNumber = supplierPartNumber,
-                Manufacturer = isExample ? FarnellMockDataProvider.ExampleManufacturer : "(onbekend)",
-                ManufacturerPartNumber = isExample ? FarnellMockDataProvider.ExampleMpn : supplierPartNumber,
-                Description = isExample
-                    ? $"{FarnellMockDataProvider.ExampleManufacturer} {FarnellMockDataProvider.ExampleMpn}"
-                    : supplierPartNumber,
-                MatchConfidence = isExample ? MatchConfidence.Exact : MatchConfidence.Medium,
-                DatasheetUrl = $"https://www.farnell.com/datasheets/{supplierPartNumber}.pdf"
-            };
-            return Task.FromResult(product);
+                var product = FarnellMockDataProvider.BuildProduct(request.Manufacturer, request.ManufacturerPartNumber);
+                return new List<SupplierProduct> { product };
+            }
+
+            var term = Uri.EscapeDataString($"manuPartNum:{request.ManufacturerPartNumber}");
+            var products = await FetchProductsAsync($"catalog/products?term={term}&resultsSettings.responseGroup=large")
+                .ConfigureAwait(false);
+
+            if (products.Count == 0)
+            {
+                throw new SupplierException(Code, SupplierErrorCode.ProductNotFound,
+                    $"Farnell found no products for '{request.ManufacturerPartNumber}'.");
+            }
+
+            return products.Select(p => MapProduct(p, request)).ToList();
         }
 
-        public Task<SupplierAvailability> GetAvailabilityAsync(string supplierPartNumber)
+        public async Task<SupplierProduct> GetProductAsync(string supplierPartNumber)
         {
-            EnsureMockMode();
             EnsureKnownPart(supplierPartNumber);
-            return Task.FromResult(FarnellMockDataProvider.BuildAvailability(supplierPartNumber));
+
+            if (_options.UseMockData)
+            {
+                var isExample = supplierPartNumber == "FN-CRCW060310K0FKEA";
+                return new SupplierProduct
+                {
+                    SupplierPartNumber = supplierPartNumber,
+                    Manufacturer = isExample ? FarnellMockDataProvider.ExampleManufacturer : "(onbekend)",
+                    ManufacturerPartNumber = isExample ? FarnellMockDataProvider.ExampleMpn : supplierPartNumber,
+                    Description = isExample
+                        ? $"{FarnellMockDataProvider.ExampleManufacturer} {FarnellMockDataProvider.ExampleMpn}"
+                        : supplierPartNumber,
+                    MatchConfidence = isExample ? MatchConfidence.Exact : MatchConfidence.Medium,
+                    DatasheetUrl = $"https://www.farnell.com/datasheets/{supplierPartNumber}.pdf"
+                };
+            }
+
+            var dto = await FetchProductBySkuAsync(supplierPartNumber).ConfigureAwait(false);
+            return MapProduct(dto, null);
         }
 
-        public Task<SupplierPricing> GetPricingAsync(string supplierPartNumber, int quantity)
+        public async Task<SupplierAvailability> GetAvailabilityAsync(string supplierPartNumber)
         {
-            EnsureMockMode();
+            EnsureKnownPart(supplierPartNumber);
+
+            if (_options.UseMockData)
+                return FarnellMockDataProvider.BuildAvailability(supplierPartNumber);
+
+            var dto = await FetchProductBySkuAsync(supplierPartNumber).ConfigureAwait(false);
+            return MapAvailability(dto);
+        }
+
+        public async Task<SupplierPricing> GetPricingAsync(string supplierPartNumber, int quantity)
+        {
             if (quantity <= 0)
                 throw new SupplierException(Code, SupplierErrorCode.InvalidQuantity, "Quantity must be positive.");
             EnsureKnownPart(supplierPartNumber);
-            return Task.FromResult(FarnellMockDataProvider.BuildPricing(supplierPartNumber, quantity));
+
+            if (_options.UseMockData)
+                return FarnellMockDataProvider.BuildPricing(supplierPartNumber, quantity);
+
+            var dto = await FetchProductBySkuAsync(supplierPartNumber).ConfigureAwait(false);
+            return MapPricing(dto, quantity);
         }
 
-        public Task<IReadOnlyList<SupplierPackagingOption>> GetPackagingOptionsAsync(string supplierPartNumber, int quantity)
+        public async Task<IReadOnlyList<SupplierPackagingOption>> GetPackagingOptionsAsync(string supplierPartNumber, int quantity)
         {
-            EnsureMockMode();
             EnsureKnownPart(supplierPartNumber);
-            return Task.FromResult(FarnellMockDataProvider.BuildPackagingOptions(supplierPartNumber, quantity));
+
+            if (_options.UseMockData)
+                return FarnellMockDataProvider.BuildPackagingOptions(supplierPartNumber, quantity);
+
+            var dto = await FetchProductBySkuAsync(supplierPartNumber).ConfigureAwait(false);
+            return MapPackagingOptions(dto, quantity);
+        }
+
+        // element14's catalog/products endpoint returns pricing/stock/datasheets in the same
+        // response as the product itself (no separate pricing/availability endpoints), so every
+        // real-mode read method above funnels through this single-SKU lookup.
+        private async Task<FarnellProductDto> FetchProductBySkuAsync(string supplierPartNumber)
+        {
+            var term = Uri.EscapeDataString($"id:{supplierPartNumber}");
+            var products = await FetchProductsAsync($"catalog/products?term={term}&resultsSettings.responseGroup=large")
+                .ConfigureAwait(false);
+
+            var dto = products.FirstOrDefault();
+            if (dto == null)
+            {
+                throw new SupplierException(Code, SupplierErrorCode.ProductNotFound,
+                    $"Farnell found no product for '{supplierPartNumber}'.");
+            }
+            return dto;
+        }
+
+        private async Task<List<FarnellProductDto>> FetchProductsAsync(string relativeUrl)
+        {
+            RequireHttpClient();
+            var responseJson = await _httpClient.GetAsync(relativeUrl).ConfigureAwait(false);
+            var response = Deserialize<FarnellSearchResponse>(responseJson);
+
+            // element14 wraps the result differently depending on which query type was used
+            // (part number vs. keyword vs. manufacturer part number search) — response wrapper
+            // name is unconfirmed against a real account, so all three known wrapper names are
+            // tried before giving up.
+            var result = response?.Result ?? response?.ManufacturerPartNumberResult ?? response?.KeywordResult;
+            return result?.Products ?? new List<FarnellProductDto>();
+        }
+
+        private static SupplierProduct MapProduct(FarnellProductDto dto, ProductSearchRequest request)
+        {
+            var confidence = request != null &&
+                              string.Equals(dto.ManufacturerPartNumber, request.ManufacturerPartNumber, StringComparison.OrdinalIgnoreCase)
+                ? MatchConfidence.Exact
+                : MatchConfidence.Medium;
+
+            return new SupplierProduct
+            {
+                SupplierPartNumber = dto.Sku,
+                Manufacturer = dto.BrandName,
+                ManufacturerPartNumber = dto.ManufacturerPartNumber,
+                Description = dto.DisplayName,
+                MatchConfidence = confidence,
+                DatasheetUrl = dto.Datasheets?.FirstOrDefault()?.Url
+            };
+        }
+
+        private static SupplierAvailability MapAvailability(FarnellProductDto dto)
+        {
+            var available = dto.Stock?.Level ?? 0;
+            // element14's product search response has no explicit lead-time field for in-stock
+            // parts; approximated the same way as DigiKey (0 when in stock, a conservative
+            // fallback otherwise) until a real response shows an actual lead-time field.
+            var leadTimeDays = available > 0 ? 0 : 14;
+
+            return new SupplierAvailability
+            {
+                SupplierPartNumber = dto.Sku,
+                AvailableQuantity = available,
+                LeadTimeDays = leadTimeDays,
+                EstimatedDeliveryDate = DateTime.UtcNow.AddDays(leadTimeDays),
+                OnBackorder = available <= 0
+            };
+        }
+
+        private static SupplierPricing MapPricing(FarnellProductDto dto, int quantity)
+        {
+            var priceBreaks = (dto.Prices ?? new List<FarnellPriceDto>())
+                .Select(p => new PriceBreak { BreakQuantity = p.From, UnitPrice = p.Cost })
+                .OrderBy(pb => pb.BreakQuantity)
+                .ToList();
+
+            var applicable = priceBreaks.LastOrDefault(pb => pb.BreakQuantity <= quantity) ?? priceBreaks.FirstOrDefault();
+
+            int.TryParse(dto.MinimumOrderQuantityRaw, out var moq);
+            int.TryParse(dto.OrderMultipleRaw, out var multiple);
+
+            return new SupplierPricing
+            {
+                SupplierPartNumber = dto.Sku,
+                RequestedQuantity = quantity,
+                UnitPrice = applicable?.UnitPrice ?? 0m,
+                Currency = dto.Prices?.FirstOrDefault()?.Currency ?? "EUR",
+                MinimumOrderQuantity = moq > 0 ? moq : 1,
+                OrderMultiple = multiple > 0 ? multiple : 1,
+                PriceBreaks = priceBreaks
+            };
+        }
+
+        // element14's product search response doesn't expose a distinct reel/cut-tape packaging
+        // breakdown the way DigiKey's ProductVariations does — it's a single SKU per packaging
+        // form. Approximated here as one OriginalReel option sized to the order multiple, until a
+        // real response clarifies whether Farnell exposes packaging variants some other way.
+        private static IReadOnlyList<SupplierPackagingOption> MapPackagingOptions(FarnellProductDto dto, int quantity)
+        {
+            int.TryParse(dto.OrderMultipleRaw, out var multiple);
+            return new List<SupplierPackagingOption>
+            {
+                new SupplierPackagingOption
+                {
+                    SupplierPartNumber = dto.Sku,
+                    PackagingType = PackagingType.OriginalReel,
+                    PackagingQuantity = multiple > 0 ? multiple : quantity,
+                    ReelType = Core.Enums.ReelType.ManufacturerOriginal,
+                    ReelingFee = 0m,
+                    AvailableQuantity = dto.Stock?.Level ?? 0
+                }
+            };
         }
 
         public Task<SupplierOrderResult> CreateOrderAsync(SupplierOrderRequest request, string idempotencyKey)
         {
             if (request == null) throw new ArgumentNullException(nameof(request));
             if (string.IsNullOrWhiteSpace(idempotencyKey)) throw new ArgumentNullException(nameof(idempotencyKey));
-            EnsureMockMode();
+
+            if (!_options.UseMockData)
+            {
+                // Same reasoning as DigiKeyAdapter.CreateOrderAsync: Farnell's real order-submission
+                // API contract is unconfirmed, so real-mode ordering stays unimplemented rather than
+                // risk a wrong guess against a live account.
+                throw new SupplierException(Code, SupplierErrorCode.UnknownError,
+                    "Farnell real-mode ordering is not implemented — the Ordering API contract is unconfirmed. " +
+                    "Set UseMockData=true for Farnell, or place this order manually.");
+            }
 
             if (OrdersByIdempotencyKey.TryGetValue(idempotencyKey, out var existing))
                 return Task.FromResult(existing);
@@ -141,7 +295,11 @@ namespace Procurement.Suppliers.Farnell
 
         public Task<Core.Models.SupplierOrderStatus> GetOrderStatusAsync(string supplierOrderNumber)
         {
-            EnsureMockMode();
+            if (!_options.UseMockData)
+            {
+                throw new SupplierException(Code, SupplierErrorCode.UnknownError,
+                    "Farnell real-mode order status is not implemented — see CreateOrderAsync.");
+            }
 
             var placed = OrdersByIdempotencyKey.Values.FirstOrDefault(o => o.SupplierOrderNumber == supplierOrderNumber);
             if (placed == null)
@@ -160,18 +318,36 @@ namespace Procurement.Suppliers.Farnell
 
         public Task<bool> CancelOrderAsync(string supplierOrderNumber)
         {
-            EnsureMockMode();
+            if (!_options.UseMockData)
+            {
+                throw new SupplierException(Code, SupplierErrorCode.UnknownError,
+                    "Farnell real-mode order cancellation is not implemented — see CreateOrderAsync.");
+            }
+
             var key = OrdersByIdempotencyKey.FirstOrDefault(kv => kv.Value.SupplierOrderNumber == supplierOrderNumber).Key;
             if (key == null) return Task.FromResult(false);
             return Task.FromResult(OrdersByIdempotencyKey.TryRemove(key, out _));
         }
 
-        private void EnsureMockMode()
+        private void RequireHttpClient()
         {
-            if (!_options.UseMockData)
+            if (_httpClient == null)
             {
                 throw new SupplierException(Code, SupplierErrorCode.UnknownError,
-                    "FarnellAdapter only supports UseMockData=true in this prototype.");
+                    "FarnellAdapter has UseMockData=false but no ISupplierHttpClient was supplied.");
+            }
+        }
+
+        private static T Deserialize<T>(string json) where T : class
+        {
+            try
+            {
+                return JsonConvert.DeserializeObject<T>(json);
+            }
+            catch (JsonException ex)
+            {
+                throw new SupplierException(Code, SupplierErrorCode.UnknownError,
+                    "Could not parse Farnell API response.", ex);
             }
         }
 

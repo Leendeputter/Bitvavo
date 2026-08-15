@@ -13,7 +13,14 @@ namespace Procurement.Suppliers.DigiKey
         public string ClientSecret { get; set; }
         public bool IsSandbox { get; set; } = true;
 
-        /// <summary>When true (the only supported mode for this prototype), the adapter never calls the HTTP layer and returns fixed/deterministic mock data instead.</summary>
+        /// <summary>When true, the adapter never calls the HTTP layer and returns fixed/deterministic mock data instead. Set to false only once ClientId/ClientSecret are real and the Ordering API contract (see DigiKeyAdapter) has been confirmed.</summary>
         public bool UseMockData { get; set; } = true;
+
+        // DigiKey's V4 Product Information API requires these on every request
+        // (X-DIGIKEY-Locale-*). Defaulted for a Dutch company/EUR pricing — unconfirmed against
+        // real API docs, override here if DigiKey's dashboard/support says otherwise.
+        public string LocaleSite { get; set; } = "NL";
+        public string LocaleLanguage { get; set; } = "en";
+        public string LocaleCurrency { get; set; } = "EUR";
     }
 }

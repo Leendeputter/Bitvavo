@@ -7,7 +7,9 @@ using Procurement.Data.Repositories;
 using Procurement.Engine;
 using Procurement.Erp;
 using Procurement.Suppliers.DigiKey;
+using Procurement.Suppliers.DigiKey.Http;
 using Procurement.Suppliers.Farnell;
+using Procurement.Suppliers.Farnell.Http;
 
 namespace Procurement.UI.Composition
 {
@@ -58,19 +60,25 @@ namespace Procurement.UI.Composition
             var digiKeySupplier = suppliers.FirstOrDefault(s => s.SupplierCode == "DIGIKEY");
             var farnellSupplier = suppliers.FirstOrDefault(s => s.SupplierCode == "FARNELL");
 
-            var digiKeyAdapter = new DigiKeyAdapter(new DigiKeyOptions
+            var digiKeyOptions = new DigiKeyOptions
             {
                 ClientId = digiKeySupplier?.ClientId,
                 ClientSecret = digiKeySupplier?.ClientSecret,
                 IsSandbox = digiKeySupplier?.IsSandbox ?? true,
                 UseMockData = digiKeySupplier?.UseMockData ?? true
-            });
-            var farnellAdapter = new FarnellAdapter(new FarnellOptions
+            };
+            var farnellOptions = new FarnellOptions
             {
                 ApiKey = farnellSupplier?.ApiKey,
                 IsSandbox = farnellSupplier?.IsSandbox ?? true,
                 UseMockData = farnellSupplier?.UseMockData ?? true
-            });
+            };
+
+            // The HTTP wrappers are cheap to construct (just an HttpClient + options) and are only
+            // ever called when UseMockData is false, so they're always built rather than
+            // conditionally wired — one less branch to get wrong here.
+            var digiKeyAdapter = new DigiKeyAdapter(digiKeyOptions, new DigiKeyHttpClientWrapper(digiKeyOptions));
+            var farnellAdapter = new FarnellAdapter(farnellOptions, new FarnellHttpClientWrapper(farnellOptions));
             Adapters = new List<ISupplierAdapter> { digiKeyAdapter, farnellAdapter };
 
             var maxOrderRepository = new MaxOrderRepository(Session);
