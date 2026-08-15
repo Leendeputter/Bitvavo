@@ -56,6 +56,38 @@ namespace Procurement.Data
                 (Capability: "Tracking", Status: CapabilityStatus.ManualProcess),
                 (Capability: "Invoice", Status: CapabilityStatus.ManualProcess),
             });
+
+            // Same capability matrix for every distributor below (spec §5) — only the confirmed
+            // API depth behind each one differs (see CompositionRoot / README "Overige
+            // distributeurs"). VendorId is left null for all of them: nobody has confirmed the
+            // MAX Part_Vendor.VENID_07 code for these yet, fill in via Instellingen (§8.6) once
+            // known — SeedSupplier only backfills when empty, so this is safe to leave blank here.
+            var standardCapabilities = new[]
+            {
+                (Capability: "ProductSearch", Status: CapabilityStatus.Supported),
+                (Capability: "Pricing", Status: CapabilityStatus.Supported),
+                (Capability: "Availability", Status: CapabilityStatus.Supported),
+                (Capability: "Packaging", Status: CapabilityStatus.Supported),
+                (Capability: "Ordering", Status: CapabilityStatus.Supported),
+                (Capability: "OrderStatus", Status: CapabilityStatus.Supported),
+                (Capability: "Shipment", Status: CapabilityStatus.ManualProcess),
+                (Capability: "Tracking", Status: CapabilityStatus.ManualProcess),
+                (Capability: "Invoice", Status: CapabilityStatus.ManualProcess),
+            };
+
+            // Publiek gedocumenteerde, zelfbedienings-API — zelfde vertrouwensniveau als DigiKey/Farnell.
+            SeedSupplier(context, "MOUSER", "Mouser Electronics", null, standardCapabilities);
+            SeedSupplier(context, "TME", "TME (Transfer Multisort Elektronik)", null, standardCapabilities);
+
+            // Grote distributeurs zonder bevestigde publieke API — vermoedelijk alleen na een
+            // aparte account-/EDI-overeenkomst, contract nog niet bevestigd (zie README).
+            SeedSupplier(context, "ARROW", "Arrow Electronics", null, standardCapabilities);
+            SeedSupplier(context, "RUTRONIK", "Rutronik", null, standardCapabilities);
+            SeedSupplier(context, "AVNET_SILICA", "Avnet / Silica", null, standardCapabilities);
+            SeedSupplier(context, "KARL_KRUSE", "Karl Kruse", null, standardCapabilities);
+            SeedSupplier(context, "RS_COMPONENTS", "RS Components", null, standardCapabilities);
+            SeedSupplier(context, "DISTRELEC", "Distrelec / Elfa Distrelec", null, standardCapabilities);
+            SeedSupplier(context, "CONRAD", "Conrad Business Supplies", null, standardCapabilities);
         }
 
         private static void SeedSupplier(
@@ -129,6 +161,29 @@ namespace Procurement.Data
                     Active = true,
                     AllowedForAutoOrder = true
                 });
+            }
+
+            // Seeded inactief: geen VendorId/Part_Vendor-koppeling opgezet en (op Mouser/TME na)
+            // geen bevestigde API, dus deze mogen niet zomaar meedoen aan sourcing/auto-order
+            // totdat iemand ze bewust activeert via Instellingen -> Supplier preferences.
+            var priority = 3;
+            foreach (var code in new[]
+                     {
+                         "MOUSER", "TME", "ARROW", "RUTRONIK", "AVNET_SILICA",
+                         "KARL_KRUSE", "RS_COMPONENTS", "DISTRELEC", "CONRAD"
+                     })
+            {
+                if (!context.SupplierPreferences.Any(p => p.SupplierCode == code))
+                {
+                    context.SupplierPreferences.Add(new SupplierPreference
+                    {
+                        SupplierCode = code,
+                        Priority = priority,
+                        Active = false,
+                        AllowedForAutoOrder = false
+                    });
+                }
+                priority++;
             }
 
             context.SaveChanges();

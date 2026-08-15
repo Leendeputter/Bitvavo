@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using Procurement.Core.Entities;
 using Procurement.Core.Interfaces;
 using Procurement.Core.Session;
 using Procurement.Data;
@@ -10,6 +11,11 @@ using Procurement.Suppliers.DigiKey;
 using Procurement.Suppliers.DigiKey.Http;
 using Procurement.Suppliers.Farnell;
 using Procurement.Suppliers.Farnell.Http;
+using Procurement.Suppliers.Mouser;
+using Procurement.Suppliers.Mouser.Http;
+using Procurement.Suppliers.Other;
+using Procurement.Suppliers.TME;
+using Procurement.Suppliers.TME.Http;
 
 namespace Procurement.UI.Composition
 {
@@ -57,8 +63,10 @@ namespace Procurement.UI.Composition
             // Supplier row (editable via Instellingen -> Suppliers) instead of being hardcoded here,
             // so flipping a supplier out of mock mode there actually takes effect on next restart.
             var suppliers = SupplierRepository.GetAllAsync().GetAwaiter().GetResult();
-            var digiKeySupplier = suppliers.FirstOrDefault(s => s.SupplierCode == "DIGIKEY");
-            var farnellSupplier = suppliers.FirstOrDefault(s => s.SupplierCode == "FARNELL");
+            Supplier FindSupplier(string code) => suppliers.FirstOrDefault(s => s.SupplierCode == code);
+
+            var digiKeySupplier = FindSupplier("DIGIKEY");
+            var farnellSupplier = FindSupplier("FARNELL");
 
             var digiKeyOptions = new DigiKeyOptions
             {
@@ -74,12 +82,66 @@ namespace Procurement.UI.Composition
                 UseMockData = farnellSupplier?.UseMockData ?? true
             };
 
+            // Mouser: ApiKey only (self-service Search API key, no OAuth). TME: reuses the
+            // ClientId/ClientSecret columns for its Token/HMAC-secret pair (Token = ClientId,
+            // ApiKey secret = ClientSecret) rather than adding yet more Supplier columns — see
+            // TmeOptions's doc comment.
+            var mouserSupplier = FindSupplier("MOUSER");
+            var mouserOptions = new MouserOptions
+            {
+                ApiKey = mouserSupplier?.ApiKey,
+                IsSandbox = mouserSupplier?.IsSandbox ?? true,
+                UseMockData = mouserSupplier?.UseMockData ?? true
+            };
+            var tmeSupplier = FindSupplier("TME");
+            var tmeOptions = new TmeOptions
+            {
+                Token = tmeSupplier?.ClientId,
+                ApiKey = tmeSupplier?.ClientSecret,
+                IsSandbox = tmeSupplier?.IsSandbox ?? true,
+                UseMockData = tmeSupplier?.UseMockData ?? true
+            };
+
             // The HTTP wrappers are cheap to construct (just an HttpClient + options) and are only
             // ever called when UseMockData is false, so they're always built rather than
             // conditionally wired — one less branch to get wrong here.
             var digiKeyAdapter = new DigiKeyAdapter(digiKeyOptions, new DigiKeyHttpClientWrapper(digiKeyOptions));
             var farnellAdapter = new FarnellAdapter(farnellOptions, new FarnellHttpClientWrapper(farnellOptions));
-            Adapters = new List<ISupplierAdapter> { digiKeyAdapter, farnellAdapter };
+            var mouserAdapter = new MouserAdapter(mouserOptions, new MouserHttpClientWrapper(mouserOptions));
+            var tmeAdapter = new TmeAdapter(tmeOptions, new TmeHttpClientWrapper(tmeOptions));
+
+            // Distributors with no confirmed public API yet (likely account-/EDI-gated) all share
+            // one generic mock adapter (Procurement.Suppliers.Other) instead of seven near-copies
+            // of DigiKeyAdapter — see GenericMockSupplierAdapter's doc comment. Swap an entry out
+            // for a dedicated adapter (mirroring DigiKeyAdapter/MouserAdapter) once that
+            // distributor's real API/EDI contract is confirmed.
+            var genericSupplierDefinitions = new[]
+            {
+                (Code: "ARROW", DatasheetHost: "www.arrow.com"),
+                (Code: "RUTRONIK", DatasheetHost: "www.rutronik.com"),
+                (Code: "AVNET_SILICA", DatasheetHost: "www.avnet.com"),
+                (Code: "KARL_KRUSE", DatasheetHost: "www.karlkruse.de"),
+                (Code: "RS_COMPONENTS", DatasheetHost: "www.rs-online.com"),
+                (Code: "DISTRELEC", DatasheetHost: "www.distrelec.nl"),
+                (Code: "CONRAD", DatasheetHost: "www.conrad.nl"),
+            };
+            var genericAdapters = genericSupplierDefinitions.Select(def =>
+            {
+                var supplier = FindSupplier(def.Code);
+                var options = new GenericMockSupplierOptions
+                {
+                    ClientId = supplier?.ClientId,
+                    ClientSecret = supplier?.ClientSecret,
+                    ApiKey = supplier?.ApiKey,
+                    IsSandbox = supplier?.IsSandbox ?? true,
+                    UseMockData = supplier?.UseMockData ?? true
+                };
+                return (ISupplierAdapter)new GenericMockSupplierAdapter(def.Code, def.DatasheetHost, options);
+            });
+
+            Adapters = new List<ISupplierAdapter> { digiKeyAdapter, farnellAdapter, mouserAdapter, tmeAdapter }
+                .Concat(genericAdapters)
+                .ToList();
 
             var maxOrderRepository = new MaxOrderRepository(Session);
             var maxVendorPartRepository = new MaxVendorPartRepository(Session);

@@ -1,7 +1,9 @@
 # Componenteninkoop – Prototype
 
-Windows Forms (.NET Framework 4.8) prototype voor geautomatiseerde componenteninkoop bij DigiKey
-en Farnell, volgens [`docs/functionele-specificatie-procurement.md`](docs/functionele-specificatie-procurement.md).
+Windows Forms (.NET Framework 4.8) prototype voor geautomatiseerde componenteninkoop bij DigiKey,
+Farnell en een groeiend aantal andere grote elektronicadistributeurs (Mouser, TME, Arrow, Rutronik,
+Avnet/Silica, Karl Kruse, RS Components, Distrelec, Conrad — zie "Suppliers" hieronder), volgens
+[`docs/functionele-specificatie-procurement.md`](docs/functionele-specificatie-procurement.md).
 Dit is een **zelfstandig programma** (eigen .exe, geen UniPro-module) dat zijn eigen tabellen in de
 gedeelde `Unitron`-database heeft, los van de Bitvavo trading bot elders in deze repository.
 
@@ -21,8 +23,11 @@ Procurement.sln
 src/
   Procurement.Core                POCO's, interfaces, business rules, sessie-abstractie — geen UI/DB-afhankelijkheid
   Procurement.Data                EF6 Code First DbContext, mappings, migrations, repositories
-  Procurement.Suppliers.DigiKey   ISupplierAdapter-implementatie voor DigiKey (mock-modus)
-  Procurement.Suppliers.Farnell   ISupplierAdapter-implementatie voor Farnell (mock-modus)
+  Procurement.Suppliers.DigiKey   ISupplierAdapter voor DigiKey (echte HTTP-laag voor zoeken/prijzen/voorraad)
+  Procurement.Suppliers.Farnell   ISupplierAdapter voor Farnell/element14 (idem)
+  Procurement.Suppliers.Mouser    ISupplierAdapter voor Mouser (idem)
+  Procurement.Suppliers.TME       ISupplierAdapter voor TME (idem, HMAC-signing — zie "Suppliers")
+  Procurement.Suppliers.Other     Eén gedeelde mock-adapter voor Arrow/Rutronik/Avnet-Silica/Karl Kruse/RS Components/Distrelec/Conrad (nog geen bevestigde API)
   Procurement.Erp                 IErpConnector + MockErpConnector
   Procurement.Engine              ProcurementEngine: orkestreert sourcing/selectie/order
   Procurement.UI                  WinForms-app (startproject) — login, MAX-koppeling, security-stub
@@ -240,18 +245,54 @@ zonder productiedata van waarde — elke keer dat het opnieuw gebeurt, staat dat
 opstartmelding, nooit stilzwijgend.
 
 Bij een eerste start op een lege database worden na het aanmaken van het schema ook de
-policy-tabellen geseed: `Procurement_Supplier`/`Procurement_SupplierCapability` (DigiKey + Farnell,
-conform spec §5), een standaard `SupplierPreference` per leverancier, een default `PackagingPolicy`
+policy-tabellen geseed: `Procurement_Supplier`/`Procurement_SupplierCapability` (alle 11 suppliers
+hieronder, conform spec §5), een `SupplierPreference` per leverancier, een default `PackagingPolicy`
 en een default `ApprovalPolicy` (`Procurement.Data/SeedData.cs`, aangeroepen vanuit `Program.cs` —
 dit was voorheen EF6 migrations' `Seed()`-callback).
 
-### Supplier-credentials
+### Suppliers
 
-DigiKey (ClientId + ClientSecret, OAuth2 client-credentials) en Farnell/element14 (ApiKey) staan
-versleuteld in `Procurement_Supplier` (`ClientIdEncrypted`/`ClientSecretEncrypted`/`ApiKeyEncrypted`)
-in plaats van in `App.config` of code — zo kan een rotatie/wijziging van een van deze sleutels
-zonder rebuild of redeploy via **Instellingen → Suppliers → "Credentials bewerken..."**, en staat er
-nergens een sleutel in leesbare vorm in de database of in source control.
+Elf distributeurs zijn geseed in `Procurement_Supplier` (`Procurement.Data/SeedData.cs`), elk met een
+eigen `SupplierPreference` (spec §5) — hoeveel van elk daadwerkelijk *werkt* verschilt sterk, zie de
+drie groepen hieronder. Alleen DigiKey/Farnell staan bij het seeden op `Active=true` in hun
+`SupplierPreference`; de overige negen staan bewust op `Active=false` (nooit automatisch meegenomen
+in sourcing) totdat iemand ze bewust aanzet via **Instellingen → Supplier preferences** — de meeste
+hebben nog geen `VendorId` (MAX `Part_Vendor.VENID_07`) ingevuld, en negen van de elf hebben nog geen
+werkende echte API.
+
+**1. Publiek gedocumenteerde, zelfbedienings-API — echte HTTP-laag aanwezig** (`UseMockData=false`
+zet de leesacties echt aan zodra credentials bekend zijn):
+- **DigiKey** (`Procurement.Suppliers.DigiKey`) — OAuth2 client-credentials.
+- **Farnell/element14** (`Procurement.Suppliers.Farnell`) — ApiKey via query-string.
+- **Mouser** (`Procurement.Suppliers.Mouser`) — ApiKey via query-string, POST-only.
+- **TME** (`Procurement.Suppliers.TME`) — Token + HMAC-SHA1-signing (zie hieronder, minst zeker van
+  deze vier).
+
+**2. Grote distributeurs zonder bevestigde publieke API** (`Procurement.Suppliers.Other`, één
+gedeelde `GenericMockSupplierAdapter`, altijd mock — zie hieronder): **Arrow, Rutronik, Avnet/Silica,
+Karl Kruse, RS Components, Distrelec/Elfa, Conrad Business Supplies**. Deze werken doorgaans alleen
+via een aparte account-/EDI-overeenkomst met de distributeur (in plaats van een self-service
+API-sleutel zoals bij groep 1) — dat contract/die exacte API-vorm is niet bevestigd, dus is er
+bewust geen giswerk gedaan tegen een live account. Credential-velden (ClientId/ClientSecret/ApiKey)
+staan al wél klaar in `Procurement_Supplier` zodat ze alvast ingevuld kunnen worden zodra bekend, en
+zetten "meedoen in mock-modus" mogelijk voor demo's/sourcing-vergelijkingen over alle distributeurs
+heen — maar `UseMockData=false` zetten voor een van deze zeven gooit een expliciete
+`SupplierException` ("nog geen bevestigde API/EDI-integratie") in plaats van een halve implementatie
+te laten draaien.
+
+**3. Nog te bepalen**: andere grote NL-actieve distributeurs die niet in bovenstaande lijst zitten
+kunnen op dezelfde manier toegevoegd worden — ofwel als groep-1-adapter (eigen project +
+`Http/*Wrapper.cs`, zie `DigiKeyAdapter` als sjabloon) zodra een publiek gedocumenteerde API bevestigd
+is, ofwel als extra `GenericMockSupplierAdapter`-entry in `CompositionRoot.cs` (twee regels: een
+`SeedSupplier`-call en een entry in `genericSupplierDefinitions`) als voorbereiding zonder API.
+
+DigiKey/Mouser (ApiKey/ClientId+ClientSecret), Farnell (ApiKey), en TME (Token in `ClientId`,
+HMAC-secret in `ClientSecret` — hergebruikt dezelfde twee kolommen in plaats van er nog twee bij te
+maken, zie `TmeOptions`) staan versleuteld in `Procurement_Supplier`
+(`ClientIdEncrypted`/`ClientSecretEncrypted`/`ApiKeyEncrypted`) in plaats van in `App.config` of code
+— zo kan een rotatie/wijziging van een van deze sleutels zonder rebuild of redeploy via
+**Instellingen → Suppliers → "Credentials bewerken..."**, en staat er nergens een sleutel in leesbare
+vorm in de database of in source control.
 
 **Hoe dat versleutelen werkt** (`Procurement.Core.Security.SecretProtector`): AES-256, met de
 sleutel gelezen uit de omgevingsvariabele **`PROCUREMENT_SECRET_KEY`** — die staat dus zelf nergens
@@ -272,9 +313,9 @@ Twee dingen die *niet* hetzelfde zijn, ondanks dat ze allebei "de sleutel wijzig
   allemaal opnieuw invoeren via Instellingen. Behandel dat als een incident-response-scenario, niet
   als iets om regelmatig te doen.
 
-**HTTP-laag (leesacties)**: `Http/DigiKeyHttpClientWrapper.cs` en `Http/FarnellHttpClientWrapper.cs`
-zijn geen stub meer — ze doen echte HTTP-aanroepen tegen elk supplier's publiek gedocumenteerde
-Product Information API zodra `UseMockData=false` staat voor die supplier:
+**HTTP-laag (leesacties, groep 1)**: `Http/*HttpClientWrapper.cs` in elk van de vier projecten doet
+echte HTTP-aanroepen tegen de publiek gedocumenteerde Product Information API van die supplier zodra
+`UseMockData=false` staat:
 - **DigiKey** (V4 Product Information API): OAuth2 client-credentials token-aanvraag/caching tegen
   `/v1/oauth2/token` (sandbox of productie, afhankelijk van `IsSandbox`), en de vereiste
   `X-DIGIKEY-Client-Id`/`X-DIGIKEY-Locale-*`-headers op elke aanroep. Zoeken via
@@ -284,29 +325,56 @@ Product Information API zodra `UseMockData=false` staat voor die supplier:
 - **Farnell/element14**: geen OAuth, de ApiKey gaat als query-string-parameter mee
   (`callInfo.apiKey`/`callInfo.responseDataFormat`/`storeInfo.id`) op elke aanroep naar
   `GET catalog/products`.
-- `DigiKeyAdapter`/`FarnellAdapter` hebben nu een echte tak (naast de mock-tak) voor
+- **Mouser**: ook geen OAuth, ApiKey als query-string-parameter, maar alle acties (ook zoeken) zijn
+  POST met een JSON-body naar `POST /api/v1/search/keyword` (op MPN) of
+  `POST /api/v1/search/partnumber` (op Mouser's eigen partnummer) — velden als `Availability`/
+  `LeadTime`/`Price` komen als vrije tekst terug (bv. `"48000 In Stock"`, `"$0,11"`) en worden
+  defensief geparsed (`MouserAdapter.ParseLeadingInt`/`ParseCurrency`) in plaats van blind
+  `int.Parse`/`decimal.Parse` te doen.
+- **TME**: geen bearer-token of simpele API-key-in-query, maar een OAuth1-achtig
+  HMAC-SHA1-signing-schema (`Token` + privé `ApiKey` als HMAC-secret, canonieke string
+  `"POST&{url}&{gesorteerde params}"`, base64-signature als extra `ApiSignature`-formveld) — dit is
+  het minst zekere onderdeel van groep 1: de signing-aanpak komt uit herinnering van TME's
+  documentatie, niet uit een geteste aanroep. Zoeken/productdetails/prijzen zijn bovendien drie
+  aparte acties (`Products/Search.json`/`Products/GetProducts.json`/`Products/GetPrices.json`) in
+  plaats van één gecombineerde aanroep zoals bij DigiKey/Mouser.
+- Elke groep-1-adapter heeft een echte tak (naast de mock-tak) voor
   `SearchProductsAsync`/`GetProductAsync`/`GetAvailabilityAsync`/`GetPricingAsync`/
-  `GetPackagingOptionsAsync`, die de JSON-respons parst (`Http/*Dtos.cs`, `Newtonsoft.Json`) naar
-  de bestaande `SupplierProduct`/`SupplierPricing`/`SupplierAvailability`/`SupplierPackagingOption`-
+  `GetPackagingOptionsAsync`, die de JSON-respons parst (`Http/*Dtos.cs`, `Newtonsoft.Json`) naar de
+  bestaande `SupplierProduct`/`SupplierPricing`/`SupplierAvailability`/`SupplierPackagingOption`-
   modellen.
 
-**Belangrijk voorbehoud**: dit is geschreven op basis van elke supplier's publiek gedocumenteerde
-API-vorm, **niet** getest tegen een echte (sandbox-)aanroep — er zijn nog geen credentials
-beschikbaar. Veldnamen in `Http/DigiKeyDtos.cs`/`Http/FarnellDtos.cs`, de response-wrapper-naam bij
-Farnell (`premierFarnellPartNumberReturn` vs. varianten — de code probeert alle drie bekende namen),
-en de `LocaleSite`/`LocaleLanguage`/`LocaleCurrency`/`StoreId`-defaults in
-`DigiKeyOptions`/`FarnellOptions` moeten allemaal geverifieerd worden zodra er echt tegen de sandbox
-getest kan worden — zet dan een supplier op `UseMockData=false` en test één-voor-één (Zoeken →
-Product → Prijzen → Voorraad → Verpakking) voordat er op vertrouwd wordt.
+**Belangrijk voorbehoud (groep 1)**: dit is geschreven op basis van elke supplier's publiek
+gedocumenteerde API-vorm, **niet** getest tegen een echte (sandbox-)aanroep — er zijn nog geen
+credentials beschikbaar voor geen van de vier. Veldnamen in `Http/*Dtos.cs`, de response-wrapper-naam
+bij Farnell (`premierFarnellPartNumberReturn` vs. varianten — de code probeert alle drie bekende
+namen), TME's volledige signing-schema, en de `LocaleSite`/`LocaleLanguage`/`LocaleCurrency`/
+`StoreId`/`Country`/`Language`/`Currency`-defaults in de vier Options-klassen moeten allemaal
+geverifieerd worden zodra er echt tegen een sandbox getest kan worden — zet dan een supplier op
+`UseMockData=false` en test één-voor-één (Zoeken → Product → Prijzen → Voorraad → Verpakking) voordat
+er op vertrouwd wordt. TME verdient daarbij extra aandacht: een signature-fout geeft waarschijnlijk
+gewoon een nette 401/403 (`SupplierErrorCode.AuthenticationError`), maar het is de enige van de vier
+waar de hele auth-aanpak (niet alleen veldnamen) nog moet blijken te kloppen.
 
-**Nog niet gebouwd — bestellen**: `CreateOrderAsync`/`GetOrderStatusAsync`/`CancelOrderAsync` blijven
-in real-mode (`UseMockData=false`) een expliciete `SupplierException` gooien in plaats van een gok te
-wagen. Beide suppliers' Ordering-API is aanzienlijk minder goed gedocumenteerd dan hun
-Product-Information-API en vergt vermoedelijk een aparte account-goedkeuring — een verkeerde aanname
-daar plaatst in het ergste geval een echte, verkeerde bestelling bij een leverancier, wat een heel
-ander risiconiveau is dan een mislukte leesaanroep. Bestellen blijft dus mock-only totdat het
-Ordering-contract van beide suppliers bevestigd is; zet een supplier dan ook alleen op
-`UseMockData=false` als je alleen de zoek/prijs/voorraad-kant wilt testen.
+**Groep 2 (Arrow/Rutronik/Avnet-Silica/Karl Kruse/RS Components/Distrelec/Conrad)**: geen HTTP-laag
+aanwezig, met opzet — zie "Suppliers" hierboven voor de reden. `GenericMockSupplierAdapter` in
+`Procurement.Suppliers.Other` retourneert voor al deze zeven altijd deterministische mockdata
+(`GenericMockDataProvider`, hetzelfde patroon als `DigiKeyMockDataProvider` maar generiek
+geparametriseerd op supplier-code i.p.v. zeven keer bijna-identieke code). Wil je een van deze zeven
+echt aansluiten: bouw een eigen project + `Http/*Wrapper.cs` naar het voorbeeld van
+`Procurement.Suppliers.DigiKey`, en vervang de betreffende entry in
+`CompositionRoot.genericSupplierDefinitions` door een aparte adapter-constructie zoals bij DigiKey.
+
+**Nog niet gebouwd — bestellen (alle elf suppliers)**: `CreateOrderAsync`/`GetOrderStatusAsync`/
+`CancelOrderAsync` blijven bij groep 1 in real-mode (`UseMockData=false`) een expliciete
+`SupplierException` gooien in plaats van een gok te wagen, en bij groep 2 hoe dan ook (die hebben
+sowieso geen echte modus). Elke supplier's Ordering-API is aanzienlijk minder goed gedocumenteerd dan
+zijn Product-Information-API (voor zover die al bestaat) en vergt vermoedelijk een aparte
+account-goedkeuring — een verkeerde aanname daar plaatst in het ergste geval een echte, verkeerde
+bestelling bij een leverancier, wat een heel ander risiconiveau is dan een mislukte leesaanroep.
+Bestellen blijft dus mock-only totdat het Ordering-contract van een supplier bevestigd is; zet een
+groep-1-supplier dan ook alleen op `UseMockData=false` als je alleen de zoek/prijs/voorraad-kant wilt
+testen.
 
 ### Starten
 
@@ -356,15 +424,16 @@ Supplier C re-reel 4.000 @ €0,105) letterlijk reproduceert, inclusief de twee 
 - **`ISupplierAdapter`** (`Procurement.Core.Interfaces`) is de enige plek waar leverancierspecifieke
   logica hoort. `ProcurementEngine` kent alleen deze interface — een nieuwe mock-adapter toevoegen
   vereist geen wijziging aan de engine (spec §14, acceptatiecriterium 10).
-- **Mock-modus**: `DigiKeyAdapter`/`FarnellAdapter` draaien met `UseMockData = true` en retourneren
-  deterministische testdata (`DigiKeyMockDataProvider`/`FarnellMockDataProvider`) — één "bekend"
-  testonderdeel reproduceert de spec §7-casus exact, elk ander ingevoerd onderdeel krijgt
-  deterministische (dus reproduceerbare) pseudo-realistische offers. `IsSandbox`/`UseMockData` en de
-  (versleutelde) credentials komen nu uit de `Supplier`-tabel i.p.v. hardcoded in `CompositionRoot`
-  — zie "Supplier-credentials" hierboven. De echte HTTP-laag (`Http/*HttpClientWrapper.cs`) is
-  geïmplementeerd voor de leesacties (zoeken/prijzen/voorraad/verpakking), ongetest tegen een echte
-  sandbox — zie "Supplier-credentials" hierboven voor het voorbehoud. Bestellen blijft altijd
-  mock-only (zie daar).
+- **Mock-modus**: alle elf adapters draaien standaard met `UseMockData = true` en retourneren
+  deterministische testdata — DigiKey/Farnell/Mouser/TME hebben elk een "bekend" testonderdeel dat de
+  spec §7-casus (nagenoeg) reproduceert, elk ander ingevoerd onderdeel (en alle zeven suppliers in
+  `Procurement.Suppliers.Other`) krijgt deterministische (dus reproduceerbare) pseudo-realistische
+  offers. `IsSandbox`/`UseMockData` en de (versleutelde) credentials komen uit de `Supplier`-tabel
+  i.p.v. hardcoded in `CompositionRoot` — zie "Suppliers" hierboven. Voor DigiKey/Farnell/Mouser/TME
+  is de echte HTTP-laag (`Http/*HttpClientWrapper.cs`) geïmplementeerd voor de leesacties
+  (zoeken/prijzen/voorraad/verpakking), ongetest tegen een echte sandbox — zie "Suppliers" hierboven
+  voor het voorbehoud. De overige zeven suppliers hebben geen HTTP-laag (nog geen bevestigde API).
+  Bestellen blijft voor alle elf altijd mock-only (zie daar).
 - **Business-regels als data**: `SupplierPreference`, `PackagingPolicy` en `ApprovalPolicy` zijn
   SQL Server-tabellen, beheerd via het Instellingen-scherm (§8.6) — niet hard-coded.
 - **`PurchaseOrder` = `SupplierOrder`** (spec-correctie, aug 2026): wat eerst twee entiteiten waren

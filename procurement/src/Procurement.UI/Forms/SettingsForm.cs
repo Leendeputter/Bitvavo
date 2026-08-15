@@ -245,9 +245,12 @@ namespace Procurement.UI.Forms
         /// Credentials worden bewust nooit in de suppliers-grid getoond (versleuteld of niet) —
         /// dit losse, write-only dialoogvenster is de enige plek waar ze bewerkt worden. Velden
         /// staan altijd leeg bij openen (een bestaande waarde wordt nooit teruggetoond, ook niet
-        /// ontsleuteld) en leeg laten = ongewijzigd laten; alleen invullen overschrijft. DigiKey
-        /// gebruikt ClientId+ClientSecret, Farnell enkel ApiKey — het dialoogvenster toont voor
-        /// beide gewoon alle drie velden, het niet-toepasselijke veld blijft dan leeg.
+        /// ontsleuteld) en leeg laten = ongewijzigd laten; alleen invullen overschrijft. Welke
+        /// velden een supplier daadwerkelijk gebruikt verschilt (DigiKey: ClientId+ClientSecret;
+        /// Farnell/Mouser: enkel ApiKey; TME: Token in ClientId, HMAC-secret in ClientSecret;
+        /// overige distributeurs: nog geen bevestigde API, velden liggen klaar voor later) — het
+        /// dialoogvenster toont voor elke supplier gewoon alle drie velden, niet-toepasselijke
+        /// velden blijven dan leeg.
         /// </summary>
         private async System.Threading.Tasks.Task EditCredentialsForSelectedSupplierAsync()
         {
@@ -275,9 +278,9 @@ namespace Procurement.UI.Forms
                 var clientIdBox = new TextBox { Width = 220 };
                 var clientSecretBox = new TextBox { Width = 220, PasswordChar = '●' };
                 var apiKeyBox = new TextBox { Width = 220, PasswordChar = '●' };
-                AddRow(layout, "Client Id (DigiKey):", clientIdBox);
-                AddRow(layout, "Client Secret (DigiKey):", clientSecretBox);
-                AddRow(layout, "Api Key (Farnell):", apiKeyBox);
+                AddRow(layout, "Client Id / Token (DigiKey/TME):", clientIdBox);
+                AddRow(layout, "Client Secret (DigiKey/TME):", clientSecretBox);
+                AddRow(layout, "Api Key (Farnell/Mouser):", apiKeyBox);
 
                 var hint = new Label
                 {
