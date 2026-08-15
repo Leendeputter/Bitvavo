@@ -255,8 +255,12 @@ namespace Procurement.Erp
         {
             if (string.IsNullOrEmpty(order.SupplierOrderNumber)) return;
 
-            var header = await admin.QuerySingleOrDefaultAsync<Purchase_Order_Code>(
+            // QueryAsync + FirstOrDefault rather than QuerySingleOrDefaultAsync: that convenience
+            // method doesn't exist in Dapper 1.40.0 (the version pinned to match UniPro2026's own
+            // packages.config) — QueryAsync has been in Dapper since its earliest versions.
+            var headerRows = await admin.QueryAsync<Purchase_Order_Code>(
                 "SELECT * FROM Purchase_Order_Code WHERE ORDNUM_16 = @Ordnum", new { Ordnum = order.ErpPoNumber });
+            var header = headerRows.FirstOrDefault();
             if (header == null)
             {
                 log.Warn($"Kan Purchase_Order_Code niet vinden voor PO {order.ErpPoNumber} — CONFRM_16 niet bijgewerkt.");
@@ -274,9 +278,10 @@ namespace Procurement.Erp
             SqlConnection admin, MaxOrderModule maxOrderModule, PurchaseOrder order,
             PurchaseOrderLine line, SupplierOrderStatusLine statusLine, NLog.Logger log)
         {
-            var current = await admin.QuerySingleOrDefaultAsync<Order_Master>(
+            var currentRows = await admin.QueryAsync<Order_Master>(
                 "SELECT * FROM Order_Master WHERE ORDNUM_10 = @Ordnum AND LINNUM_10 = @Linnum AND DELNUM_10 = @Delnum",
                 new { Ordnum = order.ErpPoNumber, Linnum = line.MaxLineNumber, Delnum = line.MaxDeliveryNumber });
+            var current = currentRows.FirstOrDefault();
             if (current == null)
             {
                 log.Warn($"Kan Order_Master niet vinden voor {order.ErpPoNumber}-{line.MaxLineNumber}-{line.MaxDeliveryNumber} — regel niet bijgewerkt.");
