@@ -82,12 +82,14 @@ namespace Procurement.UI
                     // out of date rather than missing outright — each past model change added a
                     // column to an already-existing table (aug-2026: PurchaseOrder+SupplierOrder
                     // merge added PurchaseOrder.SupplierCode; the DigiKey/Farnell credential storage
-                    // added Supplier.ClientIdEncrypted), so an older database still has the table but
-                    // not that column. Checking for the newest column of each catches "never
+                    // added Supplier.ClientIdEncrypted; the MAX PO-write plumbing added
+                    // PurchaseRequestLine.MaxLineNumber), so an older database still has the table
+                    // but not that column. Checking for the newest column of each catches "never
                     // created" and "needs to be recreated for a reshaped model" with the same query.
                     schemaExists = context.Database.SqlQuery<int>(
                         "SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Procurement_PurchaseOrder') AND name = 'SupplierCode'"
-                        + " UNION ALL SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Procurement_Supplier') AND name = 'ClientIdEncrypted'")
+                        + " UNION ALL SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Procurement_Supplier') AND name = 'ClientIdEncrypted'"
+                        + " UNION ALL SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Procurement_PurchaseRequestLine') AND name = 'MaxLineNumber'")
                         .All(count => count > 0);
                 }
                 catch (Exception ex)

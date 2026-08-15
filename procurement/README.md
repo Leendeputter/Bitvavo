@@ -350,20 +350,37 @@ Supplier C re-reel 4.000 @ €0,105) letterlijk reproduceert, inclusief de twee 
 - **Audit log**: elke stap van de workflow schrijft een `ProcurementEvent`; `DbAuditLogger` maskeert
   bekende secret-sleutelnamen (`apiKey`, `secret`, `password`, `token`, ...) voordat een payload
   wordt weggeschreven.
-- **MAX PO-aanmaak: header geïmplementeerd, regel/koppeling nog niet geverifieerd** —
-  `MaxErpConnector.UseMockPurchaseOrders` (default `true`) bepaalt of "Order plaatsen" naar dit
-  prototype's eigen `Procurement_PurchaseOrder` blijft schrijven, of naar een echte MAX-PO via
-  `MaxPurchaseOrderRepository`. Die laatste roept, in plaats van rechtstreeks tabellen te
-  benaderen, `MaxOrderNET.MaxOrderModule.AddPOHeading`/`AddPODetail` aan (aangeleverd als werkend
-  VB.NET-voorbeeld) — dat is de veilige aanpak, want MAX's eigen validaties/business rules blijven
-  dan intact. **Zet `UseMockPurchaseOrders` nog niet op `false`**: het aangeleverde voorbeeld toont
-  het aanmaken van een header en een regel als twee onafhankelijke, losse demo's (beide met een
-  leeg ordernummer), dus het is nog niet bevestigd hoe een regel daadwerkelijk aan de zojuist
-  aangemaakte header gekoppeld wordt. Zie de class-comment van `MaxPurchaseOrderRepository` voor de
-  volledige lijst openstaande vragen (regel/header-koppeling, de betekenis van `AddPODetail`'s
-  laatste 4 parameters, welke headervelden per leverancier uit Vendor_Master moeten komen i.p.v.
-  vaste waarden, en hoe de oorspronkelijke MAX-order na PO-aanmaak verwijderd/afgesloten wordt zodat
-  die niet als open aanvraag in de query blijft staan).
+- **MAX PO-aanmaak: aanpak nu gegrond in MaxOrderModule's eigen (gedecompileerde) broncode, nog niet
+  live getest** — `MaxErpConnector.UseMockPurchaseOrders` (default `true`) bepaalt of "Order
+  plaatsen" naar dit prototype's eigen `Procurement_PurchaseOrder` blijft schrijven, of naar een
+  echte MAX-PO via `MaxPurchaseOrderRepository`. Wat wij in het requests-grid zien is in MAX een
+  Purchase Requisition (PR) — een `Order_Master`-rij — die omgezet moet worden naar een PO-regel en
+  daarna verwijderd, anders blijft 'm als open aanvraag in de query staan. Dat gebeurt nu als twee
+  stappen per regel, met bevestigde `MaxOrderModule`-methodes (geen tabellen rechtstreeks
+  benaderen, dus MAX's eigen validaties/business rules blijven intact):
+  1. `AddPODetail(Order_Master, IncOrdRev, CreateHeader, FixVar, RoundType)` maakt de PO-regel aan.
+     Voor de eerste regel van een nieuwe PO met `CreateHeader:true` — dat laat `AddPODetail` zelf de
+     `Purchase_Order_Code`-header opbouwen uit `Vendor_Master` (Terms/ShipVia/GShip/GTerm/valuta/
+     Fobpt komen dus automatisch per leverancier mee, niets hardcoded meer) en het nieuwe
+     PO-nummer op die regel zetten; volgende regels van dezelfde PO krijgen `CreateHeader:false` met
+     dat PO-nummer en een oplopend regelnummer.
+  2. `DeletePurchaseRequisitionLineItem(ordnum, linnum, delnum, out errMsg)` verwijdert de
+     oorspronkelijke PR-rij (vandaar de nieuwe velden `PurchaseRequestLine.MaxLineNumber`/
+     `MaxDeliveryNumber`, gesynct door `MaxOrderRepository` om deze samenstelde sleutel te bewaren).
+     Best-effort: een fout hier wordt gelogd, niet gegooid — de PO-regel uit stap 1 staat er dan al
+     correct, dus de hele batch afbreken om één PR-rij zou een slechtere uitkomst zijn dan die ene
+     regel voor handmatige opruiming te laten staan.
+
+  **Zet `UseMockPurchaseOrders` nog niet op `false`** — niet omdat de aanpak nog giswerk is (die is
+  nu gebaseerd op `MaxOrderModule`'s eigen gedecompileerde broncode voor beide methodes, aangeleverd
+  door de klant), maar omdat nog niets hiervan tegen een echte MAX-administratie getest is. Zie de
+  class-comment van `MaxPurchaseOrderRepository` voor de resterende openstaande punten:
+  `AssignPRsToPO` lijkt mogelijk een correctere, atomaire aanpak (PR direct ombouwen naar PO-regel
+  i.p.v. nieuw aanmaken + apart verwijderen) maar het volledige veldenoverzicht van `OrderAssign` en
+  het exacte gedrag van `TargetOrder` zijn niet bevestigd; de betekenis van `AddPODetail`'s
+  `FixVar`/`RoundType`-parameters staat nog niet vast; en er is nog geen methode gevonden voor
+  PO-statusupdates. Test dit bij voorkeur eerst één keer tegen een MAX test-/sandbox-administratie
+  voordat het tegen een live administratie draait.
 
 ## Bekende beperkingen van dit prototype
 

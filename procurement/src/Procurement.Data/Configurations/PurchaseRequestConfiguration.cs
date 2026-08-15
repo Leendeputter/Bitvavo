@@ -47,6 +47,8 @@ namespace Procurement.Data.Configurations
             Property(l => l.StockId).HasMaxLength(50);
             Property(l => l.Desc1).HasMaxLength(250);
             Property(l => l.Desc2).HasMaxLength(250);
+            Property(l => l.MaxLineNumber).HasMaxLength(10);
+            Property(l => l.MaxDeliveryNumber).HasMaxLength(10);
         }
     }
 }

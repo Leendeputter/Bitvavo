@@ -13,6 +13,10 @@ namespace Procurement.Erp
         /// <summary>Order_Master.ORDNUM_10 ([Order]) — used as PurchaseRequest.ErpRequestNumber (the dedup key when syncing).</summary>
         public string OrderNumber { get; set; }
         public string OrderLong { get; set; }
+        /// <summary>Order_Master.LINNUM_10 — together with OrderNumber/DeliveryNumber, the composite key MaxOrderModule.DeletePurchaseRequisitionLineItem needs to remove this PR once a PO has been created for it.</summary>
+        public string LineNumber { get; set; }
+        /// <summary>Order_Master.DELNUM_10 — see LineNumber.</summary>
+        public string DeliveryNumber { get; set; }
         /// <summary>Order_Master.PRTNUM_10 (PartID).</summary>
         public string PartId { get; set; }
         /// <summary>Order_Master.CURQTY_10 (CurrentQty).</summary>

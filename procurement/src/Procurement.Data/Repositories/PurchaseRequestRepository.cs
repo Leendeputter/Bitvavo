@@ -58,9 +58,10 @@ namespace Procurement.Data.Repositories
                 .Include(pr => pr.Lines)
                 .FirstOrDefaultAsync(pr => pr.CompanyId == _session.CompanyId && pr.ErpRequestNumber == erpRequestNumber));
 
-        /// <summary>PurchaseRequestLine has no repository of its own — used by MaxPurchaseOrderRepository to resolve MAX-native fields (ErpArticleId, StockId, ...) for a line that only carries PurchaseRequestLineId on its PurchaseOrderDraftLine.</summary>
+        /// <summary>PurchaseRequestLine has no repository of its own — used by MaxPurchaseOrderRepository to resolve MAX-native fields (ErpArticleId, StockId, MaxLineNumber/MaxDeliveryNumber, ...) for a line that only carries PurchaseRequestLineId on its PurchaseOrderDraftLine. Eager-loads PurchaseRequest since MaxPurchaseOrderRepository also needs its ErpRequestNumber (Order_Master.ORDNUM_10) for the original PR's composite key.</summary>
         public Task<PurchaseRequestLine> GetLineByIdAsync(int purchaseRequestLineId) => _context.RunGuardedAsync(() =>
             _context.PurchaseRequestLines
+                .Include(l => l.PurchaseRequest)
                 .FirstOrDefaultAsync(l => l.PurchaseRequest.CompanyId == _session.CompanyId && l.Id == purchaseRequestLineId));
 
         public Task<PurchaseRequest> AddAsync(PurchaseRequest request) => _context.RunGuardedAsync(async () =>

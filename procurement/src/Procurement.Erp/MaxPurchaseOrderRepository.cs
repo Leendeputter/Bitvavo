@@ -11,37 +11,51 @@ using Procurement.Data.Repositories;
 namespace Procurement.Erp
 {
     /// <summary>
-    /// Creates actual MAX Purchase Orders via MaxOrderNET's MaxOrderModule (AddPOHeading/
-    /// AddPODetail) — the write-side counterpart to MaxOrderRepository's read-side Order_Master/
-    /// Part_Master queries. Uses MAX's own module rather than raw SQL, on purpose: that keeps
-    /// MAX's own validations/business rules/triggers intact instead of bypassing them, the same
-    /// way LoginForm already goes through MaxSQL rather than querying ExactRMCompanies by hand.
+    /// Creates actual MAX Purchase Orders via MaxOrderNET's MaxOrderModule — the write-side
+    /// counterpart to MaxOrderRepository's read-side Order_Master/Part_Master queries. Uses MAX's
+    /// own module rather than raw SQL, on purpose: that keeps MAX's own validations/business
+    /// rules/triggers intact instead of bypassing them, the same way LoginForm already goes through
+    /// MaxSQL rather than querying ExactRMCompanies by hand.
     ///
-    /// STATUS: header creation (AddPOHeading) is implemented from a working VB.NET example
-    /// supplied directly (a WinForms button handler that calls it with real, working parameter
-    /// values) — reasonably confident. Line creation (AddPODetail) and the header/line linkage are
-    /// still open questions (see the TODOs below and MaxErpConnector.UseMockPurchaseOrders' comment)
-    /// — the supplied example creates a header and a line as two independent, unlinked demo
-    /// snippets, so it doesn't show how a real caller ties a specific line to the PO header it just
-    /// created. Flip MaxErpConnector.UseMockPurchaseOrders to false only once that's confirmed.
+    /// What a row in our requests grid actually is in MAX is a Purchase Requisition (PR) — an
+    /// Order_Master row with TYPE_10 for that kind of order — which needs to be converted into an
+    /// actual PO line once ordered, and then removed so it stops reappearing as an open request on
+    /// the next Query. This class does that as two explicit steps per line, using MaxOrderModule's
+    /// own confirmed methods (decompiled source for both was supplied directly):
+    ///  1. AddPODetail(Order_Master, IncOrdRev, CreateHeader, FixVar, RoundType) creates the PO
+    ///     line. Called with CreateHeader:true only for the first line of a new PO — that makes
+    ///     AddPODetail build the Purchase_Order_Code header itself (reading Vendor_Master for
+    ///     TERMS_08/FOBPT_08/SHPVIA_08/SHPINS_08/GSHIP_08/GTERM_08/CURR_08 — confirmed by reading
+    ///     AddPODetail's own source, so no header fields are hand-guessed here anymore) and assigns
+    ///     the newly-minted PO number onto that line's own ORDNUM_10. Every subsequent line for the
+    ///     same PO is passed CreateHeader:false with ORDNUM_10 set to that same PO number and its
+    ///     own sequential LINNUM_10 ("02", "03", ...).
+    ///  2. DeletePurchaseRequisitionLineItem(ordnum, linnum, delnum, out errMsg) removes the
+    ///     original PR row (Order_Master.ORDNUM_10/LINNUM_10/DELNUM_10 — the composite key synced
+    ///     onto PurchaseRequest.ErpRequestNumber/PurchaseRequestLine.MaxLineNumber/MaxDeliveryNumber
+    ///     by MaxOrderRepository) once its PO line exists, so it stops showing up as an open request.
+    ///     Best-effort: a failure here is logged, not thrown — the PO line from step 1 is already
+    ///     correctly placed at that point, and aborting the whole batch over a leftover PR row would
+    ///     be a worse outcome than leaving that one row for manual cleanup.
     ///
-    /// Still open (bring these back from whoever manages MAX):
-    ///  1. How does AddPODetail associate a line with a specific PO header? The example sets
-    ///     OrderMaster.ORDNUM_10 = "" for the line, same as the header's ORDNUM_16 = "" — if MAX
-    ///     auto-assigns both independently there must be some other linking step this snippet
-    ///     doesn't show.
-    ///  2. What do AddPODetail's trailing parameters mean (called as
-    ///     AddPODetail(orderMaster, True, True, "F", 3) in the example)? Guessed here as
-    ///     (checkAvailability, autoSchedule, schedulingMethod, leadTimeDays) purely by position —
-    ///     unconfirmed.
-    ///  3. Which of the header's fixed-looking values (TERMS_16, SHPVIA_16, COLPPD_16, GSHIP_16,
-    ///     GTERM_16, CODE_16, ...) should actually come from Vendor_Master per supplier, vs. being
-    ///     genuine company-wide constants? The supplied example hardcodes them (including
-    ///     CODE_16 = "CAD", Canadian Dollar — corrected to "EUR" below, but that's a guess, not a
-    ///     confirmed MAX currency code).
-    ///  4. How is the original PurchaseRequest's MAX order (the row MaxOrderRepository read this
-    ///     from) removed/closed once a PO exists for it, so it stops reappearing as an open
-    ///     request on the next Query? Not implemented yet — see RemoveOriginalOrderAsync below.
+    /// Still open / worth confirming before relying on this in production:
+    ///  1. MaxOrderModule.AssignPRsToPO(int, string TargetOrder, List&lt;OrderAssign&gt;, bool, bool,
+    ///     bool, bool, bool, string) looks like it may be the more "correct", atomic way to do this
+    ///     — converting an existing PR row in place (re-keying it onto the target PO, which would
+    ///     fold step 2 into step 1 as a single MAX-native operation) rather than inserting a brand
+    ///     new row and separately deleting the old one. Not used here because OrderAssign's full
+    ///     field list isn't known, TargetOrder's exact semantics (must it already exist, or can it
+    ///     be created inline — the AddPOHeading call visible inside AssignPRsToPO's decompiled body
+    ///     sits behind a condition that looks permanently false) aren't confirmed, and it's unclear
+    ///     whether it lets the caller override quantity/price (vs. always carrying over the PR's own
+    ///     CURQTY_10) — which matters here, since sourcing can compute an OfferedQuantity that
+    ///     differs from the PR's originally requested quantity (order multiples/MOQ rounding).
+    ///  2. FixVar ("F") and RoundType (3) — passed through unchanged from the supplied working
+    ///     example; still don't know precisely what they control.
+    ///  3. GetErrors() is assumed to be a public MaxOrderModule method (called internally by
+    ///     AddPOHeading/DeletePurchaseRequisitionLineItem's own error-message out-parameters) — used
+    ///     below to get a message after an AddPODetail failure, which has no out-param of its own.
+    ///  4. No status-update method has been found yet — UpdateStatusAsync stays unimplemented.
     /// </summary>
     public class MaxPurchaseOrderRepository
     {
@@ -59,10 +73,12 @@ namespace Procurement.Erp
             _purchaseRequestRepository = purchaseRequestRepository ?? throw new ArgumentNullException(nameof(purchaseRequestRepository));
         }
 
-        /// <summary>Returns MAX's own PO number (assigned by AddPOHeading, same as the supplied example's ORDNUM_16 = "" going in, sOrder coming out).</summary>
+        /// <summary>Returns MAX's own PO number, minted by AddPODetail on the first line (CreateHeader:true).</summary>
         public async Task<string> CreatePurchaseOrderAsync(PurchaseOrderDraft draft)
         {
             if (draft == null) throw new ArgumentNullException(nameof(draft));
+            if (draft.Lines == null || draft.Lines.Count == 0)
+                throw new ArgumentException("PurchaseOrderDraft has no lines.", nameof(draft));
 
             var supplier = await _supplierRepository.GetByCodeAsync(draft.SupplierCode);
             if (supplier == null || string.IsNullOrEmpty(supplier.VendorId))
@@ -78,121 +94,84 @@ namespace Procurement.Erp
                 var log = MyLogManager.Create(_session.LogFile, _session.LogPath, true).GetCurrentClassLogger();
                 var maxOrderModule = new MaxOrderModule(primary, admin, _session.CompanyId, log, _session.LicensePath, _session.UserName);
 
-                var poHeader = BuildPurchaseOrderHeader(supplier.VendorId);
-                var errorMessage = string.Empty;
-                // The supplied VB example reads sErrMsg's content *after* this call, which only
-                // makes sense if AddPOHeading's second parameter is declared ByRef — VB.NET compiles
-                // ByRef to a C# `ref` parameter, so that's assumed here; if the real signature turns
-                // out to be ByVal instead, this is a one-word compile fix (drop `ref`), not a
-                // behavior risk.
-                var erpPoNumber = maxOrderModule.AddPOHeading(poHeader, ref errorMessage);
+                string erpPoNumber = null;
+                var lineNumber = 1;
 
-                if (string.IsNullOrEmpty(erpPoNumber))
-                    throw new InvalidOperationException($"MAX AddPOHeading is mislukt: {errorMessage}");
-
-                // TODO (open question 1 above): nothing here ties erpPoNumber to the lines added
-                // below yet — AddPODetail's example call doesn't show the linking mechanism.
                 foreach (var draftLine in draft.Lines)
                 {
                     var requestLine = await _purchaseRequestRepository.GetLineByIdAsync(draftLine.PurchaseRequestLineId);
                     if (requestLine == null)
                         throw new InvalidOperationException($"PurchaseRequestLine {draftLine.PurchaseRequestLineId} niet gevonden — kan geen MAX PO-regel aanmaken.");
 
-                    var poLine = BuildPurchaseOrderLine(erpPoNumber, supplier.VendorId, requestLine, draftLine);
+                    var isFirstLine = erpPoNumber == null;
+                    var poLine = BuildPurchaseOrderLine(supplier.VendorId, requestLine, draftLine, erpPoNumber, lineNumber, isFirstLine);
 
-                    // TODO (open question 2 above): trailing parameters guessed by position from
-                    // the supplied example (True, True, "F", 3) — unconfirmed meaning.
-                    var added = maxOrderModule.AddPODetail(poLine, true, true, "F", 3);
+                    var added = maxOrderModule.AddPODetail(poLine, IncOrdRev: true, CreateHeader: isFirstLine, FixVar: "F", RoundType: 3);
                     if (!added)
-                        throw new InvalidOperationException($"MAX AddPODetail is mislukt voor regel {draftLine.PurchaseRequestLineId} (PO {erpPoNumber}).");
+                    {
+                        var errorMessage = maxOrderModule.GetErrors();
+                        throw new InvalidOperationException(
+                            $"MAX AddPODetail is mislukt voor regel {draftLine.PurchaseRequestLineId}" +
+                            (erpPoNumber != null ? $" (PO {erpPoNumber})" : "") + $": {errorMessage}");
+                    }
+
+                    if (isFirstLine)
+                        erpPoNumber = poLine.ORDNUM_10;
+                    lineNumber++;
+
+                    RemoveOriginalOrder(maxOrderModule, log, requestLine);
                 }
 
                 return erpPoNumber;
             }
         }
 
+        /// <summary>
+        /// Best-effort — see the class comment for why a failure here doesn't abort PO creation.
+        /// Logger typed via NLog.Logger explicitly (not a bare "Logger") since MyLogManager.Create
+        /// returns an NLog.LogFactory per ProcurementSession's own comment — avoids guessing whether
+        /// a same-named type also exists in the MAX50 namespace already imported into this file.
+        /// </summary>
+        private void RemoveOriginalOrder(MaxOrderModule maxOrderModule, NLog.Logger log, PurchaseRequestLine requestLine)
+        {
+            var ordnum = requestLine.PurchaseRequest?.ErpRequestNumber;
+            if (string.IsNullOrEmpty(ordnum) || string.IsNullOrEmpty(requestLine.MaxLineNumber))
+            {
+                log.Warn($"Kan originele MAX PR niet verwijderen voor PurchaseRequestLine {requestLine.Id} — ordnum/linnum ontbreekt (mogelijk gesynct vóór MaxLineNumber/MaxDeliveryNumber bestonden).");
+                return;
+            }
+
+            var deleted = maxOrderModule.DeletePurchaseRequisitionLineItem(ordnum, requestLine.MaxLineNumber, requestLine.MaxDeliveryNumber ?? "01", out var deleteErrorMessage);
+            if (!deleted)
+                log.Warn($"MAX DeletePurchaseRequisitionLineItem is mislukt voor {ordnum}-{requestLine.MaxLineNumber}-{requestLine.MaxDeliveryNumber}: {deleteErrorMessage}");
+        }
+
         public Task UpdateStatusAsync(string erpPoNumber, string status)
         {
-            // Not part of the supplied example — MaxOrderModule likely has its own method for
-            // this (mirroring AddPOHeading/AddPODetail), not yet confirmed.
+            // No MaxOrderModule method for this has been identified yet in the source supplied so far.
             throw new NotImplementedException(
                 "MAX PO-statusupdate is nog niet geïmplementeerd — welke MaxOrderModule-methode hiervoor is, is nog niet bevestigd.");
         }
 
         /// <summary>
-        /// Not implemented — MAX needs the original PurchaseRequest's order (the Order_Master row
-        /// MaxOrderRepository read this from) removed or closed once a PO exists for it, otherwise
-        /// it keeps reappearing as an open request on the next Query. No MaxOrderModule method for
-        /// this has been confirmed yet — bring this back along with the other open questions.
-        /// </summary>
-        public Task RemoveOriginalOrderAsync(string erpRequestNumber)
-        {
-            throw new NotImplementedException(
-                "Verwijderen/afsluiten van de oorspronkelijke MAX-order na PO-aanmaak is nog niet " +
-                "geïmplementeerd — welke aanpak MAX hiervoor verwacht (een MaxOrderModule-methode, of " +
-                "iets anders) is nog niet bevestigd.");
-        }
-
-        /// <summary>
-        /// Field values copied from the supplied working example almost verbatim — only VENID_16
-        /// (from our own Supplier.VendorId, was hardcoded "V400" in the example) and CODE_16
-        /// (guessed "EUR", was hardcoded "CAD" — Canadian Dollar, clearly example/demo data) were
-        /// changed. Everything else (TERMS_16, SHPVIA_16, COLPPD_16, GSHIP_16, GTERM_16, ...) is a
-        /// fixed value straight from the example and is open question 3 above: several of these
-        /// plausibly should come from Vendor_Master per supplier instead of being constant for
-        /// every PO.
-        /// </summary>
-        private Purchase_Order_Code BuildPurchaseOrderHeader(string vendorId)
-        {
-            var now = DateTime.Now;
-            return new Purchase_Order_Code
-            {
-                ORDNUM_16 = "",
-                VENID_16 = vendorId,
-                TERMS_16 = "Nett 30",
-                TAXBL_16 = "N",
-                SHPVIA_16 = "UPS Ground",
-                COLPPD_16 = "P",
-                ORDDTE_16 = now,
-                FILL01_16 = "",
-                ORDREV_16 = "000",
-                PRTFLG_16 = "N",
-                XODE_16 = "PO",
-                GSHIP_16 = "12",
-                GTERM_16 = "02",
-                FIXVAR_16 = "F",
-                CODE_16 = "EUR",
-                TAXABL_16 = "N",
-                CREDTE_16 = now,
-                LNETAX_16 = "N",
-                EXCESS_16 = 0,
-                XDFINT_16 = 0,
-                XDFFLT_16 = 0,
-                XDFBOL_16 = "",
-                XDFTXT_16 = "",
-                FILLER_16 = "",
-                CreatedBy = _session.UserName,
-                ModifiedBy = _session.UserName
-            };
-        }
-
-        /// <summary>
         /// Field values map to already-known data where possible (PRTNUM_10 from the originating
         /// PurchaseRequestLine.ErpArticleId, CURQTY_10 from the draft line's ordered quantity,
-        /// VENID_10 from the supplier); everything else is copied from the supplied example
-        /// verbatim (open question 3 applies here too, e.g. STATUS_10 = "3" and STK_10 = "FGI" are
-        /// unconfirmed for a real PO line rather than the example's own test data).
+        /// VENID_10 from the supplier); everything else is copied from the originally supplied
+        /// example verbatim (STATUS_10 = "3" and STK_10 = "FGI" fallback are unconfirmed for a real
+        /// PO line rather than that example's own test data). ORDNUM_10/LINNUM_10/DELNUM_10 are left
+        /// blank for the first line of a PO (AddPODetail assigns "01"/"01" and the new PO number
+        /// itself when CreateHeader:true) and set explicitly for every line after that.
         /// </summary>
-        private Order_Master BuildPurchaseOrderLine(string erpPoNumber, string vendorId, PurchaseRequestLine requestLine, PurchaseOrderDraftLine draftLine)
+        private Order_Master BuildPurchaseOrderLine(
+            string vendorId, PurchaseRequestLine requestLine, PurchaseOrderDraftLine draftLine,
+            string erpPoNumber, int lineNumber, bool isFirstLine)
         {
             var now = DateTime.Now;
             return new Order_Master
             {
-                // TODO (open question 1): the supplied example leaves ORDNUM_10 blank here too —
-                // if that's not how a line gets attached to erpPoNumber, this needs to change.
-                ORDNUM_10 = "",
-                LINNUM_10 = "",
-                DELNUM_10 = "",
+                ORDNUM_10 = isFirstLine ? "" : erpPoNumber,
+                LINNUM_10 = isFirstLine ? "" : $"{lineNumber:D2}",
+                DELNUM_10 = isFirstLine ? "" : "01",
                 ORDER_10 = "",
                 PRTNUM_10 = requestLine.ErpArticleId,
                 CURDUE_10 = requestLine.RequiredDate ?? now,

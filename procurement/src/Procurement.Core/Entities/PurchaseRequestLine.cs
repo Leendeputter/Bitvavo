@@ -43,6 +43,16 @@ namespace Procurement.Core.Entities
         /// <summary>Part_Master.PMDES2_01.</summary>
         public string Desc2 { get; set; }
 
+        /// <summary>
+        /// Order_Master.LINNUM_10/DELNUM_10 for this line's original MAX PR row — together with the
+        /// parent PurchaseRequest.ErpRequestNumber (ORDNUM_10), the composite key
+        /// MaxOrderModule.DeletePurchaseRequisitionLineItem needs to remove the original PR once a
+        /// PO has been created for it (MaxPurchaseOrderRepository). Not used by anything else —
+        /// purely a MAX mirror, same treatment as the other display-only fields below.
+        /// </summary>
+        public string MaxLineNumber { get; set; }
+        public string MaxDeliveryNumber { get; set; }
+
         /// <summary>Persisted as a comma-separated list; use <see cref="PreferredSuppliers"/> in code.</summary>
         public string PreferredSuppliersCsv { get; set; }
 

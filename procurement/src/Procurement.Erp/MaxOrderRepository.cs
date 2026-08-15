@@ -56,6 +56,8 @@ namespace Procurement.Erp
 SELECT
     dbo.Order_Master.ORDNUM_10 AS [Order],
     dbo.Order_Master.ORDER_10 AS OrderLong,
+    dbo.Order_Master.LINNUM_10 AS LineNumber,
+    dbo.Order_Master.DELNUM_10 AS DeliveryNumber,
     dbo.Order_Master.PRTNUM_10 AS PartID,
     dbo.Order_Master.CURQTY_10 AS CurrentQty,
     dbo.Order_Master.FRMPLN_10 AS Firm,
@@ -100,6 +102,8 @@ ORDER BY dbo.Order_Master.ORDNUM_10";
                         {
                             OrderNumber = reader["Order"].ToString().Trim(),
                             OrderLong = ToDisplayString(reader["OrderLong"]),
+                            LineNumber = ToDisplayString(reader["LineNumber"]),
+                            DeliveryNumber = ToDisplayString(reader["DeliveryNumber"]),
                             PartId = CleanCodeField(reader["PartID"]),
                             CurrentQty = Convert.ToInt32(reader["CurrentQty"]),
                             Firm = ToBool(reader["Firm"]),

@@ -46,16 +46,16 @@ namespace Procurement.Erp
 
         /// <summary>
         /// Whether "Order plaatsen" writes to this app's own Procurement_PurchaseOrder table (true,
-        /// the default and only currently-verified option) or attempts a real MAX PO via
-        /// MaxPurchaseOrderRepository (false).
+        /// the default) or a real MAX PO via MaxPurchaseOrderRepository (false).
         ///
-        /// DO NOT flip this to false yet. MaxPurchaseOrderRepository's PO header creation
-        /// (AddPOHeading) is implemented from a working example, but line creation (AddPODetail)
-        /// and — critically — how a line actually gets linked to the header it's meant to belong to
-        /// are still unconfirmed (see that class's comment for the exact open questions). Flipping
-        /// this now would call real MAX API methods against the live administration with that
-        /// linkage unverified, which is exactly the "silently wrong data in a shared ERP" risk this
-        /// flag exists to prevent.
+        /// DO NOT flip this to false yet — not because the approach is still a guess (it's now
+        /// grounded in MaxOrderModule's own decompiled source for AddPODetail/
+        /// DeletePurchaseRequisitionLineItem, not hand-waving), but because none of it has been
+        /// exercised against a real MAX administration yet. See MaxPurchaseOrderRepository's class
+        /// comment for the specific remaining open questions (AssignPRsToPO as a possibly-better
+        /// alternative, FixVar/RoundType's exact meaning, an unconfirmed numeric-type assumption on
+        /// FORCUR_10) before trusting this against live data — ideally test it once against a MAX
+        /// test/sandbox company first, if one exists.
         /// </summary>
         public bool UseMockPurchaseOrders { get; set; } = true;
 
@@ -145,7 +145,9 @@ namespace Procurement.Erp
                             Customer = Truncate(order.Customer, 50),
                             StockId = Truncate(order.StockId, 50),
                             Desc1 = Truncate(order.Desc1, 250),
-                            Desc2 = Truncate(order.Desc2, 250)
+                            Desc2 = Truncate(order.Desc2, 250),
+                            MaxLineNumber = Truncate(order.LineNumber, 10),
+                            MaxDeliveryNumber = Truncate(order.DeliveryNumber, 10)
                         }
                     }
                 };
@@ -212,6 +214,11 @@ namespace Procurement.Erp
             // as everything else in this method, so they belong here too.
             line.ErpArticleId = Truncate(order.PartId, 50);
             line.ManufacturerPartNumber = Truncate(order.ManufacturerPartNumber, 100);
+            // LINNUM_10/DELNUM_10 are part of the PR's own MAX primary key, so they can't actually
+            // change for an already-synced row — refreshed here anyway only to backfill rows synced
+            // before these fields existed (same reasoning as the two fields above).
+            line.MaxLineNumber = Truncate(order.LineNumber, 10);
+            line.MaxDeliveryNumber = Truncate(order.DeliveryNumber, 10);
         }
 
         /// <summary>
