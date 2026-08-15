@@ -822,6 +822,18 @@ namespace Procurement.UI.Forms
         {
             _isBusy = busy;
             UseWaitCursor = busy;
+
+            // DataGridView is known to hold onto its own cached cursor after the wait cursor
+            // cascades back to false on the form (a long-standing WinForms quirk, not something
+            // toggling UseWaitCursor alone fixes) — most noticeable here because PopulateRequestsGrid
+            // rebinds _requestsGrid.DataSource while UseWaitCursor is still true, mid-query. Forcing
+            // both grids back to Cursors.Default on the way out clears that stale state explicitly.
+            if (!busy)
+            {
+                _requestsGrid.Cursor = Cursors.Default;
+                _linesGrid.Cursor = Cursors.Default;
+            }
+
             var enabled = !busy;
             _queryButton.Enabled = enabled;
             _newRequestButton.Enabled = enabled;
