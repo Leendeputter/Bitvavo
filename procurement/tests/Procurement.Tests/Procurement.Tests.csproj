@@ -23,6 +23,9 @@
     <ProjectReference Include="..\..\src\Procurement.Core\Procurement.Core.csproj" />
     <ProjectReference Include="..\..\src\Procurement.Suppliers.DigiKey\Procurement.Suppliers.DigiKey.csproj" />
     <ProjectReference Include="..\..\src\Procurement.Suppliers.Farnell\Procurement.Suppliers.Farnell.csproj" />
+    <ProjectReference Include="..\..\src\Procurement.Suppliers.Mouser\Procurement.Suppliers.Mouser.csproj" />
+    <ProjectReference Include="..\..\src\Procurement.Suppliers.TME\Procurement.Suppliers.TME.csproj" />
+    <ProjectReference Include="..\..\src\Procurement.Suppliers.Other\Procurement.Suppliers.Other.csproj" />
   </ItemGroup>
 
 </Project>

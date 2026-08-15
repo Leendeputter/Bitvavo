@@ -419,6 +419,19 @@ spec §7 (12.000 stuks, DigiKey reel 5.000 @ €0,11 / Farnell reel 2.500 @ €0
 Supplier C re-reel 4.000 @ €0,105) letterlijk reproduceert, inclusief de twee varianten
 (`ORIGINAL_REEL_REQUIRED` vs. `EITHER_REEL`).
 
+**Suppliers** (`tests/Procurement.Tests/Suppliers/`): elke adapter heeft mock-modus-tests naar het
+patroon van `DigiKeyAdapterTests`/`FarnellAdapterTests` (zoeken/prijzen/idempotente order-aanmaak).
+Twee dingen die verder gaan dan alleen mock-modus, omdat ze precies het minst-geverifieerde gedrag
+raken dat mock-modus zelf nooit aanraakt:
+- `MouserAdapterTests` test `ParseLeadingInt`/`ParseCurrency` (nu `internal` +
+  `InternalsVisibleTo("Procurement.Tests")` in `Procurement.Suppliers.Mouser`) direct tegen
+  realistische Mouser-responsformaten (`"48000 In Stock"`, `"$1,234.56"`).
+- `TmeSignatureTests` verifieert `TmeHttpClientWrapper.ComputeSignature` (idem `internal` +
+  `InternalsVisibleTo`) tegen een onafhankelijk in Python berekende referentie-HMAC-SHA1-waarde —
+  bewijst niet dat TME's server de aanroep accepteert, maar wel dat het encode/sorteer/HMAC/base64-
+  algoritme zelf klopt en dat een toekomstige regressie hier hard faalt in plaats van stilletjes een
+  andere-maar-ook-base64-vormige signature te produceren.
+
 ## Belangrijkste ontwerpkeuzes
 
 - **`ISupplierAdapter`** (`Procurement.Core.Interfaces`) is de enige plek waar leverancierspecifieke

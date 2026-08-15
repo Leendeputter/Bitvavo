@@ -261,14 +261,17 @@ namespace Procurement.Suppliers.Mouser
             };
         }
 
-        private static int ParseLeadingInt(string text)
+        // Internal (not private) so MouserAdapterTests can pin down the defensive-parsing
+        // behavior directly — mock mode never exercises these, since it never sees Mouser's real
+        // free-text Availability/LeadTime/Price fields.
+        internal static int ParseLeadingInt(string text)
         {
             if (string.IsNullOrWhiteSpace(text)) return 0;
             var match = Regex.Match(text, @"\d+");
             return match.Success && int.TryParse(match.Value, out var value) ? value : 0;
         }
 
-        private static decimal ParseCurrency(string text)
+        internal static decimal ParseCurrency(string text)
         {
             if (string.IsNullOrWhiteSpace(text)) return 0m;
             var cleaned = Regex.Replace(text, @"[^\d.,]", "");

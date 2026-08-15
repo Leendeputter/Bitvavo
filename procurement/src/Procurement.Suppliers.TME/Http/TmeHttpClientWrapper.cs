@@ -101,8 +101,11 @@ namespace Procurement.Suppliers.TME.Http
         // TME's documented signing scheme (OAuth1-style): sort all parameters by key (ordinal),
         // percent-encode key=value pairs per RFC3986, join with '&', then sign
         // "POST&{urlEncode(apiUrl)}&{urlEncode(paramString)}" with HMAC-SHA1 using the private
-        // ApiKey as the secret, base64-encoding the result.
-        private string ComputeSignature(string apiUrl, Dictionary<string, string> parameters)
+        // ApiKey as the secret, base64-encoding the result. Internal (not private) so
+        // TmeSignatureTests can verify this against an independently-computed (Python) reference
+        // vector — this is the least-verified mechanism in the whole supplier layer, worth pinning
+        // down with a cross-language test even though it can't prove TME's server accepts it.
+        internal string ComputeSignature(string apiUrl, Dictionary<string, string> parameters)
         {
             var paramString = string.Join("&", parameters
                 .OrderBy(kv => kv.Key, StringComparer.Ordinal)
