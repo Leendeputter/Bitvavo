@@ -208,10 +208,11 @@ namespace Procurement.Erp
                 LOTNUM_10 = "",
                 BEGSER_10 = "",
                 REWORK_10 = "N",
-                // FORCUR_10's numeric type is unconfirmed (example: FORCUR_10 = 127.345, a VB
-                // literal that could bind to Double/Single/Decimal) — draftLine.UnitPrice is
-                // decimal; if this doesn't compile as-is, wrap it in the matching numeric cast.
-                FORCUR_10 = draftLine.UnitPrice,
+                // FORCUR_10 is double (confirmed in the decompiled MaxOrderModule source: compared
+                // directly against the literal 0.0, divided by/multiplied with other double values
+                // with no cast anywhere) — draftLine.UnitPrice is decimal, which has no implicit
+                // conversion to double, hence the explicit cast.
+                FORCUR_10 = (double)draftLine.UnitPrice,
                 CRTSNS_10 = "N",
                 CREDTE_10 = now,
                 UDFKEY_10 = " ",
