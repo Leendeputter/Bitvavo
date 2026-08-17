@@ -35,6 +35,14 @@ namespace Procurement.UI.Forms
         private TextBox _rangeStartBox;
         private TextBox _rangeEndBox;
 
+        // "Weergeven" group — which of this prototype's own Workflow statuses to show in the grid.
+        // Purely a local display filter (never touches MAX): read by both LoadLocalRequestsAsync and
+        // RefreshRequestsAsync so toggling one behaves the same regardless of how the grid was last
+        // populated. Ordered defaults unchecked so a completed request doesn't clutter the normal
+        // working view, but stays reachable on demand (spec request: "wil hem nog wel ergens op
+        // kunnen vragen") — Order details still works on it once shown, same as any other row.
+        private readonly Dictionary<PurchaseRequestStatus, CheckBox> _requestStatusCheckBoxes = new Dictionary<PurchaseRequestStatus, CheckBox>();
+
         private Button _newRequestButton;
         private Button _startSourcingButton;
         private Button _sourceAllButton;
@@ -130,6 +138,7 @@ namespace Procurement.UI.Forms
             filterPanel.Controls.Add(BuildQueryGroup());
             filterPanel.Controls.Add(BuildDueDateRangeGroup());
             filterPanel.Controls.Add(BuildRangeFilterGroup());
+            filterPanel.Controls.Add(BuildRequestStatusFilterGroup());
 
             _requestsGrid = new DataGridView
             {
@@ -253,6 +262,56 @@ namespace Procurement.UI.Forms
             return WrapInGroupBox("Filter", layout);
         }
 
+        private GroupBox BuildRequestStatusFilterGroup()
+        {
+            var layout = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true };
+
+            var defaultChecked = new HashSet<PurchaseRequestStatus>
+            {
+                PurchaseRequestStatus.Pending,
+                PurchaseRequestStatus.Sourcing,
+                PurchaseRequestStatus.WaitingApproval,
+                PurchaseRequestStatus.ReadyToOrder,
+                PurchaseRequestStatus.Exception
+            };
+
+            foreach (PurchaseRequestStatus status in Enum.GetValues(typeof(PurchaseRequestStatus)))
+            {
+                // Checked is set before CheckedChanged is wired up, on purpose — otherwise building
+                // these six checkboxes here would itself fire six local DB reloads while the form is
+                // still being constructed, before Load ever runs (the constructor's whole point is
+                // that nothing loads until the user clicks something).
+                var checkBox = new CheckBox { Text = status.ToString(), AutoSize = true, Checked = defaultChecked.Contains(status), Margin = new Padding(0, 0, 0, 2) };
+                _requestStatusCheckBoxes[status] = checkBox;
+                layout.Controls.Add(checkBox);
+            }
+
+            foreach (var checkBox in _requestStatusCheckBoxes.Values)
+            {
+                checkBox.CheckedChanged += async (s, e) => await ReloadWithCurrentStatusFilterAsync();
+            }
+
+            return WrapInGroupBox("Weergeven", layout);
+        }
+
+        private HashSet<PurchaseRequestStatus> GetCheckedRequestStatuses() =>
+            new HashSet<PurchaseRequestStatus>(_requestStatusCheckBoxes.Where(kv => kv.Value.Checked).Select(kv => kv.Key));
+
+        /// <summary>Re-renders whatever's already locally synced with the current checkbox selection — never touches MAX, so this is safe/cheap to run on every checkbox toggle.</summary>
+        private async System.Threading.Tasks.Task ReloadWithCurrentStatusFilterAsync()
+        {
+            if (_isBusy) return;
+            SetBusy(true);
+            try
+            {
+                await LoadLocalRequestsAsync();
+            }
+            finally
+            {
+                SetBusy(false);
+            }
+        }
+
         private static void AddFilterRow(TableLayoutPanel layout, string label, Control control)
         {
             var row = layout.RowCount;
@@ -303,13 +362,15 @@ namespace Procurement.UI.Forms
             _composition.ErpConnector.IncludedOrderStatuses = statuses;
         }
 
-        /// <summary>Laadt enkel de al lokaal gesynchroniseerde aanvragen — raakt MAX niet aan. Gebruikt na lokale wijzigingen (nieuwe testaanvraag, sourcing, goedkeuringen), niet bij het openen van het scherm.</summary>
+        /// <summary>Laadt enkel de al lokaal gesynchroniseerde aanvragen — raakt MAX niet aan. Gefilterd op de "Weergeven"-checkboxen (welke Workflow-statussen getoond worden), niet op een vaste "openstaande"-lijst. Gebruikt na lokale wijzigingen (nieuwe testaanvraag, sourcing, goedkeuringen) en bij het wijzigen van de statusfilter zelf, niet bij het openen van het scherm.</summary>
         private async System.Threading.Tasks.Task LoadLocalRequestsAsync()
         {
             SetStatus("Aanvragen laden...");
-            var requests = await _composition.PurchaseRequestRepository.GetOpenAsync();
+            var statuses = GetCheckedRequestStatuses();
+            var allRequests = await _composition.PurchaseRequestRepository.GetAllAsync();
+            var requests = allRequests.Where(r => statuses.Contains(r.Status)).ToList();
             PopulateRequestsGrid(requests);
-            SetStatus($"{requests.Count} openstaande aanvraag/aanvragen geladen.");
+            SetStatus($"{requests.Count} aanvraag/aanvragen getoond (statusfilter).");
             await LoadLinesForSelectedRequestAsync();
         }
 
@@ -319,11 +380,18 @@ namespace Procurement.UI.Forms
             SetStatus("Orders opvragen uit MAX...");
             ApplyFiltersToErpConnector();
             var requests = await _composition.Engine.GetOpenPurchaseRequestsAsync();
-            PopulateRequestsGrid(requests);
+            // Dezelfde "Weergeven"-statusfilter als LoadLocalRequestsAsync, voor consistent gedrag
+            // ongeacht hoe het grid gevuld werd. Ordered zal hier nooit iets opleveren, ook niet met
+            // dat vakje aangevinkt: GetOpenPurchaseRequestsAsync synchroniseert MAX-orders en geeft
+            // enkel nog-openstaande aanvragen terug (Query = "wat moet er nog gesourced worden"),
+            // Ordered-aanvragen los bekijken kan via de checkbox zonder eerst op Query te klikken.
+            var statuses = GetCheckedRequestStatuses();
+            var filteredRequests = requests.Where(r => statuses.Contains(r.Status)).ToList();
+            PopulateRequestsGrid(filteredRequests);
             // Toont ook hoeveel orders de MAX-query zelf teruggaf (voor het filter toepassen op de
             // lokale lijst) — handig om te zien of een filter al op MAX-niveau iets doet, los van
             // hoeveel er uiteindelijk in de grid staan.
-            SetStatus($"{requests.Count} aanvraag/aanvragen getoond ({_composition.ErpConnector.LastMaxOrderCount} orders uit MAX opgehaald met huidig filter).");
+            SetStatus($"{filteredRequests.Count} aanvraag/aanvragen getoond ({_composition.ErpConnector.LastMaxOrderCount} orders uit MAX opgehaald met huidig filter).");
             await LoadLinesForSelectedRequestAsync();
         }
 
@@ -607,7 +675,8 @@ namespace Procurement.UI.Forms
                 var waitingApproval = 0;
                 var exceptionCount = 0;
                 var failed = 0;
-                var skipped = 0;
+                var skippedWaitingApproval = 0;
+                var skippedOrdered = 0;
 
                 for (var i = 0; i < requestIds.Count; i++)
                 {
@@ -620,11 +689,23 @@ namespace Procurement.UI.Forms
                         // yet, so it would get sourced again and end up with a second, duplicate
                         // ApprovalRequest. Harmless to re-run for Pending (never sourced) or Exception
                         // (worth retrying).
+                        //
+                        // Ordered must be skipped outright, not just "harmless to re-run": every line on
+                        // an Ordered request already has a SupplierSelection and no pending approval or
+                        // exception, so SourcePurchaseRequestAsync would recompute finalStatus as
+                        // ReadyToOrder and silently downgrade an already-placed order back into the
+                        // sourcing queue. Only reachable now that the "Weergeven" status filter can show
+                        // Ordered rows at all — before that they were never in the grid to select.
                         var current = await _composition.PurchaseRequestRepository.GetByIdAsync(requestIds[i]);
                         if (current == null) continue;
                         if (current.Status == PurchaseRequestStatus.WaitingApproval)
                         {
-                            skipped++;
+                            skippedWaitingApproval++;
+                            continue;
+                        }
+                        if (current.Status == PurchaseRequestStatus.Ordered)
+                        {
+                            skippedOrdered++;
                             continue;
                         }
 
@@ -643,7 +724,8 @@ namespace Procurement.UI.Forms
 
                 var summary = $"Sourcing klaar: {readyToOrder} klaar om te bestellen, {waitingApproval} wacht op goedkeuring, {exceptionCount} met fout";
                 if (failed > 0) summary += $", {failed} mislukt";
-                if (skipped > 0) summary += $", {skipped} overgeslagen (al in afwachting van goedkeuring)";
+                if (skippedWaitingApproval > 0) summary += $", {skippedWaitingApproval} overgeslagen (al in afwachting van goedkeuring)";
+                if (skippedOrdered > 0) summary += $", {skippedOrdered} overgeslagen (al besteld)";
                 SetStatus(summary + ".");
 
                 await LoadLocalRequestsAsync();
@@ -846,6 +928,12 @@ namespace Procurement.UI.Forms
             _supplierMappingButton.Enabled = enabled;
             _settingsButton.Enabled = enabled;
             _auditLogButton.Enabled = enabled;
+            // Not strictly a race on shared MAX SqlConnections like the buttons above (their
+            // CheckedChanged handler already no-ops via the same _isBusy check) — disabled anyway so
+            // a toggle during a Query can't silently fail to visually match the grid until the next
+            // unrelated reload.
+            foreach (var checkBox in _requestStatusCheckBoxes.Values)
+                checkBox.Enabled = enabled;
         }
     }
 }

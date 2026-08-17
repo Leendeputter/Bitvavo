@@ -137,10 +137,17 @@ aangevuld met de workflow-specifieke velden Manufacturer/Packaging/ReelRequireme
 MAX-query komen (maar niet de Workflow-kolom, want per regel is dat altijd de status van de hele
 aanvraag).
 
-**Bekend gat**: eenmaal daadwerkelijk bestelde aanvragen (`PurchaseRequest.Status == Ordered`) vallen
-uit `GetOpenAsync()` en dus uit dit grid — en daarmee ook uit bereik van de "Order details"-knop, die
-enkel werkt voor de op dat moment in dit grid geselecteerde aanvraag. Er is momenteel geen scherm dat
-*alle* aanvragen (ook afgeronde) laat opzoeken.
+**Statusfilter ("Weergeven")**: een aparte groep checkboxen (los van de MAX-Query-filters ernaast),
+één per `PurchaseRequest.Status`-waarde, bepaalt welke Workflow-statussen in het grid getoond worden.
+Standaard alles behalve Ordered aangevinkt — een eenmaal daadwerkelijk bestelde aanvraag blijft zo uit
+de normale werk-weergave, maar is alsnog op te vragen door het vakje aan te zetten (bv. om via "Order
+details" terug te kijken). Dit raakt nooit MAX aan: aan- of uitvinken filtert enkel lokaal al
+gesynchroniseerde aanvragen opnieuw (`PurchaseRequestRepository.GetAllAsync()`, client-side gefilterd),
+ook na een "Query"-klik. Sourcing starten/Alles sourcen slaat Ordered-aanvragen expliciet over (zou
+anders een al geplaatste order stilletjes terugzetten naar ReadyToOrder — elke regel heeft al een
+SupplierSelection zonder openstaande exception/goedkeuring, dus de sourcing-uitkomst zou opnieuw
+ReadyToOrder worden); Order plaatsen was dat al veilig via de bestaande `HasOrderForLineAsync`-check in
+`ProcurementEngine.PlaceOrdersAsync`.
 
 **Hoe dit samenwerkt met de rest van de engine**: `ProcurementEngine`, de approval-flow en het
 plaatsen van orders werken volledig in termen van dit prototype's eigen `PurchaseRequest`-tabel
