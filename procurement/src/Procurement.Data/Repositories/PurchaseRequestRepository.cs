@@ -26,7 +26,12 @@ namespace Procurement.Data.Repositories
                 PurchaseRequestStatus.Pending,
                 PurchaseRequestStatus.Sourcing,
                 PurchaseRequestStatus.WaitingApproval,
-                PurchaseRequestStatus.ReadyToOrder
+                PurchaseRequestStatus.ReadyToOrder,
+                // Exception is a failed sourcing attempt (e.g. a transient supplier API error), not
+                // a resolved request — it needs to stay visible/selectable so the existing "worth
+                // retrying" re-sourcing path (see MainForm.SourceRequestsAsync) is actually reachable.
+                // Only Ordered means the request is genuinely done.
+                PurchaseRequestStatus.Exception
             };
 
             IReadOnlyList<PurchaseRequest> result = await _context.PurchaseRequests
