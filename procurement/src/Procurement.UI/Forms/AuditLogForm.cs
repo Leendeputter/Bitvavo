@@ -74,9 +74,59 @@ namespace Procurement.UI.Forms
                 MultiSelect = false
             };
             EnableDoubleBuffering(_grid);
+            // Error/RequestPayload/ResponsePayload routinely hold a full HTTP error body (e.g. a
+            // DigiKey 403's JSON) that the grid's own column width truncates — dubbelklik geeft de
+            // volledige, niet-afgekapte tekst in een los venster i.p.v. de kolom handmatig te moeten
+            // verbreden of de cel te moeten kopiëren om de rest te kunnen lezen.
+            _grid.CellDoubleClick += (s, e) => ShowRowDetail(e.RowIndex);
 
             Controls.Add(_grid);
             Controls.Add(filterPanel);
+        }
+
+        private void ShowRowDetail(int rowIndex)
+        {
+            if (rowIndex < 0 || rowIndex >= _grid.Rows.Count) return;
+
+            var row = _grid.Rows[rowIndex];
+            var fields = new[] { "Timestamp", "EntityType", "EntityId", "EventType", "SupplierCode", "Status", "UserOrSystem", "RequestPayload", "ResponsePayload", "Error" };
+            // FormattedValue (not Value) so Timestamp matches the grid's own DateTimeFormat instead
+            // of DateTime's culture-default ToString().
+            var text = string.Join(Environment.NewLine + Environment.NewLine,
+                fields.Select(f => $"{f}:{Environment.NewLine}{row.Cells[f].FormattedValue}"));
+
+            using (var dialog = new Form
+            {
+                Text = "Audit-log detail",
+                Width = 700,
+                Height = 550,
+                StartPosition = FormStartPosition.CenterParent,
+                MinimizeBox = false,
+                MaximizeBox = false
+            })
+            {
+                var textBox = new TextBox
+                {
+                    Dock = DockStyle.Fill,
+                    Multiline = true,
+                    ReadOnly = true,
+                    ScrollBars = ScrollBars.Vertical,
+                    WordWrap = true,
+                    Font = new System.Drawing.Font("Consolas", 9f),
+                    Text = text
+                };
+                var buttonPanel = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(8) };
+                var closeButton = new Button { Text = "Sluiten", AutoSize = true, DialogResult = DialogResult.OK };
+                var copyButton = new Button { Text = "Kopiëren naar klembord", AutoSize = true };
+                copyButton.Click += (s, e) => Clipboard.SetText(text);
+                buttonPanel.Controls.Add(closeButton);
+                buttonPanel.Controls.Add(copyButton);
+
+                dialog.Controls.Add(textBox);
+                dialog.Controls.Add(buttonPanel);
+                dialog.AcceptButton = closeButton;
+                dialog.ShowDialog(this);
+            }
         }
 
         private async System.Threading.Tasks.Task SearchAsync()
