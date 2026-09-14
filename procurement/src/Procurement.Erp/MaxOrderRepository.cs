@@ -127,6 +127,59 @@ ORDER BY dbo.Order_Master.ORDNUM_10";
             return results;
         }
 
+        /// <summary>
+        /// Looks up specific PR rows by MAX order number (Order_Master.ORDNUM_10) with no
+        /// STATUS_10/CURDUE_10/range filtering at all — used by MaxErpConnector to reconcile
+        /// already-synced local requests against MAX on every Query, regardless of which
+        /// status/date filter the user currently has selected. An existence check must not depend
+        /// on that filter, or narrowing it (e.g. unchecking "1 - Planned") would look exactly like
+        /// every excluded order having been deleted in MAX. Returns only Quantity/DueDate/Status —
+        /// enough to detect "still exists, drifted" vs. "gone"; the full row (Desc1/Desc2/etc.) is
+        /// still only refreshed for orders present in the current filtered GetOpenOrdersAsync batch.
+        /// </summary>
+        public async Task<IReadOnlyDictionary<string, MaxOrder>> GetByOrderNumbersAsync(IReadOnlyCollection<string> orderNumbers)
+        {
+            var result = new Dictionary<string, MaxOrder>(StringComparer.OrdinalIgnoreCase);
+            if (orderNumbers == null || orderNumbers.Count == 0) return result;
+
+            var numbers = orderNumbers.Distinct().ToList();
+            var paramNames = numbers.Select((_, i) => $"@o{i}").ToList();
+
+            var sql = $@"
+SELECT
+    dbo.Order_Master.ORDNUM_10 AS [Order],
+    dbo.Order_Master.CURQTY_10 AS CurrentQty,
+    dbo.Order_Master.CURDUE_10 AS DueDate,
+    dbo.Order_Master.STATUS_10 AS Status
+FROM dbo.Order_Master
+WHERE dbo.Order_Master.ORDNUM_10 IN ({string.Join(",", paramNames)})";
+
+            using (var conn = new SqlConnection(_session.AdminConnectionString))
+            using (var cmd = new SqlCommand(sql, conn))
+            {
+                for (var i = 0; i < numbers.Count; i++)
+                    cmd.Parameters.AddWithValue(paramNames[i], numbers[i]);
+
+                await conn.OpenAsync();
+                using (var reader = await cmd.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        var orderNumber = reader["Order"].ToString().Trim();
+                        result[orderNumber] = new MaxOrder
+                        {
+                            OrderNumber = orderNumber,
+                            CurrentQty = Convert.ToInt32(reader["CurrentQty"]),
+                            DueDate = reader["DueDate"] as DateTime?,
+                            Status = reader["Status"].ToString().Trim()
+                        };
+                    }
+                }
+            }
+
+            return result;
+        }
+
         private static string RangeFieldColumn(MaxOrderRangeField? field)
         {
             if (!field.HasValue) return null;

@@ -53,6 +53,16 @@ Niets hiervan is ooit tegen een echte MAX-administratie gedraaid.
   gebruiker), en `Order_Master.CURDUE_10` (bevestigde leverdatum, alleen bij afwijking). Dit is de
   **eerste** plek die een bestaande MAX-rij wijzigt i.p.v. alleen nieuwe rijen toevoegt — bewust
   smal gehouden tot precies deze drie velden.
+- **"MAX is leidend"-reconciliatie** (`MaxErpConnector.ReconcileAgainstMaxAsync`,
+  `MaxOrderRepository.GetByOrderNumbersAsync`): bij elke Query wordt elke nog-openstaande lokale
+  aanvraag rechtstreeks tegen MAX gecheckt, los van het huidige status-/datumfilter. Nog aanwezig in
+  MAX: `RequestedQuantity`/`RequiredDate`/`MaxOrderStatus` bijgewerkt naar de live waarden. Niet meer
+  aanwezig: lokaal verwijderd (incl. eventuele `SupplierOffer`/`SupplierSelection`/`ApprovalRequest`
+  — ook bij WaitingApproval), gelogd in het audit-log vóór het verwijderen. Status "1 - Planned"
+  krijgt bewust nooit deze behandeling (MAX zelf geeft die elke nacht via de MRP-run een nieuw
+  ordernummer, dus "niet gevonden" betekent daar niets). Extra vangnet vlak vóór elke `AddPODetail`
+  in `CreatePurchaseOrderAsync` (`EnsurePurchaseRequisitionStillExistsAsync`) voor het gat tussen de
+  laatste Query en het klikken op "Order plaatsen".
 - **Openstaande onzekerheden** (zie ook de class-comment van `MaxPurchaseOrderRepository`):
   - `AssignPRsToPO`/`AssignPONumber` zijn mogelijk een "nettere", atomaire manier om een PR om te
     zetten (i.p.v. nieuw aanmaken + apart verwijderen), maar `OrderAssign`'s velden en `TargetOrder`'s

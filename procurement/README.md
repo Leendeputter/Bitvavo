@@ -154,10 +154,24 @@ plaatsen van orders werken volledig in termen van dit prototype's eigen `Purchas
 (`CompanyId`-gescheiden, zie boven). In plaats van MAX-orders los daarvan te verwerken, worden ze
 bij elke `GetOpenPurchaseRequestsAsync()`-aanroep (dus bij elke klik op "Query") **gesynchroniseerd**:
 elke MAX-order zonder bestaande `PurchaseRequest` (gededupliceerd op `ErpRequestNumber` =
-`Order_Master.ORDNUM_10`) wordt één keer aangemaakt; bestaat 'm al, dan gebeurt er niets (geen update
-van hoeveelheid/status bij wijzigingen in MAX — buiten scope voor dit prototype). Handmatig
-toegevoegde testaanvragen (§8.1) staan gewoon naast de gesynchroniseerde MAX-orders in dezelfde
-tabel/lijst.
+`Order_Master.ORDNUM_10`) wordt één keer aangemaakt. Handmatig toegevoegde testaanvragen (§8.1) staan
+gewoon naast de gesynchroniseerde MAX-orders in dezelfde tabel/lijst.
+
+**MAX is leidend (spec, sep 2026)**: bij elke Query wordt ook elke nog-openstaande lokale aanvraag
+(`GetOpenAsync` — dus nooit een al bestelde) rechtstreeks tegen MAX gecheckt, los van het huidige
+status-/Due Date-/Select By-filter (`MaxErpConnector.ReconcileAgainstMaxAsync`,
+`MaxOrderRepository.GetByOrderNumbersAsync`). Bestaat de MAX-PR nog: `RequestedQuantity`/
+`RequiredDate`/`MaxOrderStatus` worden bijgewerkt naar de actuele MAX-waarden. Bestaat hij niet meer:
+de lokale aanvraag wordt verwijderd, inclusief alle al opgebouwde `SupplierOffer`/`SupplierSelection`/
+`ApprovalRequest`-rijen voor die regel (dus ook een aanvraag die al op WaitingApproval staat) —
+gelogd in het audit-log vóór het verwijderen, want de rij zelf is er straks niet meer om dat later uit
+te leggen. Eén uitzondering: status **"1 - Planned"** krijgt van MAX zelf elke nacht (de MRP-run) een
+nieuw ordernummer, ook zonder dat er inhoudelijk iets veranderd is — "niet meer gevonden onder het oude
+nummer" betekent voor die status dus niets, en wordt bewust nooit als verwijderd behandeld. Als extra
+vangnet checkt `MaxPurchaseOrderRepository.CreatePurchaseOrderAsync` vlak vóór elke `AddPODetail`-call
+nogmaals of de PR nog bestaat (er kan tijd zitten tussen de laatste Query en het klikken op "Order
+plaatsen") — is hij inmiddels weg, dan wordt er geen PO aangemaakt en breekt die regel af met een
+duidelijke foutmelding; de daadwerkelijke lokale opruiming gebeurt pas bij de eerstvolgende Query.
 
 **Bekende datamapping-aanname, graag controleren**: de aangeleverde query heeft geen apart
 fabrikant-veld, alleen `Part_Master.VIEWER_01 AS ManufacturingPart` — die wordt gebruikt als

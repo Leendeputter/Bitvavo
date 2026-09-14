@@ -23,7 +23,11 @@ namespace Procurement.Erp
     /// Order_Master row with TYPE_10 for that kind of order — which needs to be converted into an
     /// actual PO line once ordered, and then removed so it stops reappearing as an open request on
     /// the next Query. This class does that as two explicit steps per line, using MaxOrderModule's
-    /// own confirmed methods (decompiled source for both was supplied directly):
+    /// own confirmed methods (decompiled source for both was supplied directly), preceded by a
+    /// same-connection existence check (EnsurePurchaseRequisitionStillExistsAsync — user request, sep
+    /// 2026: "MAX is altijd leidend") since BuildPurchaseOrderLine below only ever reads the locally
+    /// cached PR snapshot, never MAX live, and MaxErpConnector's own reconciliation only runs on a
+    /// Query click, not on every button press:
     ///  1. AddPODetail(Order_Master, IncOrdRev, CreateHeader, FixVar, RoundType) creates the PO
     ///     line. Called with CreateHeader:true only for the first line of a new PO — that makes
     ///     AddPODetail build the Purchase_Order_Code header itself (reading Vendor_Master for
@@ -125,6 +129,15 @@ namespace Procurement.Erp
                         if (requestLine == null)
                             throw new InvalidOperationException($"PurchaseRequestLine {draftLine.PurchaseRequestLineId} niet gevonden — kan geen MAX PO-regel aanmaken.");
 
+                        // Second, authoritative existence check right before the actual MAX write —
+                        // MaxErpConnector.ReconcileAgainstMaxAsync only runs on a Query click, so
+                        // there's a window between the last Query and this button press where the PR
+                        // could have been deleted in MAX in the meantime (user request, sep 2026: "MAX
+                        // is altijd leidend"). BuildPurchaseOrderLine below only ever reads the locally
+                        // cached snapshot of requestLine, never MAX live, so without this AddPODetail
+                        // would happily create a real PO for a PR that no longer exists.
+                        await EnsurePurchaseRequisitionStillExistsAsync(admin, requestLine);
+
                         var isFirstLine = erpPoNumber == null;
                         var poLine = BuildPurchaseOrderLine(supplier.VendorId, requestLine, draftLine, erpPoNumber, lineNumber, isFirstLine, _session.UserName);
 
@@ -155,6 +168,35 @@ namespace Procurement.Erp
                     return result;
                 }
             }
+        }
+
+        /// <summary>
+        /// Throws rather than silently skipping the line — unlike RemoveOriginalOrder's cleanup step
+        /// afterward, a missing PR here means AddPODetail is about to create a real MAX PO nobody
+        /// asked for anymore, which is a worse outcome than aborting this line (and, for a
+        /// multi-supplier batch, any not-yet-processed line after it — same partial-completion
+        /// behavior an AddPODetail failure itself already has). Deliberately does not attempt the
+        /// local cascade-delete MaxErpConnector.ReconcileAgainstMaxAsync does for the same situation:
+        /// this runs deep inside PO creation, not the natural place to also touch
+        /// SupplierOffer/SupplierSelection/ApprovalRequest — the next Query will clean this request up
+        /// properly instead.
+        /// </summary>
+        private async Task EnsurePurchaseRequisitionStillExistsAsync(SqlConnection admin, PurchaseRequestLine requestLine)
+        {
+            var ordnum = requestLine.PurchaseRequest?.ErpRequestNumber;
+            var linnum = requestLine.MaxLineNumber;
+            var delnum = requestLine.MaxDeliveryNumber ?? "00";
+            if (string.IsNullOrEmpty(ordnum) || string.IsNullOrEmpty(linnum))
+                return; // Nothing to check against (synced before these fields existed) — same gap RemoveOriginalOrder already tolerates.
+
+            var rows = await admin.QueryAsync<Order_Master>(
+                "SELECT * FROM Order_Master WHERE ORDNUM_10 = @Ordnum AND LINNUM_10 = @Linnum AND DELNUM_10 = @Delnum",
+                new { Ordnum = ordnum, Linnum = linnum, Delnum = delnum });
+
+            if (!rows.Any())
+                throw new InvalidOperationException(
+                    $"Purchase requisition {ordnum} bestaat niet meer in MAX (PurchaseRequestLine {requestLine.Id}) — waarschijnlijk in MAX verwijderd sinds de laatste Query. " +
+                    "Geen PO aangemaakt voor deze regel. Klik op \"Query\" om de aanvragenlijst bij te werken.");
         }
 
         /// <summary>

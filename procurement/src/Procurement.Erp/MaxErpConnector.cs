@@ -19,12 +19,11 @@ namespace Procurement.Erp
     /// order number) rather than returning them directly — everything downstream
     /// (ProcurementEngine, approval, order placement) already works entirely in terms of our own
     /// PurchaseRequest.Id, so syncing first keeps that unchanged instead of forking the workflow
-    /// for a second "kind" of purchase request. Workflow-relevant fields on an existing row are
-    /// never updated after the first sync (MVP scope) — if a MAX order's quantity/status/etc.
-    /// changes later, that's not reflected here yet. The purely-informational MAX mirror fields
-    /// (see ApplyDisplayOnlyFields) are the one exception: those refresh on every sync, since
-    /// nothing downstream reads them and refreshing keeps MainForm's grid showing current MAX
-    /// values instead of whatever was captured the first time that order was seen.
+    /// for a second "kind" of purchase request. The purely-informational MAX mirror fields (see
+    /// ApplyDisplayOnlyFields) refresh on every sync for orders present in the current (filtered)
+    /// query batch; RequestedQuantity/RequiredDate/MaxOrderStatus refresh for every still-open local
+    /// request regardless of the current filter, and a request MAX no longer has at all is deleted
+    /// locally — see ReconcileAgainstMaxAsync (user request, sep 2026: "MAX is altijd leidend").
     ///
     /// CreatePurchaseOrderAsync/ApplyOrderConfirmationAsync (spec §6 step 9) delegate to
     /// MockErpConnector by default (UseMockPurchaseOrders=true — this prototype's own
@@ -45,6 +44,7 @@ namespace Procurement.Erp
         private readonly SupplierRepository _supplierRepository;
         private readonly SupplierProductMappingRepository _supplierProductMappingRepository;
         private readonly MaxPurchaseOrderRepository _maxPurchaseOrderRepository;
+        private readonly IAuditLogger _auditLogger;
         private readonly MockErpConnector _inner;
 
         /// <summary>MAX Order_Master.STATUS_10 values to include — "1" = Planned, "2" = Approved. Defaults to Approved only; the UI's status checkboxes update this.</summary>
@@ -83,7 +83,8 @@ namespace Procurement.Erp
             MaxVendorPartRepository maxVendorPartRepository,
             SupplierRepository supplierRepository,
             SupplierProductMappingRepository supplierProductMappingRepository,
-            MaxPurchaseOrderRepository maxPurchaseOrderRepository)
+            MaxPurchaseOrderRepository maxPurchaseOrderRepository,
+            IAuditLogger auditLogger)
         {
             _purchaseRequestRepository = purchaseRequestRepository ?? throw new ArgumentNullException(nameof(purchaseRequestRepository));
             _purchaseOrderRepository = purchaseOrderRepository ?? throw new ArgumentNullException(nameof(purchaseOrderRepository));
@@ -92,6 +93,7 @@ namespace Procurement.Erp
             _supplierRepository = supplierRepository ?? throw new ArgumentNullException(nameof(supplierRepository));
             _supplierProductMappingRepository = supplierProductMappingRepository ?? throw new ArgumentNullException(nameof(supplierProductMappingRepository));
             _maxPurchaseOrderRepository = maxPurchaseOrderRepository ?? throw new ArgumentNullException(nameof(maxPurchaseOrderRepository));
+            _auditLogger = auditLogger ?? throw new ArgumentNullException(nameof(auditLogger));
             _inner = new MockErpConnector(purchaseRequestRepository, purchaseOrderRepository);
         }
 
@@ -163,6 +165,7 @@ namespace Procurement.Erp
 
             await _purchaseRequestRepository.SaveAsync();
             await SyncVendorPartMappingsAsync(maxOrders);
+            await ReconcileAgainstMaxAsync();
 
             // GetOpenAsync() returns *every* still-open local request regardless of this call's
             // filter (statuses/Due Date range/Select By) — a request synced by an earlier,
@@ -191,6 +194,68 @@ namespace Procurement.Erp
 
         private static bool IsManualTestRequest(string erpRequestNumber) =>
             !string.IsNullOrEmpty(erpRequestNumber) && erpRequestNumber.StartsWith("TEST-", StringComparison.Ordinal);
+
+        /// <summary>
+        /// MAX is leading (user request, sep 2026): on every Query, every still-open local request
+        /// (GetOpenAsync — Ordered is excluded there by definition, so it never reaches this method;
+        /// see PurchaseRequestRepository.DeleteAsync's own comment for why that matters) gets checked
+        /// against MAX directly, independent of the current status/Due Date/Select By filter — a
+        /// request that only happens not to match today's filter must not look "deleted" just because
+        /// it's absent from this call's own (filtered) maxOrders batch.
+        ///
+        /// Still exists in MAX -> RequestedQuantity/RequiredDate (and MaxOrderStatus) are refreshed
+        /// from MAX's live values, on both the request and its one line — these were never kept in
+        /// sync after the first sync before this (see the class comment), same MVP gap the user asked
+        /// to close.
+        ///
+        /// No longer exists in MAX -> deleted locally (PurchaseRequestRepository.DeleteAsync, which
+        /// also removes any SupplierOffer/SupplierSelection/ApprovalRequest already built for it —
+        /// exactly the WaitingApproval case this was asked for), logged to the audit trail first since
+        /// the row itself won't be around afterward to explain why it's gone.
+        ///
+        /// One deliberate exception: MAX Order_Master.STATUS_10 "1" (Planned) orders are reassigned a
+        /// new ORDNUM_10 by the nightly MRP run as a matter of course, not only when something actually
+        /// changed — so "missing under its old number" is meaningless for those and must never trigger
+        /// a delete (explicit, unprompted false positives would be worse than occasionally missing a
+        /// genuine deletion of a still-Planned request). Only requests MAX itself has already moved
+        /// past that daily churn (status "2"/Approved, or a request predating STATUS_10 tracking) are
+        /// treated as reliably deletable when MAX no longer has them.
+        /// </summary>
+        private async Task ReconcileAgainstMaxAsync()
+        {
+            var openRequests = await _purchaseRequestRepository.GetOpenAsync();
+            var candidates = openRequests.Where(r => !IsManualTestRequest(r.ErpRequestNumber)).ToList();
+            if (candidates.Count == 0) return;
+
+            var liveOrders = await _maxOrderRepository.GetByOrderNumbersAsync(
+                candidates.Select(r => r.ErpRequestNumber).ToList());
+
+            foreach (var request in candidates)
+            {
+                if (liveOrders.TryGetValue(request.ErpRequestNumber, out var liveOrder))
+                {
+                    request.RequiredDate = liveOrder.DueDate;
+                    request.MaxOrderStatus = Truncate(liveOrder.Status, 10);
+                    var line = request.Lines.FirstOrDefault();
+                    if (line != null)
+                    {
+                        line.RequestedQuantity = liveOrder.CurrentQty;
+                        line.RequiredDate = liveOrder.DueDate;
+                    }
+                    continue;
+                }
+
+                if (request.MaxOrderStatus == "1")
+                    continue; // Planned — renumbered nightly by MRP, "missing" proves nothing.
+
+                await _auditLogger.LogAsync("PurchaseRequest", request.Id.ToString(), "PURCHASE_REQUEST_DELETED_IN_MAX", "Success",
+                    responsePayload: $"ErpRequestNumber={request.ErpRequestNumber}; WorkflowStatus={request.Status}; " +
+                        $"ErpArticleId={request.Lines.FirstOrDefault()?.ErpArticleId}");
+                await _purchaseRequestRepository.DeleteAsync(request);
+            }
+
+            await _purchaseRequestRepository.SaveAsync();
+        }
 
         private static void ApplyDisplayOnlyFields(PurchaseRequest existing, MaxOrder order)
         {

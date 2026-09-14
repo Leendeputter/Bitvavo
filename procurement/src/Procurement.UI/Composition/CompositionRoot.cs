@@ -153,7 +153,8 @@ namespace Procurement.UI.Composition
                 maxVendorPartRepository,
                 SupplierRepository,
                 SupplierProductMappingRepository,
-                maxPurchaseOrderRepository);
+                maxPurchaseOrderRepository,
+                auditLogger);
 
             Engine = new ProcurementEngine(
                 ErpConnector,
