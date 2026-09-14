@@ -521,6 +521,9 @@ namespace Procurement.UI.Forms
             ApplyQuantityColumns(_requestsGrid, "SelectedQuantity");
             ApplyDateColumns(_requestsGrid, "SelectedDueDate");
             ApplyMaxColumnWidths(_requestsGrid);
+            ApplyFrozenColumns(_requestsGrid,
+                "Order", "Workflow", "PartID", "Desc1", "Quantity", "Cost", "DueDate",
+                "SelectedSupplier", "SelectedPrice", "SelectedQuantity", "SelectedDueDate");
         }
 
         /// <summary>
@@ -602,8 +605,14 @@ namespace Procurement.UI.Forms
             SetCharacterBasedColumnWidth(grid, "SelectedPrice", 12);
             SetCharacterBasedColumnWidth(grid, "SelectedQuantity", 10);
             SetCharacterBasedColumnWidth(grid, "SelectedDueDate", 12);
-            // Desc1/Reference (variable-length free text) are deliberately left out — those are the
-            // columns Fill actually distributes the remaining window width across.
+            // Desc1/Reference (variable-length free text) are deliberately left out of the fixed
+            // widths above — those are the columns Fill actually distributes the remaining window
+            // width across. A MinimumWidth floor on both instead of leaving them fully unconstrained:
+            // once the fixed columns above add up to more than the viewport (easily happens with this
+            // many columns), Fill would otherwise keep shrinking Desc1/Reference toward unreadable
+            // instead of ever giving up and showing a horizontal scrollbar for the overflow.
+            SetMinimumWidth(grid, "Desc1", 180);
+            SetMinimumWidth(grid, "Reference", 180);
 
             // App-wide conventions (GridFormatting): quantities at 4 decimals, cost/price fields at
             // 4 decimals with a € prefix, Cnv (Cost Conv, a conversion factor rather than a price) at
@@ -612,6 +621,37 @@ namespace Procurement.UI.Forms
             ApplyCurrencyColumns(grid, "Cost", "ExtCost");
             ApplyDecimalColumns(grid, 2, "Cnv");
             ApplyDateColumns(grid, "DueDate");
+        }
+
+        /// <summary>
+        /// Pins the given columns to the left, in the given order, so they stay visible while the
+        /// rest of the grid scrolls horizontally — user request (sep 2026): too many fixed-width
+        /// columns for one screen, keep the most important ones ("what is this, what did we pick")
+        /// always in view instead of shrinking everything to fit. DataGridView requires every frozen
+        /// column to precede every non-frozen one by DisplayIndex, and refuses to set Frozen out of
+        /// that order — so DisplayIndex is settled for every column first, then Frozen is toggled.
+        /// Columns not named here explicitly get Frozen=false, since DataGridView recreates all
+        /// columns from scratch on every DataSource reassignment (AutoGenerateColumns), but a stale
+        /// Frozen=true from column reuse elsewhere would otherwise silently break the contiguity rule.
+        /// </summary>
+        private static void ApplyFrozenColumns(DataGridView grid, params string[] frozenColumnNamesInOrder)
+        {
+            var frozenColumns = frozenColumnNamesInOrder
+                .Select(name => grid.Columns[name])
+                .Where(c => c != null)
+                .ToList();
+            if (frozenColumns.Count == 0) return;
+
+            var otherColumns = grid.Columns.Cast<DataGridViewColumn>()
+                .Where(c => !frozenColumns.Contains(c))
+                .ToList();
+
+            var displayIndex = 0;
+            foreach (var column in frozenColumns) column.DisplayIndex = displayIndex++;
+            foreach (var column in otherColumns) column.DisplayIndex = displayIndex++;
+
+            foreach (var column in frozenColumns) column.Frozen = true;
+            foreach (var column in otherColumns) column.Frozen = false;
         }
 
         private async void RequestsGrid_SelectionChanged(object sender, EventArgs e)
@@ -690,6 +730,9 @@ namespace Procurement.UI.Forms
             ApplyQuantityColumns(_linesGrid, "SelectedQuantity");
             ApplyDateColumns(_linesGrid, "SelectedDueDate");
             ApplyMaxColumnWidths(_linesGrid);
+            ApplyFrozenColumns(_linesGrid,
+                "PartID", "Desc1", "Quantity", "Cost", "DueDate",
+                "SelectedSupplier", "SelectedPrice", "SelectedQuantity", "SelectedDueDate");
         }
 
         private int? GetSelectedRequestId()

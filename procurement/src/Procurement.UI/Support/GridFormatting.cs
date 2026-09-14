@@ -67,6 +67,21 @@ namespace Procurement.UI.Support
             column.Width = width;
         }
 
+        /// <summary>
+        /// A floor under a Fill-mode column so it can never be squeezed toward unreadable once the
+        /// grid's fixed-width columns alone add up to more than the viewport — without this,
+        /// AutoSizeColumnsMode.Fill just keeps shrinking the remaining Fill columns (down toward a
+        /// handful of pixels) instead of ever giving up and showing a horizontal scrollbar for the
+        /// overflow, which is what actually happened to Desc1/Reference as more fixed columns were
+        /// added over time.
+        /// </summary>
+        public static void SetMinimumWidth(DataGridView grid, string columnName, int minimumWidth)
+        {
+            var column = grid.Columns[columnName];
+            if (column == null) return;
+            column.MinimumWidth = minimumWidth;
+        }
+
         /// <summary>Sizes to N 'n'-characters instead of a guessed pixel width — DataGridView doesn't drop overflow, it ellipsizes ("..."), so a too-narrow guess reads as a trimming bug that isn't one.</summary>
         public static void SetCharacterBasedColumnWidth(DataGridView grid, string columnName, int characterCount)
         {
