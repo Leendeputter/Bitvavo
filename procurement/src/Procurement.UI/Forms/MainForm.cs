@@ -165,6 +165,13 @@ namespace Procurement.UI.Forms
             };
             EnableDoubleBuffering(_requestsGrid);
             _requestsGrid.SelectionChanged += RequestsGrid_SelectionChanged;
+            // Same drill-down as double-clicking a line below (ShowOffersForSelectedLine) — added
+            // once the Selected Supplier/Price/Qty/DueDate columns made this grid itself show the
+            // current pick, so "I want to change what's shown here" needs a way in from here too,
+            // not only via the lines grid underneath. Fetches the line directly from the
+            // double-clicked request instead of trusting _linesGrid.CurrentRow, which could still be
+            // mid-refresh from RequestsGrid_SelectionChanged's own async reload at this point.
+            _requestsGrid.CellDoubleClick += async (s, e) => await ShowOffersForSelectedRequestAsync();
 
             var linesLabel = new Label { Text = "Regels van geselecteerde aanvraag:", Dock = DockStyle.Top, Height = 20, Padding = new Padding(4) };
 
@@ -573,12 +580,16 @@ namespace Procurement.UI.Forms
             // single part-type letter) — these should never grow/shrink with content, so a tight
             // character count instead of the earlier, too-generous guess.
             SetCharacterBasedColumnWidth(grid, "Order", 11);
-            SetCharacterBasedColumnWidth(grid, "Status", 7);
-            SetCharacterBasedColumnWidth(grid, "Firm", 6);
-            SetCharacterBasedColumnWidth(grid, "Type", 6);
+            // Status/Firm/Type/Cnv only ever hold a single digit, a checkbox (Firm binds as bool, so
+            // DataGridView auto-renders it as a CheckBox cell, not "True"/"False" text) or a short
+            // number — narrowed further on request to free up room for Desc1/Reference, which were
+            // being squeezed down to nearly nothing by the growing list of fixed-width columns.
+            SetCharacterBasedColumnWidth(grid, "Status", 4);
+            SetCharacterBasedColumnWidth(grid, "Firm", 3);
+            SetCharacterBasedColumnWidth(grid, "Type", 4);
             SetCharacterBasedColumnWidth(grid, "Quantity", 10);
             SetCharacterBasedColumnWidth(grid, "Cost", 12);
-            SetCharacterBasedColumnWidth(grid, "Cnv", 12);
+            SetCharacterBasedColumnWidth(grid, "Cnv", 6);
             SetCharacterBasedColumnWidth(grid, "ExtCost", 14);
             SetCharacterBasedColumnWidth(grid, "DueDate", 12);
             SetCharacterBasedColumnWidth(grid, "Customer", 14);
@@ -910,6 +921,27 @@ namespace Procurement.UI.Forms
             {
                 form.ShowDialog(this);
             }
+        }
+
+        /// <summary>Dubbelklik op een rij in het bovenste overzicht — leest de regel rechtstreeks van de aanvraag i.p.v. via het (mogelijk nog niet bijgewerkte) regels-grid, en ververst na afloop zodat een handmatige herkeuze meteen in de Selected-kolommen zichtbaar is.</summary>
+        private async System.Threading.Tasks.Task ShowOffersForSelectedRequestAsync()
+        {
+            var requestId = GetSelectedRequestId();
+            if (requestId == null) return;
+
+            var request = await _composition.PurchaseRequestRepository.GetByIdAsync(requestId.Value);
+            var lineId = request?.Lines.FirstOrDefault()?.Id;
+            if (lineId == null)
+            {
+                MessageBox.Show(this, "Geen regel gevonden voor deze aanvraag.", "Geen regel", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            using (var form = new OfferComparisonForm(_composition.Engine, lineId.Value))
+            {
+                form.ShowDialog(this);
+            }
+            await LoadLocalRequestsAsync();
         }
 
         private void ShowOrderDetail()
