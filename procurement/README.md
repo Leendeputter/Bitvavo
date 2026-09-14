@@ -122,20 +122,25 @@ De statusbalk toont na een Query ook hoeveel orders de MAX-query zelf teruggaf
 (`MaxErpConnector.LastMaxOrderCount`), los van hoeveel er na de lokale merge in de grid staan — handig
 om te zien of een filter al op MAX/SQL-niveau iets doet.
 
-**Kolommen van het hoofdscherm**: Order, Status, Firm, Type, PartID, Rev, Desc1, Desc2, Quantity,
-Cost, Cnv, DueDate, Reference, Manufacturing Part, Customer, StockID — 1-op-1 de velden uit de
-Order_Master/Part_Master-query (`FRMPLN_10`, `REVLEV_10`, `COST_10`, `CSTCNV_10`, `STK_10`,
-`COMCDE_01`, ...). Deze velden zijn puur informatief en worden meegesynchroniseerd naar
-`PurchaseRequestLine` (niet gebruikt door de sourcing/matching-logica). `Status` toont hier het ruwe
-`Order_Master.STATUS_10` (`PurchaseRequest.MaxOrderStatus`). Achteraan staat een aparte kolom
-**Workflow**, met dit prototype's eigen voortgangsstatus (`PurchaseRequest.Status`: Pending, Sourcing,
-WaitingApproval, ReadyToOrder, Ordered, Exception) — dat is een heel ander veld dan de MAX-`Status`-
-kolom en de enige plek op het hoofdscherm waar je ziet of een aanvraag al gesourced/besteld is zonder
-Order details of Goedkeuringen te openen. Het regels-grid onder het hoofdscherm (regels van de
-geselecteerde aanvraag) gebruikt dezelfde kolomnamen/-breedtes als PartID/Manufacturing Part/etc.,
-aangevuld met de workflow-specifieke velden Manufacturer/Packaging/ReelRequirement die niet uit de
-MAX-query komen (maar niet de Workflow-kolom, want per regel is dat altijd de status van de hele
-aanvraag).
+**Kolommen van het hoofdscherm**: Order, Workflow, Status, Firm, Type, PartID, Rev, Desc1, Desc2,
+Quantity, Cost, Cnv, DueDate, Reference, Manufacturing Part, Customer, StockID zijn 1-op-1 de velden
+uit de Order_Master/Part_Master-query (`FRMPLN_10`, `REVLEV_10`, `COST_10`, `CSTCNV_10`, `STK_10`,
+`COMCDE_01`, ...), op **Workflow** na. Deze velden zijn puur informatief en worden meegesynchroniseerd
+naar `PurchaseRequestLine` (niet gebruikt door de sourcing/matching-logica). `Status` toont hier het
+ruwe `Order_Master.STATUS_10` (`PurchaseRequest.MaxOrderStatus`). **Workflow**, met dit prototype's
+eigen voortgangsstatus (`PurchaseRequest.Status`: Pending, Sourcing, WaitingApproval, ReadyToOrder,
+Ordered, Exception), staat bewust vooraan naast Order — een heel ander veld dan de MAX-`Status`-kolom
+en de plek op het hoofdscherm waar je in één oogopslag ziet of een aanvraag al gesourced/besteld is
+zonder Order details of Goedkeuringen te openen. Achteraan staan vier kolommen die *niet* uit de
+oorspronkelijke MAX-aanvraag komen maar uit de gekozen `SupplierOffer` (via de actieve
+`SupplierSelection` voor die regel, spec correctie sep 2026): **Selected Supplier/Price/Qty/DueDate**
+— leeg zolang er nog geen selectie is, en bewust apart van (niet in plaats van) de oorspronkelijke
+Quantity/Cost/DueDate hierboven, want dat blijft tonen wat er in MAX oorspronkelijk aangevraagd is.
+"Offers bekijken" blijft de plek voor de volledige vergelijking (alle offertes, niet alleen de
+gekozen). Het regels-grid onder het hoofdscherm (regels van de geselecteerde aanvraag) gebruikt
+dezelfde kolomnamen/-breedtes als PartID/Manufacturing Part/Selected .../etc. (maar niet de
+Workflow-kolom, want per regel is dat altijd de status van de hele aanvraag), aangevuld met de
+workflow-specifieke velden Manufacturer/Packaging/ReelRequirement die niet uit de MAX-query komen.
 
 **Statusfilter ("Weergeven")**: een aparte groep checkboxen (los van de MAX-Query-filters ernaast),
 één per `PurchaseRequest.Status`-waarde, bepaalt welke Workflow-statussen in het grid getoond worden.

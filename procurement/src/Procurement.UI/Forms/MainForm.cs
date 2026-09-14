@@ -369,7 +369,7 @@ namespace Procurement.UI.Forms
             var statuses = GetCheckedRequestStatuses();
             var allRequests = await _composition.PurchaseRequestRepository.GetAllAsync();
             var requests = allRequests.Where(r => statuses.Contains(r.Status)).ToList();
-            PopulateRequestsGrid(requests);
+            await PopulateRequestsGrid(requests);
             SetStatus($"{requests.Count} aanvraag/aanvragen getoond (statusfilter).");
             await LoadLinesForSelectedRequestAsync();
         }
@@ -387,7 +387,7 @@ namespace Procurement.UI.Forms
             // Ordered-aanvragen los bekijken kan via de checkbox zonder eerst op Query te klikken.
             var statuses = GetCheckedRequestStatuses();
             var filteredRequests = requests.Where(r => statuses.Contains(r.Status)).ToList();
-            PopulateRequestsGrid(filteredRequests);
+            await PopulateRequestsGrid(filteredRequests);
             // Toont ook hoeveel orders de MAX-query zelf teruggaf (voor het filter toepassen op de
             // lokale lijst) — handig om te zien of een filter al op MAX-niveau iets doet, los van
             // hoeveel er uiteindelijk in de grid staan.
@@ -437,21 +437,32 @@ namespace Procurement.UI.Forms
             }
         }
 
-        private void PopulateRequestsGrid(IReadOnlyList<PurchaseRequest> requests)
+        private async System.Threading.Tasks.Task PopulateRequestsGrid(IReadOnlyList<PurchaseRequest> requests)
         {
-            // Kolomvolgorde/-namen op verzoek: Order, Status, Firm, Type, PartID, Rev, Desc1,
-            // Desc2, Quantity, Cost, Cnv, DueDate, Reference, Manufacturing Part, Customer,
-            // StockID — zoals in de MAX Order_Master/Part_Master-query. Elke MAX-order sync't naar
-            // precies één PurchaseRequestLine (zie MaxErpConnector), dus de eerste regel volstaat
-            // hier; handmatige testaanvragen hebben ook altijd precies één regel.
+            // Kolomvolgorde/-namen op verzoek: Order, Workflow, Status, Firm, Type, PartID, Rev,
+            // Desc1, Desc2, Quantity, Cost, Cnv, DueDate, Reference, Manufacturing Part, Customer,
+            // StockID, dan de gekozen-offerte-kolommen — Order/Status/etc. zoals in de MAX
+            // Order_Master/Part_Master-query, Workflow bewust vooraan (naast Order) i.p.v. achteraan
+            // zodat je in één oogopslag ziet waar een aanvraag staat zonder helemaal naar rechts te
+            // hoeven scrollen. Elke MAX-order sync't naar precies één PurchaseRequestLine (zie
+            // MaxErpConnector), dus de eerste regel volstaat hier; handmatige testaanvragen hebben
+            // ook altijd precies één regel.
+            var selectionsByLineId = await GetSelectionsByLineIdAsync(requests.Select(r => r.Lines.FirstOrDefault()?.Id));
+
             var rows = requests
                 .Select(r =>
                 {
                     var line = r.Lines.FirstOrDefault();
+                    var selection = line != null && selectionsByLineId.TryGetValue(line.Id, out var s) ? s : null;
+                    var selectedOffer = selection?.SelectedOffer;
                     return new
                     {
                         Id = r.Id,
                         Order = r.ErpRequestNumber,
+                        // Niet uit de MAX-query — dit is dit prototype's eigen workflow-status
+                        // (Pending/Sourcing/WaitingApproval/ReadyToOrder/Ordered/Exception), los van
+                        // de ruwe MAX Order_Master.STATUS_10 die in de "Status"-kolom staat.
+                        Workflow = r.Status.ToString(),
                         Status = r.MaxOrderStatus,
                         Firm = line?.Firm ?? false,
                         Type = line?.PartType,
@@ -471,10 +482,15 @@ namespace Procurement.UI.Forms
                         ManufacturingPart = line?.ManufacturerPartNumber,
                         Customer = line?.Customer,
                         StockID = line?.StockId,
-                        // Niet uit de MAX-query — dit is dit prototype's eigen workflow-status
-                        // (Pending/Sourcing/WaitingApproval/ReadyToOrder/Ordered/Exception), los van
-                        // de ruwe MAX Order_Master.STATUS_10 die in de "Status"-kolom staat.
-                        Workflow = r.Status.ToString()
+                        // De oorspronkelijke MAX-aanvraag hierboven blijft ongewijzigd zichtbaar (dat
+                        // is wat er gevraagd is) — deze vier tonen apart wat er daadwerkelijk gekozen
+                        // is bij sourcing, leeg zolang er nog geen (automatische of handmatige)
+                        // SupplierSelection is. Zie "Offers bekijken" voor alle offertes, niet alleen
+                        // de gekozen.
+                        SelectedSupplier = selectedOffer?.SupplierCode,
+                        SelectedPrice = selectedOffer?.UnitPrice,
+                        SelectedQuantity = (int?)selectedOffer?.OfferedQuantity,
+                        SelectedDueDate = selectedOffer?.EstimatedDeliveryDate
                     };
                 })
                 .ToList();
@@ -490,7 +506,37 @@ namespace Procurement.UI.Forms
                 _requestsGrid.Columns["Id"].Visible = false;
             SetHeaderText(_requestsGrid, "ManufacturingPart", "Manufacturing Part");
             SetHeaderText(_requestsGrid, "ExtCost", "Ext. Cost");
+            SetHeaderText(_requestsGrid, "SelectedSupplier", "Selected Supplier");
+            SetHeaderText(_requestsGrid, "SelectedPrice", "Selected Price");
+            SetHeaderText(_requestsGrid, "SelectedQuantity", "Selected Qty");
+            SetHeaderText(_requestsGrid, "SelectedDueDate", "Selected DueDate");
+            ApplyCurrencyColumns(_requestsGrid, "SelectedPrice");
+            ApplyQuantityColumns(_requestsGrid, "SelectedQuantity");
+            ApplyDateColumns(_requestsGrid, "SelectedDueDate");
             ApplyMaxColumnWidths(_requestsGrid);
+        }
+
+        /// <summary>
+        /// One SupplierSelection lookup per line (never more than one active selection per line —
+        /// SupplierSelectionRepository.GetByLineIdAsync already picks the latest by SelectedAt), with
+        /// SelectedOffer eager-loaded so SupplierCode/UnitPrice/OfferedQuantity/EstimatedDeliveryDate
+        /// are available without a further round-trip per row. Sequential, not parallel — same
+        /// reasoning as SourceRequestsAsync: this shares one ProcurementDbContext serialized through
+        /// RunGuardedAsync, so concurrent calls wouldn't save time, only make a mid-refresh failure
+        /// harder to attribute to a specific line. Fine at prototype scale (one line per request, see
+        /// PopulateRequestsGrid's own comment).
+        /// </summary>
+        private async System.Threading.Tasks.Task<Dictionary<int, SupplierSelection>> GetSelectionsByLineIdAsync(IEnumerable<int?> lineIds)
+        {
+            var result = new Dictionary<int, SupplierSelection>();
+            foreach (var lineId in lineIds)
+            {
+                if (lineId == null || result.ContainsKey(lineId.Value)) continue;
+                var selection = await _composition.Engine.GetSelectionForLineAsync(lineId.Value);
+                if (selection != null)
+                    result[lineId.Value] = selection;
+            }
+            return result;
         }
 
         /// <summary>Ext. Cost voor een regel = Quantity * Cost / Cost Conv.</summary>
@@ -541,6 +587,10 @@ namespace Procurement.UI.Forms
             SetCharacterBasedColumnWidth(grid, "Manufacturer", 16);
             SetCharacterBasedColumnWidth(grid, "Packaging", 14);
             SetCharacterBasedColumnWidth(grid, "ReelRequirement", 8);
+            SetCharacterBasedColumnWidth(grid, "SelectedSupplier", 14);
+            SetCharacterBasedColumnWidth(grid, "SelectedPrice", 12);
+            SetCharacterBasedColumnWidth(grid, "SelectedQuantity", 10);
+            SetCharacterBasedColumnWidth(grid, "SelectedDueDate", 12);
             // Desc1/Reference (variable-length free text) are deliberately left out — those are the
             // columns Fill actually distributes the remaining window width across.
 
@@ -585,31 +635,49 @@ namespace Procurement.UI.Forms
             // Desc2, Quantity, Cost, Cnv, DueDate, Manufacturing Part, Customer, StockID) — dit is
             // dezelfde data, enkel op regelniveau i.p.v. de eerste regel van de aanvraag. Manufacturer/
             // Packaging/ReelRequirement zijn workflow-specifieke velden, niet uit de MAX-query, en
-            // staan daarom achteraan.
-            _linesGrid.DataSource = request.Lines.Select(l => new
+            // staan daarom achteraan, gevolgd door de gekozen-offerte-kolommen (zie
+            // PopulateRequestsGrid's eigen commentaar bij de gelijknamige kolommen daar).
+            var selectionsByLineId = await GetSelectionsByLineIdAsync(request.Lines.Select(l => (int?)l.Id));
+
+            _linesGrid.DataSource = request.Lines.Select(l =>
             {
-                l.Id,
-                PartID = l.ErpArticleId,
-                Type = l.PartType,
-                Rev = l.Revision,
-                l.Firm,
-                l.Desc1,
-                l.Desc2,
-                Quantity = l.RequestedQuantity,
-                l.Cost,
-                Cnv = l.CostConv,
-                DueDate = l.RequiredDate,
-                ManufacturingPart = l.ManufacturerPartNumber,
-                l.Customer,
-                StockID = l.StockId,
-                l.Manufacturer,
-                Packaging = l.PackagingRequirement.ToString(),
-                l.ReelRequirement
+                var selectedOffer = selectionsByLineId.TryGetValue(l.Id, out var selection) ? selection.SelectedOffer : null;
+                return new
+                {
+                    l.Id,
+                    PartID = l.ErpArticleId,
+                    Type = l.PartType,
+                    Rev = l.Revision,
+                    l.Firm,
+                    l.Desc1,
+                    l.Desc2,
+                    Quantity = l.RequestedQuantity,
+                    l.Cost,
+                    Cnv = l.CostConv,
+                    DueDate = l.RequiredDate,
+                    ManufacturingPart = l.ManufacturerPartNumber,
+                    l.Customer,
+                    StockID = l.StockId,
+                    l.Manufacturer,
+                    Packaging = l.PackagingRequirement.ToString(),
+                    l.ReelRequirement,
+                    SelectedSupplier = selectedOffer?.SupplierCode,
+                    SelectedPrice = selectedOffer?.UnitPrice,
+                    SelectedQuantity = (int?)selectedOffer?.OfferedQuantity,
+                    SelectedDueDate = selectedOffer?.EstimatedDeliveryDate
+                };
             }).ToList();
 
             if (_linesGrid.Columns["Id"] != null)
                 _linesGrid.Columns["Id"].Visible = false;
             SetHeaderText(_linesGrid, "ManufacturingPart", "Manufacturing Part");
+            SetHeaderText(_linesGrid, "SelectedSupplier", "Selected Supplier");
+            SetHeaderText(_linesGrid, "SelectedPrice", "Selected Price");
+            SetHeaderText(_linesGrid, "SelectedQuantity", "Selected Qty");
+            SetHeaderText(_linesGrid, "SelectedDueDate", "Selected DueDate");
+            ApplyCurrencyColumns(_linesGrid, "SelectedPrice");
+            ApplyQuantityColumns(_linesGrid, "SelectedQuantity");
+            ApplyDateColumns(_linesGrid, "SelectedDueDate");
             ApplyMaxColumnWidths(_linesGrid);
         }
 
