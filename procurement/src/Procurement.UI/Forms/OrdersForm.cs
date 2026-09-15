@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Forms;
 using Procurement.Core.Entities;
+using Procurement.Core.Models;
 using Procurement.Data.Repositories;
 using static Procurement.UI.Support.GridFormatting;
 
@@ -149,29 +150,80 @@ namespace Procurement.UI.Forms
                 if (requestLine != null) requestLines[line.PurchaseRequestLineId] = requestLine;
             }
 
+            // ConfirmedQuantity is only ever set once a supplier order-status response actually
+            // mentioned this SupplierPartNumber (PurchaseOrderRepository.ApplyOrderConfirmationAsync)
+            // — so its mere presence *is* "is deze regel al bevestigd door de leverancier", not just
+            // a number to compare. Reuses OrderConfirmationException's own (already tested)
+            // QuantityMismatch/PriceMismatch/DeliveryIsLate rather than re-deriving the same
+            // deviation logic here — same reasoning MainForm.OrderConfirmationExceptionsForm already
+            // follows for "Orderbevestiging verwerken".
             _linesGrid.DataSource = order.Lines.Select(l =>
             {
                 requestLines.TryGetValue(l.PurchaseRequestLineId, out var requestLine);
+                var confirmed = l.ConfirmedQuantity.HasValue;
+                var confirmedShipDate = l.Deliveries.FirstOrDefault()?.EstimatedShipDate;
+                var exception = new OrderConfirmationException
+                {
+                    OrderedQuantity = l.Quantity,
+                    ConfirmedQuantity = l.ConfirmedQuantity,
+                    OrderedUnitPrice = l.UnitPrice,
+                    ConfirmedUnitPrice = l.ConfirmedUnitPrice,
+                    RequiredDate = requestLine?.RequiredDate,
+                    ConfirmedShipDate = confirmedShipDate
+                };
+
                 return new
                 {
                     ErpRequestNumber = requestLine?.PurchaseRequest?.ErpRequestNumber,
                     PartID = requestLine?.ErpArticleId,
                     l.SupplierPartNumber,
+                    Confirmed = confirmed,
                     l.Quantity,
                     l.ConfirmedQuantity,
+                    // Blank (null, three-state checkbox) rather than false as long as the line isn't
+                    // confirmed yet — a false checkbox would misleadingly read as "confirmed, no
+                    // deviation" instead of "nothing to compare yet".
+                    QuantityMismatch = confirmed ? (bool?)exception.QuantityMismatch : null,
                     l.UnitPrice,
                     l.ConfirmedUnitPrice,
-                    l.LineTotal,
-                    EstimatedShipDate = l.Deliveries.FirstOrDefault()?.EstimatedShipDate
+                    PriceMismatch = confirmed ? (bool?)exception.PriceMismatch : null,
+                    RequiredDate = requestLine?.RequiredDate,
+                    ConfirmedShipDate = confirmedShipDate,
+                    DeliveryIsLate = confirmed ? (bool?)exception.DeliveryIsLate : null,
+                    l.LineTotal
                 };
             }).ToList();
             ApplyQuantityColumns(_linesGrid, "Quantity", "ConfirmedQuantity");
             ApplyCurrencyColumns(_linesGrid, "UnitPrice", "ConfirmedUnitPrice", "LineTotal");
-            ApplyDateColumns(_linesGrid, "EstimatedShipDate");
+            ApplyDateColumns(_linesGrid, "RequiredDate", "ConfirmedShipDate");
+            SetHeaderText(_linesGrid, "QuantityMismatch", "Qty afwijkt?");
+            SetHeaderText(_linesGrid, "PriceMismatch", "Prijs afwijkt?");
+            SetHeaderText(_linesGrid, "DeliveryIsLate", "Te laat?");
+            HighlightDeviatingLines(_linesGrid);
 
+            var unconfirmedCount = order.Lines.Count(l => !l.ConfirmedQuantity.HasValue);
             _statusBar.Text = $"{order.SupplierCode}: {order.Status}"
                 + (string.IsNullOrEmpty(order.SupplierOrderNumber) ? string.Empty : $" (ordernummer {order.SupplierOrderNumber})")
-                + $" — {order.Lines.Count} regel(s).";
+                + $" — {order.Lines.Count} regel(s), {unconfirmedCount} nog niet bevestigd.";
+        }
+
+        // Warning-orange for a line whose confirmation deviates in some way (quantity/prijs/te laat)
+        // — mirrors OrderConfirmationExceptionsForm's own "only exceptions need a human look"
+        // philosophy, but here so you can see it while browsing every order, not only right after
+        // "Orderbevestiging verwerken" ran.
+        private static readonly System.Drawing.Color DeviationRowColor = System.Drawing.Color.FromArgb(255, 235, 205);
+
+        private static void HighlightDeviatingLines(DataGridView grid)
+        {
+            if (grid.Columns["QuantityMismatch"] == null) return;
+            foreach (DataGridViewRow row in grid.Rows)
+            {
+                if (row.IsNewRow) continue;
+                var deviates = (row.Cells["QuantityMismatch"].Value as bool?) == true
+                    || (row.Cells["PriceMismatch"].Value as bool?) == true
+                    || (row.Cells["DeliveryIsLate"].Value as bool?) == true;
+                if (deviates) row.DefaultCellStyle.BackColor = DeviationRowColor;
+            }
         }
     }
 }

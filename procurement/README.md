@@ -164,7 +164,13 @@ Confirmed/PartiallyConfirmed/Backorder → PartiallyShipped → Shipped → Comp
 "Orders...") toont daarom alle PO's van deze administratie in één los, globaal overzicht — inclusief
 `ConfirmedQuantity`/`ConfirmedUnitPrice`/`EstimatedShipDate`, wat een leverancier daadwerkelijk
 bevestigd heeft, iets wat nergens anders zichtbaar was (ook niet in de Selected-kolommen hierboven,
-die alleen de gekozen offerte tonen, niet een latere bevestiging ervan). Dit komt naast, niet in
+die alleen de gekozen offerte tonen, niet een latere bevestiging ervan). Het regels-grid toont per
+regel expliciet of hij al bevestigd is (`ConfirmedQuantity.HasValue` — de leverancier bevestigt per
+regel, niet per hele PO in één keer) en hergebruikt `OrderConfirmationException`'s eigen (al geteste)
+`QuantityMismatch`/`PriceMismatch`/`DeliveryIsLate`-logica om af te lezen of het bevestigde aantal/
+prijs/leverdatum afwijkt van wat besteld/gevraagd was — als drieledige (leeg/aan/uit) checkbox zolang
+een regel nog niet bevestigd is, plus een lichtoranje rij-highlight bij een afwijking, zodat je dat
+niet per regel hoeft na te rekenen. Dit komt naast, niet in
 plaats van, `OrderDetailForm` ("Order details"), dat gericht blijft op de PO's die bij één specifieke
 geselecteerde aanvraag horen.
 
