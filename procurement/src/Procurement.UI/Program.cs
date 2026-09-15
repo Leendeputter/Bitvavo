@@ -84,12 +84,13 @@ namespace Procurement.UI
                     // merge added PurchaseOrder.SupplierCode; the DigiKey/Farnell credential storage
                     // added Supplier.ClientIdEncrypted; the MAX PO-write plumbing added
                     // PurchaseRequestLine.MaxLineNumber; order-confirmation processing added
-                    // PurchaseOrderLine.MaxLineNumber/ConfirmedUnitPrice), so an older database still
-                    // has the table but not that column. Checking for the newest column of each
-                    // catches "never created" and "needs to be recreated for a reshaped model" with
-                    // the same query.
+                    // PurchaseOrderLine.MaxLineNumber/ConfirmedUnitPrice; sep-2026 added
+                    // PurchaseOrder.CompanyId so POs are scoped per MAX company like PurchaseRequest
+                    // already was), so an older database still has the table but not that column.
+                    // Checking for the newest column of each catches "never created" and "needs to be
+                    // recreated for a reshaped model" with the same query.
                     schemaExists = context.Database.SqlQuery<int>(
-                        "SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Procurement_PurchaseOrder') AND name = 'SupplierCode'"
+                        "SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Procurement_PurchaseOrder') AND name = 'CompanyId'"
                         + " UNION ALL SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Procurement_Supplier') AND name = 'ClientIdEncrypted'"
                         + " UNION ALL SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Procurement_PurchaseRequestLine') AND name = 'MaxLineNumber'"
                         + " UNION ALL SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Procurement_PurchaseOrderLine') AND name = 'MaxLineNumber'")

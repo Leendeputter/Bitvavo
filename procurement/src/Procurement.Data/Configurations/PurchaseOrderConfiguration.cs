@@ -12,6 +12,11 @@ namespace Procurement.Data.Configurations
             ToTable("Procurement_PurchaseOrder");
             HasKey(po => po.Id);
 
+            // Every query filters by CompanyId (spec §15, same reasoning as PurchaseRequest).
+            Property(po => po.CompanyId)
+                .HasColumnAnnotation(IndexAnnotation.AnnotationName,
+                    new IndexAnnotation(new IndexAttribute("IX_PurchaseOrder_CompanyId")));
+
             Property(po => po.ErpPoNumber).HasMaxLength(50).IsRequired();
             Property(po => po.SupplierCode).HasMaxLength(20).IsRequired();
             Property(po => po.SupplierOrderNumber).HasMaxLength(100);

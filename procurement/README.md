@@ -152,7 +152,29 @@ ook na een "Query"-klik. Sourcing starten/Alles sourcen slaat Ordered-aanvragen 
 anders een al geplaatste order stilletjes terugzetten naar ReadyToOrder — elke regel heeft al een
 SupplierSelection zonder openstaande exception/goedkeuring, dus de sourcing-uitkomst zou opnieuw
 ReadyToOrder worden); Order plaatsen was dat al veilig via de bestaande `HasOrderForLineAsync`-check in
-`ProcurementEngine.PlaceOrdersAsync`.
+`ProcurementEngine.PlaceOrdersAsync`. Een Ordered-rij krijgt bovendien een lichtgroene achtergrond
+(`MainForm.HighlightOrderedRows`), zodat een al geplaatste order ook zonder de checkbox-filter of de
+Workflow-tekst te lezen meteen opvalt.
+
+**"Orders"-scherm (los van de PR-grid, spec-toevoeging sep 2026)**: een `PurchaseOrder` is geen
+PR-achtig ding — één PO kan regels van meerdere aanvragen bundelen (gegroepeerd per leverancier, niet
+per aanvraag), en heeft zijn eigen levenscyclus (`Created → Submitted → Acknowledged →
+Confirmed/PartiallyConfirmed/Backorder → PartiallyShipped → Shipped → Completed`, los van
+`Cancelled`/`Rejected`) die niets met de PR-Workflow-status te maken heeft. `OrdersForm` (knop
+"Orders...") toont daarom alle PO's van deze administratie in één los, globaal overzicht — inclusief
+`ConfirmedQuantity`/`ConfirmedUnitPrice`/`EstimatedShipDate`, wat een leverancier daadwerkelijk
+bevestigd heeft, iets wat nergens anders zichtbaar was (ook niet in de Selected-kolommen hierboven,
+die alleen de gekozen offerte tonen, niet een latere bevestiging ervan). Dit komt naast, niet in
+plaats van, `OrderDetailForm` ("Order details"), dat gericht blijft op de PO's die bij één specifieke
+geselecteerde aanvraag horen.
+
+**`PurchaseOrder.CompanyId` (sep 2026)**: `PurchaseOrder` had tot nu toe geen company-scoping,
+in tegenstelling tot `PurchaseRequest` — elke `PurchaseOrderRepository`-methode retourneerde orders
+van *alle* MAX-administraties door elkaar. Vooral relevant voor `GetAwaitingConfirmationAsync`
+(zou "Orderbevestiging verwerken" bevestigingen van een andere administratie hebben laten
+verwerken/naar MAX terugschrijven) en nu voor dit nieuwe globale Orders-scherm. Opgelost door
+`CompanyId` toe te voegen (zelfde patroon als `PurchaseRequest`, spec §15) en elke read/write ermee
+te filteren.
 
 **Hoe dit samenwerkt met de rest van de engine**: `ProcurementEngine`, de approval-flow en het
 plaatsen van orders werken volledig in termen van dit prototype's eigen `PurchaseRequest`-tabel

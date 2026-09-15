@@ -50,6 +50,7 @@ namespace Procurement.UI.Forms
         private Button _processConfirmationsButton;
         private Button _viewOffersButton;
         private Button _orderDetailButton;
+        private Button _ordersButton;
         private Button _approvalsButton;
         private Button _supplierMappingButton;
         private Button _settingsButton;
@@ -110,6 +111,8 @@ namespace Procurement.UI.Forms
             _processConfirmationsButton.Click += async (s, e) => await ProcessOrderConfirmationsAsync();
             _orderDetailButton = new Button { Text = "Order details", AutoSize = true };
             _orderDetailButton.Click += (s, e) => ShowOrderDetail();
+            _ordersButton = new Button { Text = "Orders...", AutoSize = true };
+            _ordersButton.Click += (s, e) => ShowOrders();
             _approvalsButton = new Button { Text = "Goedkeuringen...", AutoSize = true };
             _approvalsButton.Click += async (s, e) => await ShowApprovalsAsync();
             _supplierMappingButton = new Button { Text = "Supplier mapping...", AutoSize = true };
@@ -122,7 +125,7 @@ namespace Procurement.UI.Forms
             toolPanel.Controls.AddRange(new Control[]
             {
                 _newRequestButton, _startSourcingButton, _sourceAllButton, _placeOrdersButton, _processConfirmationsButton, _orderDetailButton,
-                _approvalsButton, _supplierMappingButton, _settingsButton, _auditLogButton
+                _ordersButton, _approvalsButton, _supplierMappingButton, _settingsButton, _auditLogButton
             });
 
             // Apart van de actieknoppen hierboven: het ophalen/filteren van MAX-orders krijgt een
@@ -524,6 +527,24 @@ namespace Procurement.UI.Forms
             ApplyFrozenColumns(_requestsGrid,
                 "Order", "Workflow", "PartID", "Desc1", "Quantity", "Cost", "DueDate",
                 "SelectedSupplier", "SelectedPrice", "SelectedQuantity", "SelectedDueDate");
+            HighlightOrderedRows(_requestsGrid);
+        }
+
+        // Light green background for Workflow=Ordered, so an already-placed order is visible at a
+        // glance instead of needing "Order details" (or reading the Workflow text) per row — user
+        // request, sep 2026. Rows are recreated fresh on every DataSource assignment, so there's
+        // nothing to reset for the non-Ordered ones.
+        private static readonly System.Drawing.Color OrderedRowColor = System.Drawing.Color.FromArgb(222, 245, 222);
+
+        private static void HighlightOrderedRows(DataGridView grid)
+        {
+            if (grid.Columns["Workflow"] == null) return;
+            foreach (DataGridViewRow row in grid.Rows)
+            {
+                if (row.IsNewRow) continue;
+                if (row.Cells["Workflow"].Value as string == nameof(PurchaseRequestStatus.Ordered))
+                    row.DefaultCellStyle.BackColor = OrderedRowColor;
+            }
         }
 
         /// <summary>
@@ -1002,6 +1023,14 @@ namespace Procurement.UI.Forms
             }
         }
 
+        private void ShowOrders()
+        {
+            using (var form = new OrdersForm(_composition.PurchaseOrderRepository, _composition.PurchaseRequestRepository))
+            {
+                form.ShowDialog(this);
+            }
+        }
+
         private async System.Threading.Tasks.Task ShowApprovalsAsync()
         {
             using (var form = new ApprovalForm(_composition.Engine))
@@ -1067,6 +1096,7 @@ namespace Procurement.UI.Forms
             _placeOrdersButton.Enabled = enabled;
             _processConfirmationsButton.Enabled = enabled;
             _orderDetailButton.Enabled = enabled;
+            _ordersButton.Enabled = enabled;
             _approvalsButton.Enabled = enabled;
             _supplierMappingButton.Enabled = enabled;
             _settingsButton.Enabled = enabled;

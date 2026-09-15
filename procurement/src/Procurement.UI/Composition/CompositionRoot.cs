@@ -52,7 +52,7 @@ namespace Procurement.UI.Composition
             var offerRepository = new SupplierOfferRepository(DbContext);
             var selectionRepository = new SupplierSelectionRepository(DbContext);
             var approvalRepository = new ApprovalRequestRepository(DbContext);
-            PurchaseOrderRepository = new PurchaseOrderRepository(DbContext);
+            PurchaseOrderRepository = new PurchaseOrderRepository(DbContext, Session);
             PolicyRepository = new PolicyRepository(DbContext);
             SupplierRepository = new SupplierRepository(DbContext);
             ProcurementEventRepository = new ProcurementEventRepository(DbContext);

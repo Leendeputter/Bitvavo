@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Procurement.Core.Entities;
 using Procurement.Core.Enums;
+using Procurement.Core.Interfaces;
 using Procurement.Core.Models;
 
 namespace Procurement.Data.Repositories
@@ -17,14 +18,17 @@ namespace Procurement.Data.Repositories
     public class PurchaseOrderRepository
     {
         private readonly ProcurementDbContext _context;
+        private readonly ISessionContext _session;
 
-        public PurchaseOrderRepository(ProcurementDbContext context)
+        public PurchaseOrderRepository(ProcurementDbContext context, ISessionContext session)
         {
             _context = context;
+            _session = session;
         }
 
         public Task<PurchaseOrder> AddAsync(PurchaseOrder order) => _context.RunGuardedAsync(async () =>
         {
+            order.CompanyId = _session.CompanyId;
             _context.PurchaseOrders.Add(order);
             await _context.SaveChangesAsync();
             return order;
@@ -33,19 +37,30 @@ namespace Procurement.Data.Repositories
         public Task<PurchaseOrder> GetByErpPoNumberAsync(string erpPoNumber) => _context.RunGuardedAsync(() =>
             _context.PurchaseOrders
                 .Include(po => po.Lines)
-                .FirstOrDefaultAsync(po => po.ErpPoNumber == erpPoNumber));
+                .FirstOrDefaultAsync(po => po.CompanyId == _session.CompanyId && po.ErpPoNumber == erpPoNumber));
 
         public Task<PurchaseOrder> GetByIdAsync(int id) => _context.RunGuardedAsync(() =>
             _context.PurchaseOrders
                 .Include(po => po.Lines)
-                .FirstOrDefaultAsync(po => po.Id == id));
+                .FirstOrDefaultAsync(po => po.CompanyId == _session.CompanyId && po.Id == id));
+
+        /// <summary>Every PO for this company, most recent first — backs the global "Orders" overview (unlike GetByPurchaseRequestLineIdsAsync, not scoped to one purchase request). Deliveries eager-loaded too (unlike the other Get* methods here) since OrdersForm shows each line's EstimatedShipDate.</summary>
+        public Task<IReadOnlyList<PurchaseOrder>> GetAllAsync() => _context.RunGuardedAsync(async () =>
+        {
+            IReadOnlyList<PurchaseOrder> result = await _context.PurchaseOrders
+                .Include(po => po.Lines.Select(l => l.Deliveries))
+                .Where(po => po.CompanyId == _session.CompanyId)
+                .OrderByDescending(po => po.CreatedAt)
+                .ToListAsync();
+            return result;
+        });
 
         /// <summary>POs relevant to a purchase request — found by joining on which of that request's line IDs ended up on a PurchaseOrderLine, since a PO can now span lines from several requests (grouped by supplier, not by request — see PurchaseOrder.cs).</summary>
         public Task<IReadOnlyList<PurchaseOrder>> GetByPurchaseRequestLineIdsAsync(IReadOnlyList<int> purchaseRequestLineIds) => _context.RunGuardedAsync(async () =>
         {
             IReadOnlyList<PurchaseOrder> result = await _context.PurchaseOrders
                 .Include(po => po.Lines)
-                .Where(po => po.Lines.Any(l => purchaseRequestLineIds.Contains(l.PurchaseRequestLineId)))
+                .Where(po => po.CompanyId == _session.CompanyId && po.Lines.Any(l => purchaseRequestLineIds.Contains(l.PurchaseRequestLineId)))
                 .ToListAsync();
             return result;
         });
@@ -105,7 +120,7 @@ namespace Procurement.Data.Repositories
             var openStatuses = new[] { PurchaseOrderStatus.Submitted, PurchaseOrderStatus.Acknowledged, PurchaseOrderStatus.PartiallyConfirmed };
             IReadOnlyList<PurchaseOrder> result = await _context.PurchaseOrders
                 .Include(po => po.Lines)
-                .Where(po => openStatuses.Contains(po.Status) && po.SupplierOrderNumber != null)
+                .Where(po => po.CompanyId == _session.CompanyId && openStatuses.Contains(po.Status) && po.SupplierOrderNumber != null)
                 .ToListAsync();
             return result;
         });
