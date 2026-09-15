@@ -17,7 +17,7 @@ namespace Procurement.Core.Entities
         public int Id { get; set; }
 
         /// <summary>MAX company (ExactRMCompanies.CompanyID) this PO belongs to — added sep 2026, matching PurchaseRequest's own CompanyId (spec §15). Every read/write in PurchaseOrderRepository is scoped by it, same reasoning: this app can be pointed at more than one MAX administratie, so nothing here may ever mix data across them.</summary>
-        public int CompanyId { get; set; }
+        public long CompanyId { get; set; }
 
         public string ErpPoNumber { get; set; }
         public string SupplierCode { get; set; }
