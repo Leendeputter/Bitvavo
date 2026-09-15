@@ -160,7 +160,7 @@ namespace Procurement.UI.Forms
                 // Rijnummers worden hier niet gebruikt maar tellen bij Fill-kolomherberekening
                 // (venster resizen) alsnog mee als er geen vaste breedte staat.
                 RowHeadersWidthSizeMode = DataGridViewRowHeadersWidthSizeMode.DisableResizing,
-                SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+                SelectionMode = DataGridViewSelectionMode.CellSelect,
                 // Ctrl/Shift-klik om meerdere aanvragen tegelijk te selecteren voor "Sourcing
                 // starten (selectie)" — het regels-grid onder de detailweergave blijft altijd de
                 // regels van de laatst-actieve rij tonen (CurrentRow), ook met meerdere geselecteerd.
@@ -185,7 +185,7 @@ namespace Procurement.UI.Forms
                 AllowUserToAddRows = false,
                 AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
                 RowHeadersWidthSizeMode = DataGridViewRowHeadersWidthSizeMode.DisableResizing,
-                SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+                SelectionMode = DataGridViewSelectionMode.CellSelect,
                 MultiSelect = false
             };
             EnableDoubleBuffering(_linesGrid);
@@ -762,8 +762,14 @@ namespace Procurement.UI.Forms
             return (int)_requestsGrid.CurrentRow.Cells["Id"].Value;
         }
 
+        // SelectedRows is only ever populated under a row-selection SelectionMode (FullRowSelect/
+        // RowHeaderSelect) — with CellSelect (user request, sep 2026: cell-only highlight/copy
+        // everywhere) it stays permanently empty, so "which rows are selected" now has to be derived
+        // from SelectedCells instead. Ctrl/Shift-klik still builds up a multi-row selection the same
+        // way as before, just at cell granularity (click one cell per row you want).
         private List<int> GetSelectedRequestIds() =>
-            _requestsGrid.SelectedRows.Cast<DataGridViewRow>().Select(r => (int)r.Cells["Id"].Value).Distinct().ToList();
+            _requestsGrid.SelectedCells.Cast<DataGridViewCell>().Select(c => c.OwningRow).Distinct()
+                .Select(r => (int)r.Cells["Id"].Value).ToList();
 
         private List<int> GetAllRequestIds() =>
             _requestsGrid.Rows.Cast<DataGridViewRow>().Where(r => !r.IsNewRow).Select(r => (int)r.Cells["Id"].Value).ToList();

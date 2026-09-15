@@ -48,7 +48,7 @@ namespace Procurement.UI.Forms
                 ReadOnly = true,
                 AllowUserToAddRows = false,
                 AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-                SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+                SelectionMode = DataGridViewSelectionMode.CellSelect,
                 MultiSelect = false
             };
             EnableDoubleBuffering(_offersGrid);
