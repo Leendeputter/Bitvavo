@@ -85,5 +85,19 @@ namespace Procurement.Data.Repositories
                 supplier.CountryCode = countryCode;
                 await _context.SaveChangesAsync();
             });
+
+        /// <summary>
+        /// Persists the OAuth2 refresh token from a 3-legged consent flow (DigiKeyOrderingAuthorizer)
+        /// or an automatic rotation during token refresh (DigiKeyHttpClientWrapper) — both call this
+        /// by SupplierCode rather than Id, since neither has (or should need) a database-generated
+        /// row Id in scope, only the well-known code.
+        /// </summary>
+        public Task UpdateRefreshTokenAsync(string supplierCode, string refreshToken) => _context.RunGuardedAsync(async () =>
+        {
+            var supplier = await _context.Suppliers.FirstOrDefaultAsync(s => s.SupplierCode == supplierCode);
+            if (supplier == null) return;
+            supplier.RefreshToken = refreshToken;
+            await _context.SaveChangesAsync();
+        });
     }
 }

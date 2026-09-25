@@ -430,8 +430,41 @@ echt aansluiten: bouw een eigen project + `Http/*Wrapper.cs` naar het voorbeeld 
 `Procurement.Suppliers.DigiKey`, en vervang de betreffende entry in
 `CompositionRoot.genericSupplierDefinitions` door een aparte adapter-constructie zoals bij DigiKey.
 
-**Nog niet gebouwd — bestellen (alle elf suppliers)**: `CreateOrderAsync`/`GetOrderStatusAsync`/
-`CancelOrderAsync` blijven bij groep 1 in real-mode (`UseMockData=false`) een expliciete
+**Bestellen bij DigiKey (Ordering v3, sep 2026)**: als enige van de elf suppliers heeft DigiKey een
+door de gebruiker aangeleverde, bevestigde Ordering-API-spec (Swagger/OpenAPI) — `CreateOrderAsync`
+in real-mode (`UseMockData=false`) plaatst daarmee een echte `POST /Ordering/v3/Orders`-aanroep in
+plaats van de eerdere `SupplierException`. Belangrijke punten:
+- **3-legged OAuth**: in tegenstelling tot Product Information (2-legged client-credentials) eist
+  Ordering v3 expliciet een Authorization Code-flow met gebruikersinstemming. `DigiKeyOrderingAuthorizer`
+  opent één keer een browservenster naar DigiKey's autorisatiepagina, vangt de redirect lokaal op via
+  een `HttpListener` op `http://localhost:8983/callback/`, en wisselt de code in voor een access- en
+  refresh-token. **De Callback URL in DigiKey's developer portal moet exact deze waarde zijn**, anders
+  mislukt de flow. Trigger deze flow eenmalig via **Instellingen → Suppliers → "Ordering
+  autoriseren..."** (alleen zichtbaar effect bij de DigiKey-rij); het refresh-token wordt versleuteld
+  opgeslagen (`Supplier.RefreshTokenEncrypted`, zelfde `SecretProtector`-patroon als
+  `ClientId`/`ClientSecret`) en daarna automatisch ververst door `DigiKeyHttpClientWrapper` — bij
+  rotatie van het refresh-token (sommige OAuth-providers geven er bij elke ververing een nieuwe)
+  wordt de nieuwe waarde direct teruggeschreven via `SupplierRepository.UpdateRefreshTokenAsync`.
+- **Verzendgegevens verplicht**: `EnsureOrderingContactConfigured` weigert een echte order te
+  plaatsen zolang AccountId/contactnaam/adres niet zijn ingevuld via "Verzendgegevens bewerken...".
+- **Geen server-side dedup bij DigiKey**: DigiKey's eigen spec waarschuwt expliciet dat een
+  opnieuw-verstuurde order (bv. na een client-side retry) een tweede keer in rekening gebracht en
+  uitgeleverd wordt — er is geen idempotency-key-ondersteuning aan hun kant. De bestaande
+  in-memory `OrdersByIdempotencyKey`-cache in `DigiKeyAdapter` wordt daarom vóór elke
+  mock/real-vertakking gecontroleerd, zodat een herhaalde aanroep met dezelfde idempotency-key nooit
+  een tweede keer echt bij DigiKey terechtkomt.
+- **`SalesOrderId`-respons heeft drie betekenissen** (uit de bevestigde spec): een positief nummer is
+  de normale echte order; `0` betekent dat de order volledig via DigiKey Marketplace-partners is
+  afgehandeld (het echte nummer/de echte nummers staan dan in `SalesOrderIds_DKPlus`); `-1` betekent
+  dat DigiKey de order heeft ontvangen maar nog geen nummer had toegekend op het moment van
+  antwoorden — expliciet **geen** foutsituatie, en zo'n order mag niet opnieuw verstuurd worden.
+- **Nog niet geïmplementeerd**: `GetOrderStatusAsync`/`CancelOrderAsync` blijven ook voor DigiKey
+  mock-only — daarvoor is (nog) geen bevestigd API-contract beschikbaar, in tegenstelling tot
+  Ordering zelf. Ook heeft dit nog nooit tegen een live DigiKey-account gedraaid; behandel het als
+  ongeverifieerd totdat er één keer echt een order geplaatst is.
+
+**Nog niet gebouwd — bestellen (de overige tien suppliers)**: `CreateOrderAsync`/`GetOrderStatusAsync`/
+`CancelOrderAsync` blijven bij de rest van groep 1 in real-mode (`UseMockData=false`) een expliciete
 `SupplierException` gooien in plaats van een gok te wagen, en bij groep 2 hoe dan ook (die hebben
 sowieso geen echte modus). Elke supplier's Ordering-API is aanzienlijk minder goed gedocumenteerd dan
 zijn Product-Information-API (voor zover die al bestaat) en vergt vermoedelijk een aparte

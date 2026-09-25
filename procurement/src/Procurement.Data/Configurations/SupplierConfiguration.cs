@@ -36,6 +36,7 @@ namespace Procurement.Data.Configurations
             Property(s => s.ClientIdEncrypted).HasMaxLength(500);
             Property(s => s.ClientSecretEncrypted).HasMaxLength(500);
             Property(s => s.ApiKeyEncrypted).HasMaxLength(500);
+            Property(s => s.RefreshTokenEncrypted).HasMaxLength(1000);
 
             HasMany(s => s.Capabilities)
                 .WithRequired(c => c.Supplier)

@@ -73,7 +73,18 @@ namespace Procurement.UI.Composition
                 ClientId = digiKeySupplier?.ClientId,
                 ClientSecret = digiKeySupplier?.ClientSecret,
                 IsSandbox = digiKeySupplier?.IsSandbox ?? true,
-                UseMockData = digiKeySupplier?.UseMockData ?? true
+                UseMockData = digiKeySupplier?.UseMockData ?? true,
+                RefreshToken = digiKeySupplier?.RefreshToken,
+                AccountId = digiKeySupplier?.AccountId,
+                ContactName = digiKeySupplier?.ContactName,
+                ContactEmail = digiKeySupplier?.ContactEmail,
+                ContactTelephone = digiKeySupplier?.ContactTelephone,
+                AddressLine1 = digiKeySupplier?.AddressLine1,
+                AddressLine2 = digiKeySupplier?.AddressLine2,
+                City = digiKeySupplier?.City,
+                Province = digiKeySupplier?.Province,
+                PostalCode = digiKeySupplier?.PostalCode,
+                CountryCode = digiKeySupplier?.CountryCode
             };
             var farnellOptions = new FarnellOptions
             {
@@ -105,7 +116,15 @@ namespace Procurement.UI.Composition
             // The HTTP wrappers are cheap to construct (just an HttpClient + options) and are only
             // ever called when UseMockData is false, so they're always built rather than
             // conditionally wired — one less branch to get wrong here.
-            var digiKeyAdapter = new DigiKeyAdapter(digiKeyOptions, new DigiKeyHttpClientWrapper(digiKeyOptions));
+            var digiKeyHttpClientWrapper = new DigiKeyHttpClientWrapper(digiKeyOptions);
+            // Some OAuth providers issue a new refresh token every time the old one is used to get a
+            // fresh access token — without persisting that, the rotated value would only live for
+            // this process's lifetime, and the next run would fail to refresh with the (by then
+            // revoked) token still in the database. Fire-and-forget: a failed persist here just means
+            // "Ordering autoriseren..." needs to be run again next time, not a crash worth blocking on.
+            digiKeyHttpClientWrapper.OnRefreshTokenRotated = newRefreshToken =>
+                { _ = SupplierRepository.UpdateRefreshTokenAsync("DIGIKEY", newRefreshToken); };
+            var digiKeyAdapter = new DigiKeyAdapter(digiKeyOptions, digiKeyHttpClientWrapper);
             var farnellAdapter = new FarnellAdapter(farnellOptions, new FarnellHttpClientWrapper(farnellOptions));
             var mouserAdapter = new MouserAdapter(mouserOptions, new MouserHttpClientWrapper(mouserOptions));
             var tmeAdapter = new TmeAdapter(tmeOptions, new TmeHttpClientWrapper(tmeOptions));

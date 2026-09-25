@@ -49,6 +49,24 @@ namespace Procurement.Core.Entities
             set => ApiKeyEncrypted = SecretProtector.Encrypt(value);
         }
 
+        /// <summary>
+        /// OAuth2 refresh token from a supplier's 3-legged (Authorization Code) consent flow — only
+        /// DigiKey's Ordering v3 API needs this so far (its Product Information V4 uses plain 2-legged
+        /// client-credentials, same as every other supplier here). Persisted the same way as the
+        /// other credentials (SecretProtector, never in plaintext) but never edited directly: it's
+        /// only ever written by DigiKeyOrderingAuthorizer's interactive consent flow
+        /// ("Ordering autoriseren..." in Instellingen) or rotated automatically whenever it's used to
+        /// refresh an access token (some providers issue a new refresh token on every use).
+        /// </summary>
+        public string RefreshTokenEncrypted { get; set; }
+
+        [NotMapped]
+        public string RefreshToken
+        {
+            get => SecretProtector.Decrypt(RefreshTokenEncrypted);
+            set => RefreshTokenEncrypted = SecretProtector.Encrypt(value);
+        }
+
         // Account/shipping-contact info a real Ordering API call needs (confirmed so far against
         // DigiKey's Ordering v3 OrderRequest.BuyerContact/ShippingContact — modeled generically here,
         // not DigiKey-specifically, since any supplier's real order-placement will need broadly the

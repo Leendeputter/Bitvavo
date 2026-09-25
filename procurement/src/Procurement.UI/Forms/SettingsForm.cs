@@ -3,7 +3,10 @@ using System.ComponentModel;
 using System.Linq;
 using System.Windows.Forms;
 using Procurement.Core.Entities;
+using Procurement.Core.Exceptions;
 using Procurement.Data.Repositories;
+using Procurement.Suppliers.DigiKey;
+using Procurement.Suppliers.DigiKey.Http;
 using static Procurement.UI.Support.GridFormatting;
 
 namespace Procurement.UI.Forms
@@ -79,9 +82,12 @@ namespace Procurement.UI.Forms
             credentialsButton.Click += async (s, e) => await EditCredentialsForSelectedSupplierAsync();
             var shippingButton = new Button { Text = "Verzendgegevens bewerken...", AutoSize = true };
             shippingButton.Click += async (s, e) => await EditOrderingContactForSelectedSupplierAsync();
+            var authorizeOrderingButton = new Button { Text = "Ordering autoriseren...", AutoSize = true };
+            authorizeOrderingButton.Click += async (s, e) => await AuthorizeDigiKeyOrderingAsync();
             buttonPanel.Controls.Add(saveButton);
             buttonPanel.Controls.Add(credentialsButton);
             buttonPanel.Controls.Add(shippingButton);
+            buttonPanel.Controls.Add(authorizeOrderingButton);
 
             page.Controls.Add(_suppliersGrid);
             page.Controls.Add(hint);
@@ -405,6 +411,57 @@ namespace Procurement.UI.Forms
                 {
                     MessageBox.Show(this, ex.Message, "Fout", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
+            }
+        }
+
+        /// <summary>
+        /// One-time interactive 3-legged OAuth consent flow for DigiKey's Ordering v3 API (see
+        /// DigiKeyOrderingAuthorizer) — only DigiKey needs this (Product Information's 2-legged
+        /// client-credentials flow needs no interactive step at all), so this button is a no-op
+        /// for any other selected supplier rather than something every supplier row supports.
+        /// Persists the resulting refresh token via UpdateRefreshTokenAsync; CompositionRoot picks
+        /// it up the next time the app starts (this dialog doesn't attempt to hot-swap the
+        /// already-running DigiKeyHttpClientWrapper's in-memory options).
+        /// </summary>
+        private async System.Threading.Tasks.Task AuthorizeDigiKeyOrderingAsync()
+        {
+            if (_suppliersGrid.CurrentRow == null)
+            {
+                MessageBox.Show(this, "Selecteer eerst een supplier.", "Geen selectie", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var supplierCode = (string)_suppliersGrid.CurrentRow.Cells["SupplierCode"].Value;
+            if (!string.Equals(supplierCode, DigiKeyAdapter.Code, StringComparison.OrdinalIgnoreCase))
+            {
+                MessageBox.Show(this, "\"Ordering autoriseren\" is alleen van toepassing op DigiKey.", "Niet van toepassing", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var current = await _supplierRepository.GetByCodeAsync(supplierCode);
+            if (current == null) return;
+
+            var options = new DigiKeyOptions
+            {
+                ClientId = current.ClientId,
+                ClientSecret = current.ClientSecret,
+                IsSandbox = current.IsSandbox
+            };
+
+            MessageBox.Show(this,
+                "Er wordt zo een browservenster geopend om in te loggen bij DigiKey en toestemming te geven. " +
+                $"Zorg dat de Callback URL in het DigiKey-portal exact \"{DigiKeyOrderingAuthorizer.RedirectUri}\" is, anders mislukt dit.",
+                "DigiKey Ordering autoriseren", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+            try
+            {
+                var refreshToken = await new DigiKeyOrderingAuthorizer().AuthorizeAsync(options);
+                await _supplierRepository.UpdateRefreshTokenAsync(supplierCode, refreshToken);
+                MessageBox.Show(this, "DigiKey Ordering is geautoriseerd. Herstart de applicatie om de nieuwe autorisatie te gebruiken.", "Gelukt", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (SupplierException ex)
+            {
+                MessageBox.Show(this, ex.Message, "Fout", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 

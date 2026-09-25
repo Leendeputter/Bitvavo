@@ -87,10 +87,13 @@ namespace Procurement.UI
                     // PurchaseOrderLine.MaxLineNumber/ConfirmedUnitPrice; sep-2026 added
                     // PurchaseOrder.CompanyId so POs are scoped per MAX company like PurchaseRequest
                     // already was; sep-2026 also added Supplier.AccountId/ContactName/.../CountryCode
-                    // for the Ordering API's BuyerContact/ShippingContact), so an older database still
-                    // has the table but not that column. Checking for the newest column of each
-                    // catches "never created" and "needs to be recreated for a reshaped model" with
-                    // the same query.
+                    // for the Ordering API's BuyerContact/ShippingContact, and Supplier.
+                    // RefreshTokenEncrypted for the same feature's 3-legged OAuth — no separate check
+                    // needed for that column since CreateDatabaseScript() below always recreates the
+                    // whole current model in one go, so catching AccountId's absence also catches
+                    // RefreshTokenEncrypted's), so an older database still has the table but not that
+                    // column. Checking for the newest column of each catches "never created" and
+                    // "needs to be recreated for a reshaped model" with the same query.
                     schemaExists = context.Database.SqlQuery<int>(
                         "SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Procurement_PurchaseOrder') AND name = 'CompanyId'"
                         + " UNION ALL SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Procurement_Supplier') AND name = 'AccountId'"
