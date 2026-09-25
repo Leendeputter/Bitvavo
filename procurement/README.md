@@ -7,14 +7,45 @@ Avnet/Silica, Karl Kruse, RS Components, Distrelec, Conrad — zie "Suppliers" h
 Dit is een **zelfstandig programma** (eigen .exe, geen UniPro-module) dat zijn eigen tabellen in de
 gedeelde `Unitron`-database heeft, los van de Bitvavo trading bot elders in deze repository.
 
-Er zijn nog geen echte DigiKey/Farnell API-credentials — de supplier-kant draait in mock-modus,
-zodat de rest van de workflow (Sourcing → Selectie → ERP PO → Supplier Order → Confirmation)
-end-to-end te doorlopen is. **Inloggen, company-selectie én de purchase requests zelf zijn wél
-echt**: login gebruikt dezelfde MAX-infrastructuur (`MaxSQL`, `ExactRMCompanies`) als UniPro, en
+Farnell/Mouser/TME en de zeven groep-2-distributeurs hebben nog geen echte API-credentials — die
+supplierkant draait in mock-modus. **DigiKey heeft wél echte sandbox-credentials** (zie "Status"
+hieronder voor hoe ver dat staat). **Inloggen, company-selectie én de purchase requests zelf zijn
+wél echt**: login gebruikt dezelfde MAX-infrastructuur (`MaxSQL`, `ExactRMCompanies`) als UniPro, en
 open purchase requests komen standaard uit MAX's eigen `Order_Master`/`Part_Master` — zie
 [Inloggen en company-selectie](#inloggen-en-company-selectie) en
 [Purchase requests uit MAX](#purchase-requests-uit-max) hieronder. Handmatig een testaanvraag
 toevoegen (§8.1) blijft ook werken, als aanvulling op de echte MAX-orders.
+
+## Status (laatst bijgewerkt: 25 sep 2026)
+
+**Werkt en is bevestigd tegen de echte DigiKey-sandbox:**
+- Product Information V4 (zoeken/prijzen/voorraad/verpakking) — `UseMockData=false` getest, inclusief
+  het eerdere 403-probleem (DigiKey-portal-desync, door DigiKey zelf opgelost na contact).
+- Ordering v3 is volledig **geïmplementeerd** (`DigiKeyAdapter.CreateOrderAsync` in real-mode,
+  3-legged OAuth via `DigiKeyOrderingAuthorizer`) en de Callback URL (`https://localhost`) staat
+  inmiddels goed geregistreerd in DigiKey's sandbox-portal. De schema-migratie hiervoor
+  (`Supplier.RefreshTokenEncrypted` + account-/verzendgegevenskolommen) is doorgevoerd en de app
+  start weer normaal op.
+
+**Nog niet getest / eerstvolgende stappen:**
+1. **De "Ordering autoriseren..."-flow zelf nog niet één keer doorlopen** (Instellingen → Suppliers →
+   DigiKey-rij) — dat is de eerste stap bij het weer oppakken: browser-consent geven, de mislukte
+   `https://localhost/...`-URL uit de adresbalk plakken, en controleren dat het refresh-token
+   succesvol wordt opgeslagen.
+2. **DigiKey moest nog reageren op het verzoek om sandbox-Ordering/sandbox-OrderStatus te activeren**
+   voor het account — zonder die activatie geeft een echte `CreateOrderAsync`-aanroep waarschijnlijk
+   alsnog een 403, ook met een geldig token. Nagaan of daar al reactie op is.
+3. Zodra 1 en 2 rond zijn: `UseMockData` voor DigiKey op `false` zetten en één keer een echte
+   testorder plaatsen tegen de sandbox — dit is nog nooit end-to-end uitgeprobeerd.
+4. `GetOrderStatusAsync`/`CancelOrderAsync` blijven daarna nog steeds mock-only (geen bevestigd
+   contract voor die APIs).
+
+**Les uit deze sessie, voor toekomstige schema-wijzigingen**: elke nieuwe kolom heeft in
+`Program.cs`'s schema-existence-check een **eigen** `sys.columns`-probe nodig, ook als een andere
+kolom op dezelfde tabel al gecontroleerd wordt — een kolom die in een latere, aparte commit is
+toegevoegd (`RefreshTokenEncrypted` na `AccountId`) werd anders niet gedetecteerd op een database die
+de eerdere kolom al wél had, met een "Invalid column name"-crash bij het seeden tot gevolg (inmiddels
+gefixt).
 
 ## Solution-structuur
 
