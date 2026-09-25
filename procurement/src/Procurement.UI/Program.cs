@@ -87,16 +87,21 @@ namespace Procurement.UI
                     // PurchaseOrderLine.MaxLineNumber/ConfirmedUnitPrice; sep-2026 added
                     // PurchaseOrder.CompanyId so POs are scoped per MAX company like PurchaseRequest
                     // already was; sep-2026 also added Supplier.AccountId/ContactName/.../CountryCode
-                    // for the Ordering API's BuyerContact/ShippingContact, and Supplier.
-                    // RefreshTokenEncrypted for the same feature's 3-legged OAuth — no separate check
-                    // needed for that column since CreateDatabaseScript() below always recreates the
-                    // whole current model in one go, so catching AccountId's absence also catches
-                    // RefreshTokenEncrypted's), so an older database still has the table but not that
-                    // column. Checking for the newest column of each catches "never created" and
-                    // "needs to be recreated for a reshaped model" with the same query.
+                    // for the Ordering API's BuyerContact/ShippingContact, and — in a *later*, separate
+                    // commit — Supplier.RefreshTokenEncrypted for that same feature's 3-legged OAuth.
+                    // That second column genuinely needs its own probe below: a database that already
+                    // had AccountId applied (from the earlier commit) passes the AccountId check and
+                    // skips straight to SeedData without ever getting RefreshTokenEncrypted, which
+                    // then blows up there with "Invalid column name" instead — CreateDatabaseScript()
+                    // recreating the "whole current model" only helps if this check actually decides
+                    // to run it. Lesson: every column ever added needs its own probe here, even ones
+                    // added to a table another probe already covers, if they didn't ship in the same
+                    // commit/schema-run. Checking for the newest column of each catches "never
+                    // created" and "needs to be recreated for a reshaped model" with the same query.
                     schemaExists = context.Database.SqlQuery<int>(
                         "SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Procurement_PurchaseOrder') AND name = 'CompanyId'"
                         + " UNION ALL SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Procurement_Supplier') AND name = 'AccountId'"
+                        + " UNION ALL SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Procurement_Supplier') AND name = 'RefreshTokenEncrypted'"
                         + " UNION ALL SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Procurement_PurchaseRequestLine') AND name = 'MaxLineNumber'"
                         + " UNION ALL SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Procurement_PurchaseOrderLine') AND name = 'MaxLineNumber'")
                         .All(count => count > 0);
