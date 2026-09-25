@@ -160,7 +160,7 @@ namespace Procurement.UI.Forms
                 // Rijnummers worden hier niet gebruikt maar tellen bij Fill-kolomherberekening
                 // (venster resizen) alsnog mee als er geen vaste breedte staat.
                 RowHeadersWidthSizeMode = DataGridViewRowHeadersWidthSizeMode.DisableResizing,
-                SelectionMode = DataGridViewSelectionMode.CellSelect,
+                SelectionMode = DataGridViewSelectionMode.RowHeaderSelect,
                 // Ctrl/Shift-klik om meerdere aanvragen tegelijk te selecteren voor "Sourcing
                 // starten (selectie)" — het regels-grid onder de detailweergave blijft altijd de
                 // regels van de laatst-actieve rij tonen (CurrentRow), ook met meerdere geselecteerd.
@@ -185,7 +185,7 @@ namespace Procurement.UI.Forms
                 AllowUserToAddRows = false,
                 AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
                 RowHeadersWidthSizeMode = DataGridViewRowHeadersWidthSizeMode.DisableResizing,
-                SelectionMode = DataGridViewSelectionMode.CellSelect,
+                SelectionMode = DataGridViewSelectionMode.RowHeaderSelect,
                 MultiSelect = false
             };
             EnableDoubleBuffering(_linesGrid);
@@ -762,11 +762,14 @@ namespace Procurement.UI.Forms
             return (int)_requestsGrid.CurrentRow.Cells["Id"].Value;
         }
 
-        // SelectedRows is only ever populated under a row-selection SelectionMode (FullRowSelect/
-        // RowHeaderSelect) — with CellSelect (user request, sep 2026: cell-only highlight/copy
-        // everywhere) it stays permanently empty, so "which rows are selected" now has to be derived
-        // from SelectedCells instead. Ctrl/Shift-klik still builds up a multi-row selection the same
-        // way as before, just at cell granularity (click one cell per row you want).
+        // Derived from SelectedCells rather than SelectedRows, on purpose, even though
+        // RowHeaderSelect (user request, sep 2026: a plain cell click selects/copies just that cell;
+        // clicking the row header still selects the whole row, which is what this method is really
+        // for) does populate SelectedRows when a row is selected via its header. SelectedCells
+        // additionally still resolves correctly if a row only has individual cells selected (e.g. a
+        // stray cell click instead of the header) — a row selected via its header shows up here too,
+        // since DataGridView marks every cell of a fully-selected row as Selected. Either way of
+        // selecting a row for "Sourcing starten (selectie)"/"Order plaatsen (selectie)" works.
         private List<int> GetSelectedRequestIds() =>
             _requestsGrid.SelectedCells.Cast<DataGridViewCell>().Select(c => c.OwningRow).Distinct()
                 .Select(r => (int)r.Cells["Id"].Value).ToList();
