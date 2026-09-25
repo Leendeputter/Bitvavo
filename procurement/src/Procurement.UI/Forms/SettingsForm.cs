@@ -77,8 +77,11 @@ namespace Procurement.UI.Forms
             saveButton.Click += async (s, e) => await SaveSuppliersAsync();
             var credentialsButton = new Button { Text = "Credentials bewerken...", AutoSize = true };
             credentialsButton.Click += async (s, e) => await EditCredentialsForSelectedSupplierAsync();
+            var shippingButton = new Button { Text = "Verzendgegevens bewerken...", AutoSize = true };
+            shippingButton.Click += async (s, e) => await EditOrderingContactForSelectedSupplierAsync();
             buttonPanel.Controls.Add(saveButton);
             buttonPanel.Controls.Add(credentialsButton);
+            buttonPanel.Controls.Add(shippingButton);
 
             page.Controls.Add(_suppliersGrid);
             page.Controls.Add(hint);
@@ -190,8 +193,15 @@ namespace Procurement.UI.Forms
             // Credentials never appear in this grid at all, encrypted or not — a raw ciphertext
             // column would be noise, and a decrypted one would put a secret in plain view on
             // screen; both are edited exclusively through the write-only "Credentials bewerken"
-            // dialog instead (EditCredentialsForSelectedSupplier).
-            foreach (var column in new[] { "Capabilities", "ClientIdEncrypted", "ClientSecretEncrypted", "ApiKeyEncrypted", "ClientId", "ClientSecret", "ApiKey" })
+            // dialog instead (EditCredentialsForSelectedSupplier). The account/shipping-contact
+            // fields aren't secret, but ten extra columns here would be pure clutter for something
+            // edited a handful of times ever — same reasoning, different (read/write, pre-filled)
+            // dialog: "Verzendgegevens bewerken" (EditOrderingContactForSelectedSupplierAsync).
+            foreach (var column in new[]
+            {
+                "Capabilities", "ClientIdEncrypted", "ClientSecretEncrypted", "ApiKeyEncrypted", "ClientId", "ClientSecret", "ApiKey",
+                "AccountId", "ContactName", "ContactEmail", "ContactTelephone", "AddressLine1", "AddressLine2", "City", "Province", "PostalCode", "CountryCode"
+            })
                 if (_suppliersGrid.Columns[column] != null)
                     _suppliersGrid.Columns[column].Visible = false;
 
@@ -308,6 +318,88 @@ namespace Procurement.UI.Forms
                 {
                     await _supplierRepository.UpdateCredentialsAsync(supplierId, clientIdBox.Text, clientSecretBox.Text, apiKeyBox.Text);
                     MessageBox.Show(this, "Credentials opgeslagen.", "Opgeslagen", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(this, ex.Message, "Fout", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Account/shipping-contact info a real Ordering API call needs (see Supplier.cs) — per
+        /// supplier, since a different supplier's Ordering API could need a completely different
+        /// account reference or ship-to address. Unlike "Credentials bewerken" this dialog does
+        /// pre-fill the current values (nothing here is a secret) and always overwrites on save.
+        /// </summary>
+        private async System.Threading.Tasks.Task EditOrderingContactForSelectedSupplierAsync()
+        {
+            if (_suppliersGrid.CurrentRow == null)
+            {
+                MessageBox.Show(this, "Selecteer eerst een supplier.", "Geen selectie", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var supplierId = (int)_suppliersGrid.CurrentRow.Cells["Id"].Value;
+            var supplierCode = (string)_suppliersGrid.CurrentRow.Cells["SupplierCode"].Value;
+            var current = await _supplierRepository.GetByCodeAsync(supplierCode);
+            if (current == null) return;
+
+            using (var dialog = new Form
+            {
+                Text = $"Verzendgegevens bewerken – {supplierCode}",
+                Width = 440,
+                Height = 460,
+                StartPosition = FormStartPosition.CenterParent,
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                MinimizeBox = false,
+                MaximizeBox = false
+            })
+            {
+                var layout = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 2, AutoSize = true, Padding = new Padding(10) };
+                var accountIdBox = new TextBox { Width = 220, Text = current.AccountId };
+                var contactNameBox = new TextBox { Width = 220, Text = current.ContactName };
+                var contactEmailBox = new TextBox { Width = 220, Text = current.ContactEmail };
+                var contactTelephoneBox = new TextBox { Width = 220, Text = current.ContactTelephone };
+                var addressLine1Box = new TextBox { Width = 220, Text = current.AddressLine1 };
+                var addressLine2Box = new TextBox { Width = 220, Text = current.AddressLine2 };
+                var cityBox = new TextBox { Width = 220, Text = current.City };
+                var provinceBox = new TextBox { Width = 220, Text = current.Province };
+                var postalCodeBox = new TextBox { Width = 220, Text = current.PostalCode };
+                var countryCodeBox = new TextBox { Width = 220, Text = current.CountryCode, MaxLength = 2 };
+                AddRow(layout, "Account ID:", accountIdBox);
+                AddRow(layout, "Contactnaam:", contactNameBox);
+                AddRow(layout, "Contact e-mail:", contactEmailBox);
+                AddRow(layout, "Contact telefoon:", contactTelephoneBox);
+                AddRow(layout, "Adresregel 1:", addressLine1Box);
+                AddRow(layout, "Adresregel 2:", addressLine2Box);
+                AddRow(layout, "Plaats:", cityBox);
+                AddRow(layout, "Provincie/staat:", provinceBox);
+                AddRow(layout, "Postcode:", postalCodeBox);
+                AddRow(layout, "Landcode (2 letters, ISO):", countryCodeBox);
+
+                var buttonPanel = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(10) };
+                var saveButton = new Button { Text = "Opslaan", AutoSize = true, DialogResult = DialogResult.OK };
+                var cancelButton = new Button { Text = "Annuleren", AutoSize = true, DialogResult = DialogResult.Cancel };
+                buttonPanel.Controls.Add(cancelButton);
+                buttonPanel.Controls.Add(saveButton);
+
+                var scrollPanel = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
+                scrollPanel.Controls.Add(layout);
+
+                dialog.Controls.Add(scrollPanel);
+                dialog.Controls.Add(buttonPanel);
+                dialog.AcceptButton = saveButton;
+                dialog.CancelButton = cancelButton;
+
+                if (dialog.ShowDialog(this) != DialogResult.OK) return;
+
+                try
+                {
+                    await _supplierRepository.UpdateOrderingContactAsync(
+                        supplierId, accountIdBox.Text, contactNameBox.Text, contactEmailBox.Text, contactTelephoneBox.Text,
+                        addressLine1Box.Text, addressLine2Box.Text, cityBox.Text, provinceBox.Text, postalCodeBox.Text, countryCodeBox.Text);
+                    MessageBox.Show(this, "Verzendgegevens opgeslagen.", "Opgeslagen", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
                 catch (Exception ex)
                 {

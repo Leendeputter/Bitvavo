@@ -57,5 +57,33 @@ namespace Procurement.Data.Repositories
             if (!string.IsNullOrEmpty(apiKey)) supplier.ApiKey = apiKey;
             await _context.SaveChangesAsync();
         });
+
+        /// <summary>
+        /// Updates the account/shipping-contact fields a real Ordering API call needs (see
+        /// Supplier.cs) via Instellingen's "Verzendgegevens bewerken" dialog. Unlike
+        /// UpdateCredentialsAsync this isn't write-only: none of these are secrets, so the dialog
+        /// pre-fills the current values and every parameter here always overwrites (an intentionally
+        /// cleared field arrives as "", not null, and is saved as such — there's no "leave unchanged"
+        /// convention to preserve here the way there is for credentials).
+        /// </summary>
+        public Task UpdateOrderingContactAsync(
+            int id, string accountId, string contactName, string contactEmail, string contactTelephone,
+            string addressLine1, string addressLine2, string city, string province, string postalCode, string countryCode) =>
+            _context.RunGuardedAsync(async () =>
+            {
+                var supplier = await _context.Suppliers.FindAsync(id);
+                if (supplier == null) return;
+                supplier.AccountId = accountId;
+                supplier.ContactName = contactName;
+                supplier.ContactEmail = contactEmail;
+                supplier.ContactTelephone = contactTelephone;
+                supplier.AddressLine1 = addressLine1;
+                supplier.AddressLine2 = addressLine2;
+                supplier.City = city;
+                supplier.Province = province;
+                supplier.PostalCode = postalCode;
+                supplier.CountryCode = countryCode;
+                await _context.SaveChangesAsync();
+            });
     }
 }

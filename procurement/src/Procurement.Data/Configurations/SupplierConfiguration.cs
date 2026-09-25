@@ -18,6 +18,19 @@ namespace Procurement.Data.Configurations
             Property(s => s.Name).HasMaxLength(200);
             Property(s => s.VendorId).HasMaxLength(20);
 
+            Property(s => s.AccountId).HasMaxLength(50);
+            Property(s => s.ContactName).HasMaxLength(200);
+            Property(s => s.ContactEmail).HasMaxLength(200);
+            Property(s => s.ContactTelephone).HasMaxLength(50);
+            Property(s => s.AddressLine1).HasMaxLength(100);
+            Property(s => s.AddressLine2).HasMaxLength(100);
+            Property(s => s.City).HasMaxLength(100);
+            Property(s => s.Province).HasMaxLength(50);
+            Property(s => s.PostalCode).HasMaxLength(20);
+            // DigiKey's own Address schema caps this at 2 (ISO country code) — kept generic-length
+            // for other suppliers, but 2 already covers the confirmed case.
+            Property(s => s.CountryCode).HasMaxLength(2);
+
             // Base64(IV + AES-256 ciphertext) is comfortably longer than the plaintext it replaces —
             // 500 leaves headroom for any credential length SecretProtector produces.
             Property(s => s.ClientIdEncrypted).HasMaxLength(500);

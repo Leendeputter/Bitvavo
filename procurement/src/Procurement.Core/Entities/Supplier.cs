@@ -49,6 +49,23 @@ namespace Procurement.Core.Entities
             set => ApiKeyEncrypted = SecretProtector.Encrypt(value);
         }
 
+        // Account/shipping-contact info a real Ordering API call needs (confirmed so far against
+        // DigiKey's Ordering v3 OrderRequest.BuyerContact/ShippingContact — modeled generically here,
+        // not DigiKey-specifically, since any supplier's real order-placement will need broadly the
+        // same shape: an account reference plus a shipping contact/address). Editable per supplier
+        // via Instellingen's "Verzendgegevens bewerken" dialog, unlike ClientId/ClientSecret/ApiKey
+        // this is plain (not encrypted) — an account number and a shipping address aren't secrets.
+        public string AccountId { get; set; }
+        public string ContactName { get; set; }
+        public string ContactEmail { get; set; }
+        public string ContactTelephone { get; set; }
+        public string AddressLine1 { get; set; }
+        public string AddressLine2 { get; set; }
+        public string City { get; set; }
+        public string Province { get; set; }
+        public string PostalCode { get; set; }
+        public string CountryCode { get; set; }
+
         public virtual List<SupplierCapabilityRecord> Capabilities { get; set; } = new List<SupplierCapabilityRecord>();
     }
 

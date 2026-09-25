@@ -348,6 +348,17 @@ maken, zie `TmeOptions`) staan versleuteld in `Procurement_Supplier`
 **Instellingen → Suppliers → "Credentials bewerken..."**, en staat er nergens een sleutel in leesbare
 vorm in de database of in source control.
 
+**Account-/verzendgegevens per leverancier** (`Supplier.AccountId`/`ContactName`/`ContactEmail`/
+`ContactTelephone`/`AddressLine1`/`AddressLine2`/`City`/`Province`/`PostalCode`/`CountryCode`, sep
+2026): wat een echte Ordering-API-aanroep nodig heeft (confirmed tot nu toe tegen DigiKey Ordering
+v3's `OrderRequest.BuyerContact`/`ShippingContact`) — generiek gemodelleerd, niet DigiKey-specifiek,
+want elke leverancier's echte order-plaatsing zal ongeveer dezelfde vorm nodig hebben (een
+account-referentie plus een verzendadres/contactpersoon). In tegenstelling tot credentials **niet**
+versleuteld (een accountnummer/adres is geen secret) en bewerkbaar via een aparte, wél vooraf
+ingevulde dialoog: **Instellingen → Suppliers → "Verzendgegevens bewerken..."**. Niet in de
+Suppliers-grid zelf getoond (tien extra kolommen voor iets dat je een handvol keer ooit instelt, is
+pure ruis).
+
 **Hoe dat versleutelen werkt** (`Procurement.Core.Security.SecretProtector`): AES-256, met de
 sleutel gelezen uit de omgevingsvariabele **`PROCUREMENT_SECRET_KEY`** — die staat dus zelf nergens
 in de database of in `App.config`. Zet 'm (dezelfde waarde) op elke machine die deze app draait, bv.
