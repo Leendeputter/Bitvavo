@@ -1,9 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Net;
+using System.Linq;
 using System.Net.Http;
-using System.Text;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Procurement.Core.Enums;
@@ -19,19 +18,25 @@ namespace Procurement.Suppliers.DigiKey.Http
     /// token is what DigiKeyHttpClientWrapper.PostOrderAsync uses afterward, refreshed automatically
     /// without this flow running again (until the refresh token itself is revoked or expires).
     ///
-    /// RedirectUri must be registered as this app's exact Callback URL in DigiKey's developer
-    /// portal. "http://localhost" with any port needs no admin rights/URL ACL reservation for
-    /// HttpListener to bind to (unlike "+"/"*" wildcard hosts) — unlike the "https://localhost/
-    /// callback" placeholder registered before a real 3-legged flow existed, which would need a
-    /// locally-bound SSL certificate for no real benefit on a native desktop app (see RFC 8252).
+    /// DigiKey rejects any "http://" Callback URL outright ("Invalid redirection uri") — it must be
+    /// "https://something". For an app with no real, publicly reachable callback endpoint (this
+    /// desktop app has none), DigiKey's own documentation says to register the literal value
+    /// "https://localhost" and use that same literal value as redirect_uri in both the authorize
+    /// request and the token exchange. Nothing ever actually listens on that address: after consent,
+    /// DigiKey's browser redirect to "https://localhost/?code=...&state=..." simply fails to connect
+    /// (no server there), but the browser still shows the attempted URL — including the query string
+    /// — in its address bar. So this flow has no local listener at all; the user copies that URL out
+    /// of the address bar and pastes it back into the app (see SettingsForm, which owns the
+    /// paste-back dialog — this class stays UI-free and only does the URL-building/parsing/HTTP).
+    /// An earlier version of this class tried "http://localhost:8983/callback/" with a local
+    /// HttpListener, which DigiKey's portal never actually accepted as a Callback URL value.
     /// </summary>
     public class DigiKeyOrderingAuthorizer
     {
-        public const string RedirectUri = "http://localhost:8983/callback/";
-        private static readonly TimeSpan ConsentTimeout = TimeSpan.FromMinutes(5);
+        public const string RedirectUri = "https://localhost";
 
-        /// <summary>Opens the system browser to DigiKey's consent page, waits for the local redirect carrying the authorization code, exchanges it for tokens, and returns the refresh token — the caller (SettingsForm) is the one that persists it (this class has no database access).</summary>
-        public async Task<string> AuthorizeAsync(DigiKeyOptions options)
+        /// <summary>Builds the URL to open in the system browser. Caller (SettingsForm) generates and remembers `state` so it can be checked again once the user pastes the result back.</summary>
+        public string BuildAuthorizeUrl(DigiKeyOptions options, string state)
         {
             if (options == null) throw new ArgumentNullException(nameof(options));
             if (string.IsNullOrEmpty(options.ClientId) || string.IsNullOrEmpty(options.ClientSecret))
@@ -40,79 +45,66 @@ namespace Procurement.Suppliers.DigiKey.Http
                     "Vul eerst Client Id/Client Secret in via \"Credentials bewerken...\" voordat je Ordering autoriseert.");
             }
 
-            var state = Guid.NewGuid().ToString("N");
             var host = options.IsSandbox ? "https://sandbox-api.digikey.com" : "https://api.digikey.com";
-            var authorizeUrl = $"{host}/v1/oauth2/authorize" +
+            return $"{host}/v1/oauth2/authorize" +
                 $"?response_type=code&client_id={Uri.EscapeDataString(options.ClientId)}" +
                 $"&redirect_uri={Uri.EscapeDataString(RedirectUri)}&state={state}";
+        }
 
-            using (var listener = new HttpListener())
+        public void OpenBrowser(string url) => Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+
+        /// <summary>
+        /// Parses whatever the user pasted back — the full address-bar URL the browser tried (and
+        /// failed) to load, or just its query string, or (if DigiKey rejected consent) an error
+        /// redirect instead. Throws a clear Dutch SupplierException for every way this can go wrong,
+        /// rather than a raw parsing exception.
+        /// </summary>
+        public static string ExtractAuthorizationCode(string pastedText, string expectedState)
+        {
+            if (string.IsNullOrWhiteSpace(pastedText))
             {
-                listener.Prefixes.Add(RedirectUri);
-                try
-                {
-                    listener.Start();
-                }
-                catch (HttpListenerException ex)
-                {
-                    throw new SupplierException(DigiKeyAdapter.Code, SupplierErrorCode.UnknownError,
-                        $"Kan niet lokaal luisteren op {RedirectUri} (poort al in gebruik, of Callback URL in het " +
-                        $"DigiKey-portal komt niet exact overeen?): {ex.Message}", ex);
-                }
-
-                Process.Start(new ProcessStartInfo(authorizeUrl) { UseShellExecute = true });
-
-                var contextTask = listener.GetContextAsync();
-                var completed = await Task.WhenAny(contextTask, Task.Delay(ConsentTimeout)).ConfigureAwait(false);
-                if (completed != contextTask)
-                {
-                    throw new SupplierException(DigiKeyAdapter.Code, SupplierErrorCode.Timeout,
-                        "Geen reactie van DigiKey ontvangen binnen 5 minuten — autorisatie geannuleerd.");
-                }
-
-                var context = await contextTask.ConfigureAwait(false);
-                var query = context.Request.QueryString;
-                var code = query["code"];
-                var returnedState = query["state"];
-                var error = query["error"];
-
-                RespondToBrowser(context, error == null && !string.IsNullOrEmpty(code));
-
-                if (error != null)
-                {
-                    throw new SupplierException(DigiKeyAdapter.Code, SupplierErrorCode.AuthenticationError,
-                        $"DigiKey heeft autorisatie geweigerd: {query["error_description"] ?? error}");
-                }
-                if (string.IsNullOrEmpty(code))
-                {
-                    throw new SupplierException(DigiKeyAdapter.Code, SupplierErrorCode.AuthenticationError,
-                        "Geen autorisatiecode ontvangen van DigiKey.");
-                }
-                if (returnedState != state)
-                {
-                    throw new SupplierException(DigiKeyAdapter.Code, SupplierErrorCode.AuthenticationError,
-                        "State-parameter kwam niet overeen bij de redirect — autorisatie afgebroken (mogelijke CSRF).");
-                }
-
-                return await ExchangeAuthorizationCodeAsync(options, code, host).ConfigureAwait(false);
+                throw new SupplierException(DigiKeyAdapter.Code, SupplierErrorCode.AuthenticationError,
+                    "Er is niets geplakt — kopieer de volledige URL uit de adresbalk van de browser en plak die hier.");
             }
+
+            var queryString = pastedText.Trim();
+            var queryIndex = queryString.IndexOf('?');
+            if (queryIndex >= 0) queryString = queryString.Substring(queryIndex + 1);
+            var fragmentIndex = queryString.IndexOf('#');
+            if (fragmentIndex >= 0) queryString = queryString.Substring(0, fragmentIndex);
+
+            var parameters = queryString.Split('&')
+                .Select(pair => pair.Split(new[] { '=' }, 2))
+                .Where(pair => pair.Length == 2 && pair[0].Length > 0)
+                .ToDictionary(pair => pair[0], pair => Uri.UnescapeDataString(pair[1]), StringComparer.OrdinalIgnoreCase);
+
+            if (parameters.TryGetValue("error", out var error))
+            {
+                var description = parameters.TryGetValue("error_description", out var d) ? d : error;
+                throw new SupplierException(DigiKeyAdapter.Code, SupplierErrorCode.AuthenticationError,
+                    $"DigiKey heeft autorisatie geweigerd: {description}");
+            }
+
+            if (!parameters.TryGetValue("code", out var code) || string.IsNullOrEmpty(code))
+            {
+                throw new SupplierException(DigiKeyAdapter.Code, SupplierErrorCode.AuthenticationError,
+                    "Geen \"code\"-parameter gevonden in de geplakte tekst — plak de volledige URL uit de adresbalk (ook als de pagina zelf niet laadt, dat is verwacht).");
+            }
+
+            if (!parameters.TryGetValue("state", out var state) || state != expectedState)
+            {
+                throw new SupplierException(DigiKeyAdapter.Code, SupplierErrorCode.AuthenticationError,
+                    "State-parameter kwam niet overeen met de verwachte waarde — autorisatie afgebroken (mogelijke CSRF, of een verouderde/opnieuw geplakte URL).");
+            }
+
+            return code;
         }
 
-        private static void RespondToBrowser(HttpListenerContext context, bool success)
+        public async Task<string> ExchangeAuthorizationCodeAsync(DigiKeyOptions options, string code)
         {
-            var html = success
-                ? "<html><body>DigiKey-autorisatie gelukt. Dit venster kan gesloten worden.</body></html>"
-                : "<html><body>DigiKey-autorisatie mislukt. Dit venster kan gesloten worden.</body></html>";
-            var buffer = Encoding.UTF8.GetBytes(html);
-            context.Response.ContentType = "text/html; charset=utf-8";
-            context.Response.ContentLength64 = buffer.Length;
-            context.Response.OutputStream.Write(buffer, 0, buffer.Length);
-            context.Response.OutputStream.Close();
-        }
-
-        private static async Task<string> ExchangeAuthorizationCodeAsync(DigiKeyOptions options, string code, string host)
-        {
+            var host = options.IsSandbox ? "https://sandbox-api.digikey.com" : "https://api.digikey.com";
             var tokenUrl = $"{host}/v1/oauth2/token";
+
             using (var httpClient = new HttpClient())
             {
                 var form = new FormUrlEncodedContent(new[]

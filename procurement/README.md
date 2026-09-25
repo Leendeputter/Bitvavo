@@ -435,16 +435,23 @@ door de gebruiker aangeleverde, bevestigde Ordering-API-spec (Swagger/OpenAPI) �
 in real-mode (`UseMockData=false`) plaatst daarmee een echte `POST /Ordering/v3/Orders`-aanroep in
 plaats van de eerdere `SupplierException`. Belangrijke punten:
 - **3-legged OAuth**: in tegenstelling tot Product Information (2-legged client-credentials) eist
-  Ordering v3 expliciet een Authorization Code-flow met gebruikersinstemming. `DigiKeyOrderingAuthorizer`
-  opent één keer een browservenster naar DigiKey's autorisatiepagina, vangt de redirect lokaal op via
-  een `HttpListener` op `http://localhost:8983/callback/`, en wisselt de code in voor een access- en
-  refresh-token. **De Callback URL in DigiKey's developer portal moet exact deze waarde zijn**, anders
-  mislukt de flow. Trigger deze flow eenmalig via **Instellingen → Suppliers → "Ordering
-  autoriseren..."** (alleen zichtbaar effect bij de DigiKey-rij); het refresh-token wordt versleuteld
-  opgeslagen (`Supplier.RefreshTokenEncrypted`, zelfde `SecretProtector`-patroon als
-  `ClientId`/`ClientSecret`) en daarna automatisch ververst door `DigiKeyHttpClientWrapper` — bij
-  rotatie van het refresh-token (sommige OAuth-providers geven er bij elke ververing een nieuwe)
-  wordt de nieuwe waarde direct teruggeschreven via `SupplierRepository.UpdateRefreshTokenAsync`.
+  Ordering v3 expliciet een Authorization Code-flow met gebruikersinstemming. DigiKey **weigert elke
+  Callback URL die met `http://` begint** ("Invalid redirection uri") — en voor een desktop-app zonder
+  een echt, publiek bereikbaar callback-endpoint documenteert DigiKey zelf de oplossing: registreer de
+  letterlijke waarde **`https://localhost`** (geen poort, geen pad) als Callback URL. Er draait daar
+  nooit echt iets — na goedkeuren stuurt de browser door naar `https://localhost/?code=...&state=...`,
+  wat gewoon mislukt te laden (geen server op dat adres), maar de adresbalk toont nog wel de volledige
+  aangevraagde URL inclusief de query string. `DigiKeyOrderingAuthorizer` opent daarom alleen de
+  browser naar DigiKey's autorisatiepagina; **Instellingen → Suppliers → "Ordering autoriseren..."**
+  (alleen zichtbaar effect bij de DigiKey-rij) toont daarna een dialoogvenster waarin je die URL uit de
+  adresbalk plakt, waaruit de `code`- en `state`-parameters worden geëxtraheerd (met CSRF-check op
+  `state`) en ingewisseld voor een access- en refresh-token — er is dus bewust **geen lokale
+  HttpListener**, dat vereist een Callback URL die DigiKey's portal toch niet accepteert. Het
+  refresh-token wordt versleuteld opgeslagen (`Supplier.RefreshTokenEncrypted`, zelfde
+  `SecretProtector`-patroon als `ClientId`/`ClientSecret`) en daarna automatisch ververst door
+  `DigiKeyHttpClientWrapper` — bij rotatie van het refresh-token (sommige OAuth-providers geven er bij
+  elke ververing een nieuwe) wordt de nieuwe waarde direct teruggeschreven via
+  `SupplierRepository.UpdateRefreshTokenAsync`.
 - **Verzendgegevens verplicht**: `EnsureOrderingContactConfigured` weigert een echte order te
   plaatsen zolang AccountId/contactnaam/adres niet zijn ingevuld via "Verzendgegevens bewerken...".
 - **Geen server-side dedup bij DigiKey**: DigiKey's eigen spec waarschuwt expliciet dat een

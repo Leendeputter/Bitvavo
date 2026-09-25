@@ -448,20 +448,84 @@ namespace Procurement.UI.Forms
                 IsSandbox = current.IsSandbox
             };
 
-            MessageBox.Show(this,
-                "Er wordt zo een browservenster geopend om in te loggen bij DigiKey en toestemming te geven. " +
-                $"Zorg dat de Callback URL in het DigiKey-portal exact \"{DigiKeyOrderingAuthorizer.RedirectUri}\" is, anders mislukt dit.",
-                "DigiKey Ordering autoriseren", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            var authorizer = new DigiKeyOrderingAuthorizer();
+            var state = Guid.NewGuid().ToString("N");
+            string authorizeUrl;
+            try
+            {
+                authorizeUrl = authorizer.BuildAuthorizeUrl(options, state);
+            }
+            catch (SupplierException ex)
+            {
+                MessageBox.Show(this, ex.Message, "Fout", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            authorizer.OpenBrowser(authorizeUrl);
+
+            var pasted = ShowPasteRedirectDialog();
+            if (pasted == null) return; // cancelled
 
             try
             {
-                var refreshToken = await new DigiKeyOrderingAuthorizer().AuthorizeAsync(options);
+                var code = DigiKeyOrderingAuthorizer.ExtractAuthorizationCode(pasted, state);
+                var refreshToken = await authorizer.ExchangeAuthorizationCodeAsync(options, code);
                 await _supplierRepository.UpdateRefreshTokenAsync(supplierCode, refreshToken);
                 MessageBox.Show(this, "DigiKey Ordering is geautoriseerd. Herstart de applicatie om de nieuwe autorisatie te gebruiken.", "Gelukt", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (SupplierException ex)
             {
                 MessageBox.Show(this, ex.Message, "Fout", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        /// <summary>
+        /// DigiKey rejects any "http://" Callback URL, so this app registers/uses the literal
+        /// "https://localhost" value it documents for apps without a real callback endpoint — nothing
+        /// ever listens there, so after consent the browser simply fails to load
+        /// "https://localhost/?code=...&amp;state=..." (no server at that address). The address bar
+        /// still shows that attempted URL though (including the query string), so the user copies it
+        /// from there and pastes it into this dialog instead of an automatic redirect being caught.
+        /// Returns null if the user cancelled.
+        /// </summary>
+        private string ShowPasteRedirectDialog()
+        {
+            using (var dialog = new Form
+            {
+                Text = "DigiKey Ordering autoriseren",
+                Width = 520,
+                Height = 270,
+                StartPosition = FormStartPosition.CenterParent,
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                MinimizeBox = false,
+                MaximizeBox = false
+            })
+            {
+                var hint = new Label
+                {
+                    Dock = DockStyle.Top,
+                    Height = 90,
+                    Padding = new Padding(10),
+                    Text = "Er is zojuist een browservenster geopend om bij DigiKey in te loggen en toestemming te geven. "
+                        + "Na goedkeuren stuurt DigiKey de browser naar \"https://localhost/...\" — die pagina laadt niet "
+                        + "(dat is verwacht, er draait daar niets), maar de adresbalk bevat wel de volledige URL. "
+                        + "Kopieer die complete URL uit de adresbalk en plak 'm hieronder."
+                };
+                var textBox = new TextBox { Dock = DockStyle.Top, Height = 60 };
+
+                var buttonPanel = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(10) };
+                var okButton = new Button { Text = "OK", AutoSize = true, DialogResult = DialogResult.OK };
+                var cancelButton = new Button { Text = "Annuleren", AutoSize = true, DialogResult = DialogResult.Cancel };
+                buttonPanel.Controls.Add(cancelButton);
+                buttonPanel.Controls.Add(okButton);
+
+                dialog.Controls.Add(textBox);
+                dialog.Controls.Add(hint);
+                dialog.Controls.Add(buttonPanel);
+                dialog.AcceptButton = okButton;
+                dialog.CancelButton = cancelButton;
+
+                return dialog.ShowDialog(this) == DialogResult.OK ? textBox.Text : null;
             }
         }
 
