@@ -37,11 +37,12 @@ namespace Procurement.Suppliers.DigiKey
             Availability = CapabilityStatus.Supported,
             Packaging = CapabilityStatus.Supported,
             // Ordering: real-mode implemented against DigiKey's confirmed Ordering v3 spec
-            // (CreateRealOrderAsync below), but never yet run against a live account — the
-            // sandbox/production account also needs its own separate approval for this API, on top
-            // of a one-time "Ordering autoriseren..." consent flow (3-legged OAuth) in Instellingen.
-            // OrderStatus stays mock-only for now: no confirmed contract for that API yet (unlike
-            // Ordering, where the user supplied the real Swagger spec directly).
+            // (CreateRealOrderAsync below) and confirmed working against the real sandbox (19 okt
+            // 2026: SalesOrderId 12345, via the standalone Procurement.Tools.DigiKeyOrderTester).
+            // OrderStatus: real-mode implemented against DigiKey's confirmed OrderStatus v4 spec
+            // (GetOrderStatusAsync below), via the existing 2-legged client — that API's own spec
+            // says it "uses both two-legged OAuth and three-legged OAuth", so no need for the
+            // Ordering-specific 3-legged client here. Not yet run against a live account.
             Ordering = CapabilityStatus.Supported,
             OrderStatus = CapabilityStatus.Supported,
             Shipment = CapabilityStatus.ManualProcess,
@@ -438,28 +439,122 @@ namespace Procurement.Suppliers.DigiKey
             return spaceIndex < 0 ? contactName : contactName.Substring(spaceIndex + 1);
         }
 
-        public Task<Core.Models.SupplierOrderStatus> GetOrderStatusAsync(string supplierOrderNumber)
+        public async Task<Core.Models.SupplierOrderStatus> GetOrderStatusAsync(string supplierOrderNumber)
         {
-            if (!_options.UseMockData)
+            if (_options.UseMockData)
+            {
+                var placed = OrdersByIdempotencyKey.Values.FirstOrDefault(o => o.Result.SupplierOrderNumber == supplierOrderNumber);
+                if (placed.Result == null)
+                {
+                    throw new SupplierException(Code, SupplierErrorCode.ProductNotFound,
+                        $"No mock order found with number {supplierOrderNumber}.");
+                }
+
+                return new Core.Models.SupplierOrderStatus
+                {
+                    SupplierOrderNumber = supplierOrderNumber,
+                    Status = PurchaseOrderStatus.Confirmed,
+                    ConfirmedAt = DateTime.UtcNow,
+                    Lines = placed.Lines.Select(l => MockOrderConfirmationBuilder.BuildLine(supplierOrderNumber, l)).ToList()
+                };
+            }
+
+            return await GetRealOrderStatusAsync(supplierOrderNumber).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// GET /orderstatus/v4/salesorder/{salesOrderId} against DigiKey's confirmed OrderStatus v4
+        /// Swagger spec (supplied directly by the user — see DigiKeyDtos.cs). That spec says this
+        /// endpoint "uses both two-legged OAuth and three-legged OAuth", so this goes through the
+        /// plain 2-legged ISupplierHttpClient.GetAsync — the same client-credentials token Product
+        /// Information already uses, not the Ordering-specific 3-legged client.
+        /// </summary>
+        private async Task<Core.Models.SupplierOrderStatus> GetRealOrderStatusAsync(string supplierOrderNumber)
+        {
+            RequireHttpClient();
+
+            // salesOrderId is a path-integer per the spec — a comma-joined multi-ID order number
+            // (the "SalesOrderId == 0, fulfilled via Marketplace" case from CreateOrderAsync) has no
+            // single ID to query here, so that's called out explicitly rather than silently querying
+            // the wrong thing.
+            if (!int.TryParse(supplierOrderNumber, out var salesOrderId))
             {
                 throw new SupplierException(Code, SupplierErrorCode.UnknownError,
-                    "DigiKey real-mode order status is not implemented — see CreateOrderAsync.");
+                    $"'{supplierOrderNumber}' is geen enkelvoudig DigiKey SalesOrderId (bv. een Marketplace-order met meerdere " +
+                    "SalesOrderIds_DKPlus-nummers) — OrderStatus kan daar nog niet op bevraagd worden.");
             }
 
-            var placed = OrdersByIdempotencyKey.Values.FirstOrDefault(o => o.Result.SupplierOrderNumber == supplierOrderNumber);
-            if (placed.Result == null)
+            var responseJson = await _httpClient.GetAsync($"orderstatus/v4/salesorder/{salesOrderId}").ConfigureAwait(false);
+            var dto = Deserialize<DigiKeySalesOrderDto>(responseJson);
+
+            if (dto == null)
             {
                 throw new SupplierException(Code, SupplierErrorCode.ProductNotFound,
-                    $"No mock order found with number {supplierOrderNumber}.");
+                    $"DigiKey found no sales order for SalesOrderId {salesOrderId}.");
             }
 
-            return Task.FromResult(new Core.Models.SupplierOrderStatus
+            return new Core.Models.SupplierOrderStatus
             {
                 SupplierOrderNumber = supplierOrderNumber,
-                Status = PurchaseOrderStatus.Confirmed,
-                ConfirmedAt = DateTime.UtcNow,
-                Lines = placed.Lines.Select(l => MockOrderConfirmationBuilder.BuildLine(supplierOrderNumber, l)).ToList()
-            });
+                Status = MapSalesOrderStatus(dto.Status?.SalesOrderStatus),
+                ConfirmedAt = dto.DateEntered,
+                Lines = (dto.LineItems ?? new List<DigiKeyOrderStatusLineItemDto>())
+                    .Select(MapOrderStatusLine)
+                    .ToList()
+            };
+        }
+
+        private static Core.Models.SupplierOrderStatusLine MapOrderStatusLine(DigiKeyOrderStatusLineItemDto line)
+        {
+            // The first Schedule's ScheduledDate ("date the shipment is scheduled to be delivered to
+            // the customer", per the spec) is what downstream late-delivery checks compare against
+            // the requested due date — ItemShipments is about what has already shipped, not a
+            // forecast, so that's not used here even though it also carries dates.
+            var estimatedShipDate = line.Schedules?.FirstOrDefault()?.ScheduledDate;
+
+            return new Core.Models.SupplierOrderStatusLine
+            {
+                SupplierPartNumber = line.DigiKeyProductNumber,
+                ConfirmedQuantity = line.QuantityOrdered,
+                ConfirmedUnitPrice = (decimal)line.UnitPrice,
+                EstimatedShipDate = estimatedShipDate
+            };
+        }
+
+        // DigiKey's SalesOrderStatus has sixteen specific values with no 1:1 equivalent in this
+        // app's own, much coarser PurchaseOrderStatus — best-effort mapping, not a confirmed
+        // contract the way the field names themselves are. Re-check against a real response if a
+        // mapped value looks wrong in practice.
+        private static PurchaseOrderStatus MapSalesOrderStatus(string digiKeyStatus)
+        {
+            switch (digiKeyStatus)
+            {
+                case "Received":
+                    return PurchaseOrderStatus.Acknowledged;
+                case "ProcessingPartialShipment":
+                    return PurchaseOrderStatus.PartiallyShipped;
+                case "ProcessingAwaitingBackorders":
+                case "ProcessingShipBackorder":
+                case "GenericDelay":
+                    return PurchaseOrderStatus.Backorder;
+                case "Processing":
+                case "Processing3rdParty":
+                case "ProcessingScheduledShipmentMultipleRelease":
+                case "ProcessingScheduledShipmentSingleRelease":
+                case "ProcessingScheduledShipmentMsc":
+                    return PurchaseOrderStatus.Confirmed;
+                case "Shipped":
+                    return PurchaseOrderStatus.Shipped;
+                case "Delivered":
+                    return PurchaseOrderStatus.Completed;
+                case "Canceled":
+                    return PurchaseOrderStatus.Cancelled;
+                case "Proforma":
+                case "ActionRequiredWireTransfer":
+                case "Unknown":
+                default:
+                    return PurchaseOrderStatus.Submitted;
+            }
         }
 
         public Task<bool> CancelOrderAsync(string supplierOrderNumber)

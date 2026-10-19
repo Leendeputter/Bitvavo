@@ -13,11 +13,12 @@ using Procurement.Suppliers.DigiKey.Http;
 namespace Procurement.Tools.DigiKeyOrderTester
 {
     /// <summary>
-    /// Calls DigiKeyAdapter.CreateOrderAsync directly, the same code path MainForm's "Order
-    /// plaatsen" uses, but without going through ProcurementEngine/MaxErpConnector first — so this
-    /// never writes a PO into MAX. Only reads the already-authorized DIGIKEY row from
-    /// Procurement_Supplier (ClientId/ClientSecret/RefreshToken/AccountId/contact fields), all via
-    /// the exact same SecretProtector-backed properties the real app uses.
+    /// Calls DigiKeyAdapter.CreateOrderAsync/GetOrderStatusAsync directly, the same code paths
+    /// MainForm's "Order plaatsen"/"Orderbevestiging verwerken" use, but without going through
+    /// ProcurementEngine/MaxErpConnector first — so this never writes a PO into MAX, nor requires one
+    /// to already exist locally for a status lookup. Only reads the already-authorized DIGIKEY row
+    /// from Procurement_Supplier (ClientId/ClientSecret/RefreshToken/AccountId/contact fields), all
+    /// via the exact same SecretProtector-backed properties the real app uses.
     /// </summary>
     internal static class Program
     {
@@ -25,17 +26,15 @@ namespace Procurement.Tools.DigiKeyOrderTester
         {
             if (args.Length < 1)
             {
-                Console.WriteLine("Gebruik: Procurement.Tools.DigiKeyOrderTester.exe <DigiKeyPartNumber> [quantity] [unitPrice]");
+                Console.WriteLine("Gebruik:");
+                Console.WriteLine("  Procurement.Tools.DigiKeyOrderTester.exe <DigiKeyPartNumber> [quantity] [unitPrice]");
+                Console.WriteLine("  Procurement.Tools.DigiKeyOrderTester.exe status <SalesOrderId>");
                 Console.WriteLine();
                 Console.WriteLine("Vereiste omgevingsvariabelen:");
                 Console.WriteLine("  PROCUREMENT_SECRET_KEY            - dezelfde sleutel als de hoofdapplicatie gebruikt.");
                 Console.WriteLine("  PROCUREMENT_TEST_CONNECTION_STRING - connection string naar de echte 'Unitron'-database.");
                 return 1;
             }
-
-            var partNumber = args[0];
-            var quantity = args.Length > 1 ? int.Parse(args[1], CultureInfo.InvariantCulture) : 1;
-            var unitPrice = args.Length > 2 ? decimal.Parse(args[2], CultureInfo.InvariantCulture) : 0.10m;
 
             var connectionString = Environment.GetEnvironmentVariable("PROCUREMENT_TEST_CONNECTION_STRING");
             if (string.IsNullOrWhiteSpace(connectionString))
@@ -85,9 +84,9 @@ namespace Procurement.Tools.DigiKeyOrderTester
                     // Blocking (not fire-and-forget like CompositionRoot's version) since this
                     // short-lived process would otherwise risk exiting before the write lands.
                     // Swallowed on failure (e.g. a read-only test connection string without UPDATE
-                    // rights on Procurement_Supplier) rather than left to abort the whole order
-                    // attempt — losing the rotated token only risks needing to redo "Ordering
-                    // autoriseren..." before the *next* run, it shouldn't block *this* one.
+                    // rights on Procurement_Supplier) rather than left to abort the whole attempt —
+                    // losing the rotated token only risks needing to redo "Ordering autoriseren..."
+                    // before the *next* run, it shouldn't block *this* one.
                     httpClient.OnRefreshTokenRotated = newToken =>
                     {
                         Console.WriteLine("Refresh-token is geroteerd tijdens deze aanroep, wordt teruggeschreven...");
@@ -105,7 +104,7 @@ namespace Procurement.Tools.DigiKeyOrderTester
                             // same key as everything else (PROCUREMENT_SECRET_KEY).
                             var encrypted = SecretProtector.Encrypt(newToken).Replace("'", "''");
                             Console.WriteLine($"WAARSCHUWING: kon het nieuwe refresh-token niet opslaan ({ex.Message}).");
-                            Console.WriteLine("De order gaat door met dit nieuwe token, maar zonder het op te slaan werkt de");
+                            Console.WriteLine("Dit gaat door met dit nieuwe token, maar zonder het op te slaan werkt de");
                             Console.WriteLine("VOLGENDE run niet meer. Plak dit in SSMS om het alsnog op te slaan:");
                             Console.WriteLine();
                             Console.WriteLine($"UPDATE dbo.Procurement_Supplier SET RefreshTokenEncrypted = '{encrypted}' WHERE SupplierCode = 'DIGIKEY';");
@@ -114,39 +113,82 @@ namespace Procurement.Tools.DigiKeyOrderTester
                     };
 
                     var adapter = new DigiKeyAdapter(options, httpClient);
-                    var request = new SupplierOrderRequest
-                    {
-                        SupplierCode = "DIGIKEY",
-                        ErpPoNumber = $"TEST-{DateTime.UtcNow:yyyyMMddHHmmss}",
-                        Currency = "EUR",
-                        Lines = new List<SupplierOrderRequestLine>
-                        {
-                            new SupplierOrderRequestLine
-                            {
-                                SupplierPartNumber = partNumber,
-                                Quantity = quantity,
-                                UnitPrice = unitPrice
-                            }
-                        }
-                    };
 
-                    Console.WriteLine($"Order plaatsen: {quantity}x {partNumber} @ {unitPrice.ToString("0.00", CultureInfo.InvariantCulture)} EUR, referentie {request.ErpPoNumber} ...");
+                    return string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase)
+                        ? await RunStatusAsync(adapter, args)
+                        : await RunPlaceOrderAsync(adapter, args);
+                }
+            }
+        }
 
-                    try
+        private static async Task<int> RunStatusAsync(DigiKeyAdapter adapter, string[] args)
+        {
+            if (args.Length < 2)
+            {
+                Console.WriteLine("Gebruik: Procurement.Tools.DigiKeyOrderTester.exe status <SalesOrderId>");
+                return 1;
+            }
+
+            var salesOrderId = args[1];
+            Console.WriteLine($"Status opvragen voor SalesOrderId {salesOrderId} ...");
+
+            try
+            {
+                var status = await adapter.GetOrderStatusAsync(salesOrderId).ConfigureAwait(false);
+                Console.WriteLine("Gelukt:");
+                Console.WriteLine($"  Status      = {status.Status}");
+                Console.WriteLine($"  ConfirmedAt = {status.ConfirmedAt}");
+                foreach (var line in status.Lines)
+                {
+                    Console.WriteLine($"  Regel: {line.SupplierPartNumber}  ConfirmedQuantity={line.ConfirmedQuantity}  " +
+                        $"ConfirmedUnitPrice={line.ConfirmedUnitPrice}  EstimatedShipDate={line.EstimatedShipDate}");
+                }
+                return 0;
+            }
+            catch (SupplierException ex)
+            {
+                Console.WriteLine($"Mislukt ({ex.ErrorCode}): {ex.Message}");
+                return 1;
+            }
+        }
+
+        private static async Task<int> RunPlaceOrderAsync(DigiKeyAdapter adapter, string[] args)
+        {
+            var partNumber = args[0];
+            var quantity = args.Length > 1 ? int.Parse(args[1], CultureInfo.InvariantCulture) : 1;
+            var unitPrice = args.Length > 2 ? decimal.Parse(args[2], CultureInfo.InvariantCulture) : 0.10m;
+
+            var request = new SupplierOrderRequest
+            {
+                SupplierCode = "DIGIKEY",
+                ErpPoNumber = $"TEST-{DateTime.UtcNow:yyyyMMddHHmmss}",
+                Currency = "EUR",
+                Lines = new List<SupplierOrderRequestLine>
+                {
+                    new SupplierOrderRequestLine
                     {
-                        var result = await adapter.CreateOrderAsync(request, Guid.NewGuid().ToString("N")).ConfigureAwait(false);
-                        Console.WriteLine("Gelukt:");
-                        Console.WriteLine($"  SupplierOrderNumber = {result.SupplierOrderNumber}");
-                        Console.WriteLine($"  Status              = {result.Status}");
-                        Console.WriteLine($"  OrderTotal          = {result.OrderTotal} {result.Currency}");
-                        return 0;
-                    }
-                    catch (SupplierException ex)
-                    {
-                        Console.WriteLine($"Mislukt ({ex.ErrorCode}): {ex.Message}");
-                        return 1;
+                        SupplierPartNumber = partNumber,
+                        Quantity = quantity,
+                        UnitPrice = unitPrice
                     }
                 }
+            };
+
+            Console.WriteLine($"Order plaatsen: {quantity}x {partNumber} @ {unitPrice.ToString("0.00", CultureInfo.InvariantCulture)} EUR, referentie {request.ErpPoNumber} ...");
+
+            try
+            {
+                var result = await adapter.CreateOrderAsync(request, Guid.NewGuid().ToString("N")).ConfigureAwait(false);
+                Console.WriteLine("Gelukt:");
+                Console.WriteLine($"  SupplierOrderNumber = {result.SupplierOrderNumber}");
+                Console.WriteLine($"  Status              = {result.Status}");
+                Console.WriteLine($"  OrderTotal          = {result.OrderTotal} {result.Currency}");
+                return 0;
+            }
+            catch (SupplierException ex)
+            {
+                Console.WriteLine($"Mislukt ({ex.ErrorCode}): {ex.Message}");
+                return 1;
             }
         }
     }

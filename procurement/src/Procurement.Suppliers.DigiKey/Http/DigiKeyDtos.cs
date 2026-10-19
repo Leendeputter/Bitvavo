@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Newtonsoft.Json;
 
@@ -244,5 +245,218 @@ namespace Procurement.Suppliers.DigiKey.Http
 
         [JsonProperty("Message")]
         public string Message { get; set; }
+    }
+
+    // Everything below follows DigiKey's OrderStatus API v4 Swagger/OpenAPI spec exactly (supplied
+    // directly by the user, same as Ordering — no guessing here either).
+    // GET https://{host}/orderstatus/v4/salesorder/{salesOrderId}. Per the spec this endpoint "uses
+    // both two-legged OAuth and three-legged OAuth", so DigiKeyAdapter.GetOrderStatusAsync calls it
+    // through the existing 2-legged ISupplierHttpClient.GetAsync — the same client-credentials token
+    // Product Information already uses, no 3-legged refresh-token flow needed for this one.
+    // Deliberately separate DTOs from the Ordering ones above even where a name looks similar
+    // (Address/Contact/LineItem) — OrderStatus v4's shapes for those are genuinely different fields,
+    // not the same structure reused.
+
+    internal class DigiKeySalesOrderDto
+    {
+        [JsonProperty("CustomerId")]
+        public int? CustomerId { get; set; }
+
+        [JsonProperty("Contact")]
+        public DigiKeyOrderStatusContactDto Contact { get; set; }
+
+        [JsonProperty("SalesOrderId")]
+        public int SalesOrderId { get; set; }
+
+        [JsonProperty("Status")]
+        public DigiKeySalesOrderStatusInfoDto Status { get; set; }
+
+        [JsonProperty("PurchaseOrder")]
+        public string PurchaseOrder { get; set; }
+
+        [JsonProperty("TotalPrice")]
+        public double TotalPrice { get; set; }
+
+        [JsonProperty("DateEntered")]
+        public DateTime? DateEntered { get; set; }
+
+        [JsonProperty("OrderNumber")]
+        public long OrderNumber { get; set; }
+
+        [JsonProperty("ShipMethod")]
+        public string ShipMethod { get; set; }
+
+        [JsonProperty("Currency")]
+        public string Currency { get; set; }
+
+        [JsonProperty("ShippingAddress")]
+        public DigiKeyOrderStatusAddressDto ShippingAddress { get; set; }
+
+        [JsonProperty("LineItems")]
+        public List<DigiKeyOrderStatusLineItemDto> LineItems { get; set; }
+    }
+
+    internal class DigiKeyOrderStatusContactDto
+    {
+        [JsonProperty("FirstName")]
+        public string FirstName { get; set; }
+
+        [JsonProperty("LastName")]
+        public string LastName { get; set; }
+
+        [JsonProperty("Email")]
+        public string Email { get; set; }
+    }
+
+    internal class DigiKeySalesOrderStatusInfoDto
+    {
+        [JsonProperty("SalesOrderStatus")]
+        public string SalesOrderStatus { get; set; }
+
+        [JsonProperty("ShortDescription")]
+        public string ShortDescription { get; set; }
+
+        [JsonProperty("LongDescription")]
+        public string LongDescription { get; set; }
+    }
+
+    internal class DigiKeyOrderStatusAddressDto
+    {
+        [JsonProperty("FirstName")]
+        public string FirstName { get; set; }
+
+        [JsonProperty("LastName")]
+        public string LastName { get; set; }
+
+        [JsonProperty("CompanyName")]
+        public string CompanyName { get; set; }
+
+        [JsonProperty("AddressLine1")]
+        public string AddressLine1 { get; set; }
+
+        [JsonProperty("AddressLine2")]
+        public string AddressLine2 { get; set; }
+
+        [JsonProperty("AddressLine3")]
+        public string AddressLine3 { get; set; }
+
+        [JsonProperty("City")]
+        public string City { get; set; }
+
+        [JsonProperty("State")]
+        public string State { get; set; }
+
+        [JsonProperty("County")]
+        public string County { get; set; }
+
+        [JsonProperty("ZipCode")]
+        public string ZipCode { get; set; }
+
+        [JsonProperty("IsoCode")]
+        public string IsoCode { get; set; }
+
+        [JsonProperty("Phone")]
+        public string Phone { get; set; }
+
+        [JsonProperty("InvoiceId")]
+        public int? InvoiceId { get; set; }
+    }
+
+    internal class DigiKeyOrderStatusLineItemDto
+    {
+        [JsonProperty("SalesOrderId")]
+        public int SalesOrderId { get; set; }
+
+        [JsonProperty("DetailId")]
+        public int DetailId { get; set; }
+
+        [JsonProperty("TotalPrice")]
+        public double TotalPrice { get; set; }
+
+        [JsonProperty("PurchaseOrder")]
+        public string PurchaseOrder { get; set; }
+
+        [JsonProperty("CustomerReference")]
+        public string CustomerReference { get; set; }
+
+        [JsonProperty("CountryOfOrigin")]
+        public string CountryOfOrigin { get; set; }
+
+        [JsonProperty("DigiKeyProductNumber")]
+        public string DigiKeyProductNumber { get; set; }
+
+        [JsonProperty("ManufacturerProductNumber")]
+        public string ManufacturerProductNumber { get; set; }
+
+        [JsonProperty("Description")]
+        public string Description { get; set; }
+
+        [JsonProperty("PackType")]
+        public string PackType { get; set; }
+
+        [JsonProperty("QuantityInitialRequested")]
+        public int QuantityInitialRequested { get; set; }
+
+        // "QuantityOrdered will be the same as QuantityInitialRequested at order entry. If changes
+        // are made to quantity it will be reflected in QuantityOrdered" (spec) — this is DigiKey's
+        // closest equivalent to "confirmed quantity", used for that below.
+        [JsonProperty("QuantityOrdered")]
+        public int QuantityOrdered { get; set; }
+
+        [JsonProperty("QuantityShipped")]
+        public int QuantityShipped { get; set; }
+
+        [JsonProperty("QuantityReserved")]
+        public int QuantityReserved { get; set; }
+
+        [JsonProperty("QuantityBackOrder")]
+        public int QuantityBackOrder { get; set; }
+
+        [JsonProperty("UnitPrice")]
+        public double UnitPrice { get; set; }
+
+        [JsonProperty("PoLineItemNumber")]
+        public string PoLineItemNumber { get; set; }
+
+        [JsonProperty("ItemShipments")]
+        public List<DigiKeyItemShipInfoDto> ItemShipments { get; set; }
+
+        [JsonProperty("Schedules")]
+        public List<DigiKeyScheduleDto> Schedules { get; set; }
+    }
+
+    internal class DigiKeyItemShipInfoDto
+    {
+        [JsonProperty("QuantityShipped")]
+        public int QuantityShipped { get; set; }
+
+        [JsonProperty("InvoiceId")]
+        public int InvoiceId { get; set; }
+
+        [JsonProperty("ShippedDate")]
+        public DateTime? ShippedDate { get; set; }
+
+        [JsonProperty("TrackingNumber")]
+        public string TrackingNumber { get; set; }
+
+        [JsonProperty("ExpectedDeliveryDate")]
+        public string ExpectedDeliveryDate { get; set; }
+    }
+
+    // "Date the shipment is scheduled to be delivered to the customer" (spec) — this is what
+    // DigiKeyAdapter maps onto SupplierOrderStatusLine.EstimatedShipDate (despite the name
+    // mismatch: it's a delivery date, not a ship-from-DigiKey date — ScheduledDate is the field
+    // that matches EstimatedShipDate's actual use downstream, comparing against the requested due
+    // date for a late-delivery check).
+    internal class DigiKeyScheduleDto
+    {
+        [JsonProperty("QuantityScheduled")]
+        public int QuantityScheduled { get; set; }
+
+        [JsonProperty("ScheduledDate")]
+        public DateTime? ScheduledDate { get; set; }
+
+        [JsonProperty("DigiKeyReleaseDate")]
+        public DateTime? DigiKeyReleaseDate { get; set; }
     }
 }

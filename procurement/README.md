@@ -38,7 +38,10 @@ toevoegen (§8.1) blijft ook werken, als aanvulling op de echte MAX-orders.
   DigiKey's 401 "Invalid RefreshToken" (het dan verouderde token staat nog in de database) en moet
   "Ordering autoriseren..." opnieuw. Permanente oplossing: UPDATE-rechten op die ene tabel regelen
   voor die login, of consequent na elke run het geprinte statement draaien.
-- `GetOrderStatusAsync`/`CancelOrderAsync` blijven mock-only (geen bevestigd contract voor die APIs).
+- `GetOrderStatusAsync` is nu ook **geïmplementeerd** tegen DigiKey's confirmed OrderStatus v4 spec
+  (via het bestaande 2-legged client-credentials-token, geen 3-legged nodig) — maar **nog niet tegen
+  de echte sandbox getest** (nog geen tooltje-run voor gedaan). `CancelOrderAsync` blijft mock-only
+  (nog geen contract aangeleverd).
 - De normale "Order plaatsen"-knop (MainForm) zelf is dus nog niet in real-mode beproefd — alleen de
   onderliggende `DigiKeyAdapter.CreateOrderAsync` via het losse tooltje.
 
@@ -506,10 +509,15 @@ plaats van de eerdere `SupplierException`. Belangrijke punten:
   afgehandeld (het echte nummer/de echte nummers staan dan in `SalesOrderIds_DKPlus`); `-1` betekent
   dat DigiKey de order heeft ontvangen maar nog geen nummer had toegekend op het moment van
   antwoorden — expliciet **geen** foutsituatie, en zo'n order mag niet opnieuw verstuurd worden.
-- **Nog niet geïmplementeerd**: `GetOrderStatusAsync`/`CancelOrderAsync` blijven ook voor DigiKey
-  mock-only — daarvoor is (nog) geen bevestigd API-contract beschikbaar, in tegenstelling tot
-  Ordering zelf. Ook heeft dit nog nooit tegen een live DigiKey-account gedraaid; behandel het als
-  ongeverifieerd totdat er één keer echt een order geplaatst is.
+- **`GetOrderStatusAsync` is nu ook geïmplementeerd** tegen DigiKey's confirmed OrderStatus v4 spec
+  (okt 2026, ook door de gebruiker aangeleverd): `GET /orderstatus/v4/salesorder/{salesOrderId}`. Die
+  API zegt zelf "uses both two-legged OAuth and three-legged OAuth" — dus loopt dit via de bestaande
+  2-legged `ISupplierHttpClient.GetAsync` (hetzelfde client-credentials-token als Product
+  Information), **niet** via de 3-legged Ordering-client. `supplierOrderNumber` moet wel een
+  enkelvoudig `SalesOrderId` zijn (geen comma-gescheiden Marketplace-lijst — zie `SalesOrderId`
+  hieronder); DigiKey's zestien specifieke `SalesOrderStatus`-waarden worden best-effort op dit
+  project's eigen, grovere `PurchaseOrderStatus`-enum gemapt (`DigiKeyAdapter.MapSalesOrderStatus`).
+  `CancelOrderAsync` blijft wel mock-only — daarvoor is nog geen contract aangeleverd.
 
 **Een eerste echte testorder plaatsen zonder MAX te raken** (`Procurement.Tools.DigiKeyOrderTester`,
 okt 2026): er is geen MAX-testomgeving beschikbaar, en de normale "Order plaatsen"-knop schrijft altijd
@@ -524,14 +532,19 @@ nooit enige MAX-tabel). Draai het met:
 set PROCUREMENT_SECRET_KEY=<dezelfde sleutel als de hoofdapplicatie>
 set PROCUREMENT_TEST_CONNECTION_STRING=<connection string naar de echte Unitron-database>
 Procurement.Tools.DigiKeyOrderTester.exe <DigiKeyPartNumber> [quantity] [unitPrice]
+Procurement.Tools.DigiKeyOrderTester.exe status <SalesOrderId>
 ```
 
-Vereist dat "Ordering autoriseren..." al minstens één keer succesvol is doorlopen (anders is
-`Supplier.RefreshToken` leeg en stopt het tooltje meteen met een duidelijke melding). Print het volledige
-resultaat (`SupplierOrderNumber`/`Status`/`OrderTotal`) of de `SupplierException` as-is — geen
-assertions, puur om te observeren wat DigiKey's sandbox teruggeeft, inclusief welk `DigiKeyPartNumber`
-die sandbox daadwerkelijk accepteert (daarover was bij het schrijven van deze tool nog niets
-gedocumenteerd gevonden, dus dat is deels gewoon uitproberen).
+De eerste vorm roept `CreateOrderAsync` aan (een nieuwe testorder plaatsen); de tweede
+(`status <SalesOrderId>`, okt 2026) roept het nieuwe `GetOrderStatusAsync` aan met een al bestaand
+`SalesOrderId` (bv. het nummer dat de eerste vorm teruggaf). Beide vereisen dat "Ordering
+autoriseren..." al minstens één keer succesvol is doorlopen (anders is `Supplier.RefreshToken` leeg en
+stopt het tooltje meteen met een duidelijke melding). Print het volledige resultaat
+(`SupplierOrderNumber`/`Status`/`OrderTotal`, of per status-regel `ConfirmedQuantity`/
+`ConfirmedUnitPrice`/`EstimatedShipDate`) of de `SupplierException` as-is — geen assertions, puur om te
+observeren wat DigiKey's sandbox teruggeeft, inclusief welk `DigiKeyPartNumber` die sandbox
+daadwerkelijk accepteert (daarover was bij het schrijven van deze tool nog niets gedocumenteerd
+gevonden, dus dat is deels gewoon uitproberen).
 
 **Nog niet gebouwd — bestellen (de overige tien suppliers)**: `CreateOrderAsync`/`GetOrderStatusAsync`/
 `CancelOrderAsync` blijven bij de rest van groep 1 in real-mode (`UseMockData=false`) een expliciete
