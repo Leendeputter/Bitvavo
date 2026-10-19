@@ -808,3 +808,8 @@ raken dat mock-modus zelf nooit aanraakt:
 - Shipment tracking, invoice-verwerking en de echte UniPro-koppeling voor purchase-request-data
   zijn expliciet fase 2 / buiten scope (spec §13) — dat blijft mock, alleen login/company-selectie
   is nu echt.
+- **Schermstructuur/navigatie is niet optimaal** (gebruiker, okt 2026, na het testen van de volledige
+  MAX-PO-flow): met de losse "Orders..."-, "Order details"-, requests-grid- en
+  "Orderbevestiging verwerken"-vensters naast elkaar is het niet altijd logisch waar je welke
+  informatie vindt. Nog geen concreet plan voor — gewoon vastgelegd als iets om bij een volgende
+  sessie samen te herbekijken, geen losse code-wijziging.
