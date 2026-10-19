@@ -38,10 +38,14 @@ toevoegen (§8.1) blijft ook werken, als aanvulling op de echte MAX-orders.
   DigiKey's 401 "Invalid RefreshToken" (het dan verouderde token staat nog in de database) en moet
   "Ordering autoriseren..." opnieuw. Permanente oplossing: UPDATE-rechten op die ene tabel regelen
   voor die login, of consequent na elke run het geprinte statement draaien.
-- `GetOrderStatusAsync` is nu ook **geïmplementeerd** tegen DigiKey's confirmed OrderStatus v4 spec
-  (via het bestaande 2-legged client-credentials-token, geen 3-legged nodig) — maar **nog niet tegen
-  de echte sandbox getest** (nog geen tooltje-run voor gedaan). `CancelOrderAsync` blijft mock-only
-  (nog geen contract aangeleverd).
+- `GetOrderStatusAsync` is geïmplementeerd tegen **twee** confirmed specs (OrderStatus v4 en Order
+  Management v1 — zie "Suppliers" hieronder). OrderStatus v4 gaf een 403 ("not authorized") tegen de
+  sandbox ondanks Enabled in het portal — vermoedelijk hetzelfde portal/backend-desyncprobleem als
+  destijds bij Product Information V4. **Order Management v1 wordt daarom nu actief gebruikt** (3-legged,
+  zelfde token als Ordering, al bewezen te werken), met als trade-off geen prijs- en geen rijke
+  statusdata. Nog niet via het tooltje getest (`status <SalesOrderId>` nog niet opnieuw gedraaid na
+  deze wijziging).
+  `CancelOrderAsync` blijft mock-only (nog geen contract aangeleverd).
 - De normale "Order plaatsen"-knop (MainForm) zelf is dus nog niet in real-mode beproefd — alleen de
   onderliggende `DigiKeyAdapter.CreateOrderAsync` via het losse tooltje.
 
@@ -509,15 +513,21 @@ plaats van de eerdere `SupplierException`. Belangrijke punten:
   afgehandeld (het echte nummer/de echte nummers staan dan in `SalesOrderIds_DKPlus`); `-1` betekent
   dat DigiKey de order heeft ontvangen maar nog geen nummer had toegekend op het moment van
   antwoorden — expliciet **geen** foutsituatie, en zo'n order mag niet opnieuw verstuurd worden.
-- **`GetOrderStatusAsync` is nu ook geïmplementeerd** tegen DigiKey's confirmed OrderStatus v4 spec
-  (okt 2026, ook door de gebruiker aangeleverd): `GET /orderstatus/v4/salesorder/{salesOrderId}`. Die
-  API zegt zelf "uses both two-legged OAuth and three-legged OAuth" — dus loopt dit via de bestaande
-  2-legged `ISupplierHttpClient.GetAsync` (hetzelfde client-credentials-token als Product
-  Information), **niet** via de 3-legged Ordering-client. `supplierOrderNumber` moet wel een
-  enkelvoudig `SalesOrderId` zijn (geen comma-gescheiden Marketplace-lijst — zie `SalesOrderId`
-  hieronder); DigiKey's zestien specifieke `SalesOrderStatus`-waarden worden best-effort op dit
-  project's eigen, grovere `PurchaseOrderStatus`-enum gemapt (`DigiKeyAdapter.MapSalesOrderStatus`).
-  `CancelOrderAsync` blijft wel mock-only — daarvoor is nog geen contract aangeleverd.
+- **`GetOrderStatusAsync` is geïmplementeerd tegen twee confirmed specs, en gebruikt er actief één**
+  (okt 2026, beide door de gebruiker aangeleverd). Eerst gebouwd tegen **OrderStatus v4**
+  (`GET /orderstatus/v4/salesorder/{salesOrderId}`, 2-legged — zelfde token als Product Information),
+  met rijke data (een echte `SalesOrderStatus`-enum, prijs per regel). Die API gaf tegen de sandbox
+  echter een **403 "not authorized"** ondanks dat 'ie in DigiKey's portal op Enabled staat — hetzelfde
+  portal/backend-desyncsymptoom als destijds bij Product Information V4 (toen opgelost door DigiKey na
+  contact). In plaats daarvan gebruikt `GetOrderStatusAsync` nu actief **Order Management v1**
+  (`GET /OrderManagement/v1/SalesOrders/{salesOrderId}`, 3-legged — hetzelfde token dat Ordering al
+  bewezen heeft te werken), met een duidelijke trade-off: `SalesOrderDetailView` heeft **geen
+  prijsveld** (dus geen prijsafwijking-detectie via dit pad) en **geen status-enum** (`PurchaseOrderStatus`
+  wordt afgeleid uit Quantity/QuantityShipped/QuantityBackorder in plaats van een echte DigiKey-status).
+  De OrderStatus v4-implementatie (`DigiKeyAdapter.GetOrderStatusViaOrderStatusApiAsync`) is **niet
+  verwijderd** — bewust aangehouden als kant-en-klare, rijkere vervanging zodra DigiKey de 403 oplost;
+  `GetOrderStatusAsync` hoeft dan alleen de aanroep terug te wisselen. `CancelOrderAsync` blijft
+  mock-only — daarvoor is nog geen contract aangeleverd.
 
 **Een eerste echte testorder plaatsen zonder MAX te raken** (`Procurement.Tools.DigiKeyOrderTester`,
 okt 2026): er is geen MAX-testomgeving beschikbaar, en de normale "Order plaatsen"-knop schrijft altijd

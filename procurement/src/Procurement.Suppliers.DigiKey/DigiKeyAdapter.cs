@@ -39,10 +39,12 @@ namespace Procurement.Suppliers.DigiKey
             // Ordering: real-mode implemented against DigiKey's confirmed Ordering v3 spec
             // (CreateRealOrderAsync below) and confirmed working against the real sandbox (19 okt
             // 2026: SalesOrderId 12345, via the standalone Procurement.Tools.DigiKeyOrderTester).
-            // OrderStatus: real-mode implemented against DigiKey's confirmed OrderStatus v4 spec
-            // (GetOrderStatusAsync below), via the existing 2-legged client — that API's own spec
-            // says it "uses both two-legged OAuth and three-legged OAuth", so no need for the
-            // Ordering-specific 3-legged client here. Not yet run against a live account.
+            // OrderStatus: GetOrderStatusAsync actually calls Order Management v1 (3-legged, same
+            // token as Ordering) rather than the also-implemented OrderStatus v4 — the latter 403s
+            // against the sandbox ("not authorized") despite showing Enabled in DigiKey's portal,
+            // the same portal/backend-desync symptom seen earlier for Product Information V4 (fixed
+            // there after contacting DigiKey support). See GetOrderStatusViaOrderStatusApiAsync's
+            // comment for the trade-off (less data, but confirmed reachable today).
             Ordering = CapabilityStatus.Supported,
             OrderStatus = CapabilityStatus.Supported,
             Shipment = CapabilityStatus.ManualProcess,
@@ -459,7 +461,90 @@ namespace Procurement.Suppliers.DigiKey
                 };
             }
 
-            return await GetRealOrderStatusAsync(supplierOrderNumber).ConfigureAwait(false);
+            return await GetOrderStatusViaOrderManagementApiAsync(supplierOrderNumber).ConfigureAwait(false);
+        }
+
+        private static int ParseSingleSalesOrderId(string supplierOrderNumber)
+        {
+            // salesOrderId is a path-integer per both specs below — a comma-joined multi-ID order
+            // number (the "SalesOrderId == 0, fulfilled via Marketplace" case from CreateOrderAsync)
+            // has no single ID to query, so that's called out explicitly rather than silently
+            // querying the wrong thing.
+            if (!int.TryParse(supplierOrderNumber, out var salesOrderId))
+            {
+                throw new SupplierException(Code, SupplierErrorCode.UnknownError,
+                    $"'{supplierOrderNumber}' is geen enkelvoudig DigiKey SalesOrderId (bv. een Marketplace-order met meerdere " +
+                    "SalesOrderIds_DKPlus-nummers) — OrderStatus kan daar nog niet op bevraagd worden.");
+            }
+            return salesOrderId;
+        }
+
+        /// <summary>
+        /// GET /OrderManagement/v1/SalesOrders/{salesOrderId} against DigiKey's confirmed Order
+        /// Management v1 Swagger spec (supplied directly by the user, same batch as OrderStatus v4 —
+        /// see DigiKeyDtos.cs). This is the *active* real-mode implementation (see Capabilities'
+        /// comment for why, not OrderStatus v4 below) — it uses oauth2AccessCodeSecurity, the same
+        /// 3-legged token Ordering already proved works, via IDigiKeyOrderingHttpClient.GetOrderAsync.
+        /// Trade-off versus OrderStatus v4: SalesOrderDetailView has no price field at all (so
+        /// ConfirmedUnitPrice/price-deviation detection is simply unavailable via this path) and no
+        /// order-status enum (PurchaseOrderStatus is inferred from the quantity fields instead of a
+        /// real status code DigiKey assigns).
+        /// </summary>
+        private async Task<Core.Models.SupplierOrderStatus> GetOrderStatusViaOrderManagementApiAsync(string supplierOrderNumber)
+        {
+            RequireHttpClient();
+            if (!(_httpClient is IDigiKeyOrderingHttpClient orderingHttpClient))
+            {
+                throw new SupplierException(Code, SupplierErrorCode.UnknownError,
+                    "DigiKeyAdapter's ISupplierHttpClient does not support Order Management (expected a DigiKeyHttpClientWrapper).");
+            }
+
+            var salesOrderId = ParseSingleSalesOrderId(supplierOrderNumber);
+            var responseJson = await orderingHttpClient.GetOrderAsync($"OrderManagement/v1/SalesOrders/{salesOrderId}").ConfigureAwait(false);
+            var dto = Deserialize<DigiKeySalesOrderViewDto>(responseJson);
+
+            if (dto == null)
+            {
+                throw new SupplierException(Code, SupplierErrorCode.ProductNotFound,
+                    $"DigiKey found no sales order for SalesOrderId {salesOrderId}.");
+            }
+
+            var details = dto.Details ?? new List<DigiKeySalesOrderDetailViewDto>();
+
+            return new Core.Models.SupplierOrderStatus
+            {
+                SupplierOrderNumber = supplierOrderNumber,
+                Status = InferStatusFromOrderManagementDetails(details),
+                ConfirmedAt = null, // SalesOrderView carries no entered/confirmed date (unlike OrderStatus v4's DateEntered)
+                Lines = details.Select(MapOrderManagementDetail).ToList()
+            };
+        }
+
+        private static Core.Models.SupplierOrderStatusLine MapOrderManagementDetail(DigiKeySalesOrderDetailViewDto detail)
+        {
+            return new Core.Models.SupplierOrderStatusLine
+            {
+                SupplierPartNumber = detail.DigiKeyPartNumber,
+                ConfirmedQuantity = detail.Quantity,
+                ConfirmedUnitPrice = null, // not present in SalesOrderDetailView
+                EstimatedShipDate = detail.Schedules?.FirstOrDefault()?.ScheduleDate
+            };
+        }
+
+        // No status enum exists in Order Management v1's response at all (unlike OrderStatus v4) —
+        // approximated from aggregate quantities across every line. Can never produce Completed
+        // (there's no delivery-confirmation signal here, only shipped/backorder/ordered quantities).
+        private static PurchaseOrderStatus InferStatusFromOrderManagementDetails(List<DigiKeySalesOrderDetailViewDto> details)
+        {
+            if (details.Count == 0) return PurchaseOrderStatus.Acknowledged;
+
+            var totalQuantity = details.Sum(d => d.Quantity);
+            var totalShipped = details.Sum(d => d.QuantityShipped);
+            var totalBackorder = details.Sum(d => d.QuantityBackorder);
+
+            if (totalBackorder > 0) return PurchaseOrderStatus.Backorder;
+            if (totalShipped <= 0) return PurchaseOrderStatus.Confirmed;
+            return totalShipped < totalQuantity ? PurchaseOrderStatus.PartiallyShipped : PurchaseOrderStatus.Shipped;
         }
 
         /// <summary>
@@ -468,21 +553,18 @@ namespace Procurement.Suppliers.DigiKey
         /// endpoint "uses both two-legged OAuth and three-legged OAuth", so this goes through the
         /// plain 2-legged ISupplierHttpClient.GetAsync — the same client-credentials token Product
         /// Information already uses, not the Ordering-specific 3-legged client.
+        ///
+        /// Currently unused (see Capabilities' comment and GetOrderStatusViaOrderManagementApiAsync
+        /// above) — this 403s against the sandbox despite showing Enabled in DigiKey's portal. Kept
+        /// rather than deleted: it's already correct against the confirmed spec and gives richer data
+        /// (an explicit status code, price) than the Order Management path currently in use, so swap
+        /// GetOrderStatusAsync's call back to this once DigiKey resolves the 403 instead of
+        /// rewriting it from scratch.
         /// </summary>
-        private async Task<Core.Models.SupplierOrderStatus> GetRealOrderStatusAsync(string supplierOrderNumber)
+        private async Task<Core.Models.SupplierOrderStatus> GetOrderStatusViaOrderStatusApiAsync(string supplierOrderNumber)
         {
             RequireHttpClient();
-
-            // salesOrderId is a path-integer per the spec — a comma-joined multi-ID order number
-            // (the "SalesOrderId == 0, fulfilled via Marketplace" case from CreateOrderAsync) has no
-            // single ID to query here, so that's called out explicitly rather than silently querying
-            // the wrong thing.
-            if (!int.TryParse(supplierOrderNumber, out var salesOrderId))
-            {
-                throw new SupplierException(Code, SupplierErrorCode.UnknownError,
-                    $"'{supplierOrderNumber}' is geen enkelvoudig DigiKey SalesOrderId (bv. een Marketplace-order met meerdere " +
-                    "SalesOrderIds_DKPlus-nummers) — OrderStatus kan daar nog niet op bevraagd worden.");
-            }
+            var salesOrderId = ParseSingleSalesOrderId(supplierOrderNumber);
 
             var responseJson = await _httpClient.GetAsync($"orderstatus/v4/salesorder/{salesOrderId}").ConfigureAwait(false);
             var dto = Deserialize<DigiKeySalesOrderDto>(responseJson);

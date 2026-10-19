@@ -459,4 +459,97 @@ namespace Procurement.Suppliers.DigiKey.Http
         [JsonProperty("DigiKeyReleaseDate")]
         public DateTime? DigiKeyReleaseDate { get; set; }
     }
+
+    // Everything below follows DigiKey's Order Management API v1 Swagger/OpenAPI spec exactly
+    // (supplied directly by the user, same batch as OrderStatus v4 above — no guessing here either).
+    // GET https://{host}/OrderManagement/v1/SalesOrders/{salesOrderId}. Used as the *active*
+    // GetOrderStatusAsync implementation instead of OrderStatus v4 above: OrderStatus v4 is fully
+    // implemented and spec-correct (see DigiKeySalesOrderDto etc.), but as of oct 2026 returns a 403
+    // "client credentials are not authorized" against the sandbox despite showing Enabled in
+    // DigiKey's portal — the same portal/backend-desync symptom seen earlier for Product Information
+    // V4, which DigiKey fixed on their end after being contacted with the correlationId. Order
+    // Management uses oauth2AccessCodeSecurity (3-legged, same as Ordering v3) rather than
+    // OrderStatus v4's 2-legged-or-3-legged — and since Ordering's 3-legged credentials are already
+    // proven working (a real sandbox order was placed with them), this path works today. Trade-off:
+    // SalesOrderDetailView has no price field at all (no price-deviation detection possible via this
+    // API) and no explicit order-status enum (PurchaseOrderStatus is inferred from
+    // Quantity/QuantityShipped/QuantityBackorder instead of DigiKey's own, much richer status code) —
+    // switch GetOrderStatusAsync back to the OrderStatus v4 path once DigiKey resolves the 403.
+
+    internal class DigiKeySalesOrderViewDto
+    {
+        [JsonProperty("Currency")]
+        public string Currency { get; set; }
+
+        [JsonProperty("SalesOrderId")]
+        public int SalesOrderId { get; set; }
+
+        [JsonProperty("CustomerId")]
+        public int CustomerId { get; set; }
+
+        [JsonProperty("PurchaseOrderNumber")]
+        public string PurchaseOrderNumber { get; set; }
+
+        [JsonProperty("ShipMethod")]
+        public string ShipMethod { get; set; }
+
+        [JsonProperty("Details")]
+        public List<DigiKeySalesOrderDetailViewDto> Details { get; set; }
+    }
+
+    internal class DigiKeySalesOrderDetailViewDto
+    {
+        [JsonProperty("PoLineItemNumber")]
+        public string PoLineItemNumber { get; set; }
+
+        [JsonProperty("SalesOrderId")]
+        public int SalesOrderId { get; set; }
+
+        [JsonProperty("DetailId")]
+        public int DetailId { get; set; }
+
+        [JsonProperty("DigiKeyPartNumber")]
+        public string DigiKeyPartNumber { get; set; }
+
+        [JsonProperty("ManufacturerPartNumber")]
+        public string ManufacturerPartNumber { get; set; }
+
+        [JsonProperty("Quantity")]
+        public int Quantity { get; set; }
+
+        [JsonProperty("QuantityBackorder")]
+        public int QuantityBackorder { get; set; }
+
+        [JsonProperty("QuantityShipped")]
+        public int QuantityShipped { get; set; }
+
+        [JsonProperty("InvoiceId")]
+        public long InvoiceId { get; set; }
+
+        [JsonProperty("StandardPackSize")]
+        public int StandardPackSize { get; set; }
+
+        [JsonProperty("Schedules")]
+        public List<DigiKeySalesOrderScheduleViewDto> Schedules { get; set; }
+    }
+
+    internal class DigiKeySalesOrderScheduleViewDto
+    {
+        // Note the field name: "ScheduleDate" here, not "ScheduledDate" like OrderStatus v4's
+        // Schedule DTO above — genuinely different APIs, checked against the spec, not a typo.
+        [JsonProperty("ScheduleDate")]
+        public DateTime? ScheduleDate { get; set; }
+
+        [JsonProperty("DetailId")]
+        public int DetailId { get; set; }
+
+        [JsonProperty("QuantityScheduled")]
+        public int QuantityScheduled { get; set; }
+
+        [JsonProperty("SalesOrderId")]
+        public int SalesOrderId { get; set; }
+
+        [JsonProperty("ScheduleIndex")]
+        public int ScheduleIndex { get; set; }
+    }
 }

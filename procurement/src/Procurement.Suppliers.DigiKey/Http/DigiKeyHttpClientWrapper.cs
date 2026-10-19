@@ -86,6 +86,18 @@ namespace Procurement.Suppliers.DigiKey.Http
             }
         }
 
+        /// <summary>3-legged-authenticated GET for APIs under the same oauth2AccessCodeSecurity scheme as Ordering (e.g. Order Management v1's SalesOrders endpoints) — same token/header attachment as PostOrderAsync, just no request body.</summary>
+        public async Task<string> GetOrderAsync(string relativeUrl)
+        {
+            using (var request = new HttpRequestMessage(HttpMethod.Get, relativeUrl))
+            {
+                var token = await GetOrderingAccessTokenAsync().ConfigureAwait(false);
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                request.Headers.Add("X-DIGIKEY-Client-Id", _options.ClientId);
+                return await SendCoreAsync(request).ConfigureAwait(false);
+            }
+        }
+
         private async Task AttachSearchHeadersAsync(HttpRequestMessage request)
         {
             var token = await GetAccessTokenAsync().ConfigureAwait(false);

@@ -14,5 +14,8 @@ namespace Procurement.Suppliers.DigiKey.Http
     public interface IDigiKeyOrderingHttpClient : ISupplierHttpClient
     {
         Task<string> PostOrderAsync(string relativeUrl, string jsonBody);
+
+        /// <summary>3-legged-authenticated GET, for APIs under the same oauth2AccessCodeSecurity scheme as Ordering v3 (e.g. Order Management v1) — same token, no request body.</summary>
+        Task<string> GetOrderAsync(string relativeUrl);
     }
 }
