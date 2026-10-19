@@ -15,11 +15,10 @@ namespace Procurement.Tests.Erp
     /// </summary>
     public class MaxPurchaseOrderRepositoryTests
     {
-        private static PurchaseRequestLine BuildRequestLine(DateTime? requiredDate = null, string stockId = null) => new PurchaseRequestLine
+        private static PurchaseRequestLine BuildRequestLine(DateTime? requiredDate = null) => new PurchaseRequestLine
         {
             ErpArticleId = "PART-001",
-            RequiredDate = requiredDate,
-            StockId = stockId
+            RequiredDate = requiredDate
         };
 
         private static PurchaseOrderDraftLine BuildDraftLine(int quantity = 5000, decimal unitPrice = 0.11m) => new PurchaseOrderDraftLine
@@ -35,7 +34,7 @@ namespace Procurement.Tests.Erp
         public void BuildPurchaseOrderLine_FirstLine_LeavesOrdnumLinnumDelnumOrderBlank()
         {
             var line = MaxPurchaseOrderRepository.BuildPurchaseOrderLine(
-                "VEN01", BuildRequestLine(), BuildDraftLine(), erpPoNumber: null, lineNumber: 1, isFirstLine: true, userName: "tester");
+                "VEN01", BuildRequestLine(), BuildDraftLine(), partInfo: null, erpPoNumber: null, lineNumber: 1, isFirstLine: true, userName: "tester");
 
             Assert.Equal("", line.ORDNUM_10);
             Assert.Equal("", line.LINNUM_10);
@@ -47,7 +46,7 @@ namespace Procurement.Tests.Erp
         public void BuildPurchaseOrderLine_SecondLine_SetsOrdnumLinnumDelnumAndComputesOrder()
         {
             var line = MaxPurchaseOrderRepository.BuildPurchaseOrderLine(
-                "VEN01", BuildRequestLine(), BuildDraftLine(), erpPoNumber: "76012345", lineNumber: 2, isFirstLine: false, userName: "tester");
+                "VEN01", BuildRequestLine(), BuildDraftLine(), partInfo: null, erpPoNumber: "76012345", lineNumber: 2, isFirstLine: false, userName: "tester");
 
             Assert.Equal("76012345", line.ORDNUM_10);
             Assert.Equal("02", line.LINNUM_10);
@@ -61,7 +60,7 @@ namespace Procurement.Tests.Erp
         public void BuildPurchaseOrderLine_ThirdLine_UsesTwoDigitSequentialLinnum()
         {
             var line = MaxPurchaseOrderRepository.BuildPurchaseOrderLine(
-                "VEN01", BuildRequestLine(), BuildDraftLine(), erpPoNumber: "76012345", lineNumber: 3, isFirstLine: false, userName: "tester");
+                "VEN01", BuildRequestLine(), BuildDraftLine(), partInfo: null, erpPoNumber: "76012345", lineNumber: 3, isFirstLine: false, userName: "tester");
 
             Assert.Equal("03", line.LINNUM_10);
         }
@@ -70,7 +69,7 @@ namespace Procurement.Tests.Erp
         public void BuildPurchaseOrderLine_UnitPrice_CastsDecimalToDoubleWithoutLoss()
         {
             var line = MaxPurchaseOrderRepository.BuildPurchaseOrderLine(
-                "VEN01", BuildRequestLine(), BuildDraftLine(unitPrice: 0.115m), erpPoNumber: null, lineNumber: 1, isFirstLine: true, userName: "tester");
+                "VEN01", BuildRequestLine(), BuildDraftLine(unitPrice: 0.115m), partInfo: null, erpPoNumber: null, lineNumber: 1, isFirstLine: true, userName: "tester");
 
             Assert.Equal(0.115, line.FORCUR_10, 10);
         }
@@ -80,34 +79,58 @@ namespace Procurement.Tests.Erp
         {
             var requiredDate = new DateTime(2026, 9, 1);
             var line = MaxPurchaseOrderRepository.BuildPurchaseOrderLine(
-                "VEN01", BuildRequestLine(requiredDate), BuildDraftLine(), erpPoNumber: null, lineNumber: 1, isFirstLine: true, userName: "tester");
+                "VEN01", BuildRequestLine(requiredDate), BuildDraftLine(), partInfo: null, erpPoNumber: null, lineNumber: 1, isFirstLine: true, userName: "tester");
 
             Assert.Equal(requiredDate, line.CURDUE_10);
         }
 
         [Fact]
-        public void BuildPurchaseOrderLine_NoStockId_FallsBackToFGI()
+        public void BuildPurchaseOrderLine_NoPartInfo_StockBlank_BuyerFallsBackTo000_PlannerBlank()
         {
             var line = MaxPurchaseOrderRepository.BuildPurchaseOrderLine(
-                "VEN01", BuildRequestLine(stockId: null), BuildDraftLine(), erpPoNumber: null, lineNumber: 1, isFirstLine: true, userName: "tester");
+                "VEN01", BuildRequestLine(), BuildDraftLine(), partInfo: null, erpPoNumber: null, lineNumber: 1, isFirstLine: true, userName: "tester");
 
-            Assert.Equal("FGI", line.STK_10);
+            Assert.Equal("", line.STK_10);
+            Assert.Equal("000", line.BUYID_10);
+            Assert.Equal("", line.PLANID_10);
         }
 
         [Fact]
-        public void BuildPurchaseOrderLine_StockIdProvided_UsesItInsteadOfFallback()
+        public void BuildPurchaseOrderLine_PartInfoProvided_CopiesStockBuyerPlannerFromPartMaster()
         {
+            var partInfo = new MaxPartInfo { Stock = "MAIN", Buyer = "007", Planner = "PLN1" };
             var line = MaxPurchaseOrderRepository.BuildPurchaseOrderLine(
-                "VEN01", BuildRequestLine(stockId: "MAIN"), BuildDraftLine(), erpPoNumber: null, lineNumber: 1, isFirstLine: true, userName: "tester");
+                "VEN01", BuildRequestLine(), BuildDraftLine(), partInfo, erpPoNumber: null, lineNumber: 1, isFirstLine: true, userName: "tester");
 
             Assert.Equal("MAIN", line.STK_10);
+            Assert.Equal("007", line.BUYID_10);
+            Assert.Equal("PLN1", line.PLANID_10);
+        }
+
+        [Fact]
+        public void BuildPurchaseOrderLine_PartInfoWithoutBuyer_FallsBackTo000()
+        {
+            var partInfo = new MaxPartInfo { Stock = "MAIN", Buyer = null, Planner = "PLN1" };
+            var line = MaxPurchaseOrderRepository.BuildPurchaseOrderLine(
+                "VEN01", BuildRequestLine(), BuildDraftLine(), partInfo, erpPoNumber: null, lineNumber: 1, isFirstLine: true, userName: "tester");
+
+            Assert.Equal("000", line.BUYID_10);
+        }
+
+        [Fact]
+        public void BuildPurchaseOrderLine_NewPo_RevisionIsAlwaysZeroZeroZero()
+        {
+            var line = MaxPurchaseOrderRepository.BuildPurchaseOrderLine(
+                "VEN01", BuildRequestLine(), BuildDraftLine(), partInfo: null, erpPoNumber: null, lineNumber: 1, isFirstLine: true, userName: "tester");
+
+            Assert.Equal("000", line.REVLEV_10);
         }
 
         [Fact]
         public void BuildPurchaseOrderLine_SetsCreatedAndModifiedByFromExplicitUserName()
         {
             var line = MaxPurchaseOrderRepository.BuildPurchaseOrderLine(
-                "VEN01", BuildRequestLine(), BuildDraftLine(), erpPoNumber: null, lineNumber: 1, isFirstLine: true, userName: "j.doe");
+                "VEN01", BuildRequestLine(), BuildDraftLine(), partInfo: null, erpPoNumber: null, lineNumber: 1, isFirstLine: true, userName: "j.doe");
 
             Assert.Equal("j.doe", line.CreatedBy);
             Assert.Equal("j.doe", line.ModifiedBy);

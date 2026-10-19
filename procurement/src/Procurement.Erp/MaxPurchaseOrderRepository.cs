@@ -56,6 +56,13 @@ namespace Procurement.Erp
     /// (it's inside the CreateHeader branch only), so BuildPurchaseOrderLine computes it the same
     /// way itself for those lines instead of risking a blank ORDER_10 on the inserted row.
     ///
+    /// Confirmed by the user against the first real PO this created (okt 2026): REVLEV_10 is always
+    /// "000" for a new PO (not whatever AddPODetail/the type default otherwise produces); STK_10
+    /// comes from Part_Master.DELSTK_01 for the article (blank if the article has none — no "FGI"
+    /// fallback); BUYID_10 (line/detail level) comes from Part_Master.BUYER_01 ("000" if none);
+    /// PLANID_10 comes from Part_Master.PLANID_01. See MaxOrderRepository.GetPartByIdAsync/MaxPartInfo
+    /// for the lookup these three come from.
+    ///
     /// Still open / worth confirming before relying on this in production:
     ///  1. MaxOrderModule.AssignPRsToPO(int, string TargetOrder, List&lt;OrderAssign&gt;, bool, bool,
     ///     bool, bool, bool, string) — and its sibling AssignPONumber, which wraps a bulk
@@ -76,21 +83,33 @@ namespace Procurement.Erp
     ///     example; still don't know precisely what they control.
     ///  3. IncOrdRev on ChangePODetail (used by ApplyConfirmationAsync below) — passed through as
     ///     true, same value AddPODetail already uses, but its exact effect isn't confirmed either.
+    ///  4. Purchase_Order_Code's own header-level Buyer field (distinct from Order_Master.BUYID_10,
+    ///     which is per-line/detail and comes from the article's Part_Master row — see above) still
+    ///     needs to reflect the actual person placing the order, not anything article-derived (user,
+    ///     okt 2026: "de Buyer in de PO_Header moet wel gekoppeld zijn aan de daadwerkelijke Buyer").
+    ///     Not yet implemented: there's no reliable existing link from this app's session/Windows user
+    ///     to a MAX Buyers.BUYID_95 (the user's own suggestions — matching Buyer Name to the Windows
+    ///     user, or stashing the Windows username in a UDFKEY field — were both flagged by the user
+    ///     themselves as not fully reliable). Needs a decision on where that link lives before this
+    ///     can be written.
     /// </summary>
     public class MaxPurchaseOrderRepository
     {
         private readonly ISessionContext _session;
         private readonly SupplierRepository _supplierRepository;
         private readonly PurchaseRequestRepository _purchaseRequestRepository;
+        private readonly MaxOrderRepository _maxOrderRepository;
 
         public MaxPurchaseOrderRepository(
             ISessionContext session,
             SupplierRepository supplierRepository,
-            PurchaseRequestRepository purchaseRequestRepository)
+            PurchaseRequestRepository purchaseRequestRepository,
+            MaxOrderRepository maxOrderRepository)
         {
             _session = session ?? throw new ArgumentNullException(nameof(session));
             _supplierRepository = supplierRepository ?? throw new ArgumentNullException(nameof(supplierRepository));
             _purchaseRequestRepository = purchaseRequestRepository ?? throw new ArgumentNullException(nameof(purchaseRequestRepository));
+            _maxOrderRepository = maxOrderRepository ?? throw new ArgumentNullException(nameof(maxOrderRepository));
         }
 
         /// <summary>Returns MAX's own PO number (minted by AddPODetail on the first line, CreateHeader:true) plus each line's MAX LINNUM_10/DELNUM_10, so the caller can persist them for a later confirmation update (see ApplyConfirmationAsync).</summary>
@@ -138,8 +157,14 @@ namespace Procurement.Erp
                         // would happily create a real PO for a PR that no longer exists.
                         await EnsurePurchaseRequisitionStillExistsAsync(admin, requestLine);
 
+                        // Stock/Buyer/Planner are confirmed to come from the article's own
+                        // Part_Master row, not from anything cached on the local PurchaseRequestLine
+                        // (which, for a manually-entered test request, never has them anyway) — a
+                        // fresh lookup here always reflects Part_Master's current values.
+                        var partInfo = await _maxOrderRepository.GetPartByIdAsync(requestLine.ErpArticleId);
+
                         var isFirstLine = erpPoNumber == null;
-                        var poLine = BuildPurchaseOrderLine(supplier.VendorId, requestLine, draftLine, erpPoNumber, lineNumber, isFirstLine, _session.UserName);
+                        var poLine = BuildPurchaseOrderLine(supplier.VendorId, requestLine, draftLine, partInfo, erpPoNumber, lineNumber, isFirstLine, _session.UserName);
 
                         var added = maxOrderModule.AddPODetail(poLine, IncOrdRev: true, CreateHeader: isFirstLine, FixVar: "F", RoundType: 3);
                         if (!added)
@@ -370,10 +395,12 @@ namespace Procurement.Erp
         /// <summary>
         /// Field values map to already-known data where possible (PRTNUM_10 from the originating
         /// PurchaseRequestLine.ErpArticleId, CURQTY_10 from the draft line's ordered quantity,
-        /// VENID_10 from the supplier); everything else is copied from the originally supplied
-        /// example verbatim (STATUS_10 = "3" and STK_10 = "FGI" fallback are unconfirmed for a real
-        /// PO line rather than that example's own test data). ORDNUM_10/LINNUM_10/DELNUM_10 are left
-        /// blank for the first line of a PO (AddPODetail assigns "01"/"01" and the new PO number
+        /// VENID_10 from the supplier); STK_10/BUYID_10/PLANID_10 come from the article's own
+        /// Part_Master row (partInfo — null if MAX has no Part_Master row for this ErpArticleId, e.g.
+        /// a made-up test artikelnummer, in which case all three fall back as noted below); STATUS_10
+        /// = "3" is copied from the originally supplied example verbatim, still unconfirmed for a
+        /// real PO line rather than that example's own test data. ORDNUM_10/LINNUM_10/DELNUM_10 are
+        /// left blank for the first line of a PO (AddPODetail assigns "01"/"01" and the new PO number
         /// itself when CreateHeader:true) and set explicitly for every line after that.
         ///
         /// Internal + static (userName passed explicitly instead of reading _session.UserName) so
@@ -384,10 +411,16 @@ namespace Procurement.Erp
         /// double cast, ORDER_10 left blank on non-first lines) — worth pinning down with a test.
         /// </summary>
         internal static Order_Master BuildPurchaseOrderLine(
-            string vendorId, PurchaseRequestLine requestLine, PurchaseOrderDraftLine draftLine,
+            string vendorId, PurchaseRequestLine requestLine, PurchaseOrderDraftLine draftLine, MaxPartInfo partInfo,
             string erpPoNumber, int lineNumber, bool isFirstLine, string userName)
         {
             var now = DateTime.Now;
+            // Confirmed by the user against a real created PO (okt 2026): Stock stays blank with no
+            // article-level PrimaryStock (no "FGI"-style fallback), Buyer falls back to "000".
+            var stockId = partInfo?.Stock ?? "";
+            var buyerId = string.IsNullOrWhiteSpace(partInfo?.Buyer) ? "000" : partInfo.Buyer;
+            var plannerId = partInfo?.Planner ?? "";
+
             return new Order_Master
             {
                 ORDNUM_10 = isFirstLine ? "" : erpPoNumber,
@@ -412,9 +445,10 @@ namespace Procurement.Erp
                 CURQTY_10 = draftLine.Quantity,
                 FRMPLN_10 = "Y",
                 STATUS_10 = "3",
-                STK_10 = requestLine.StockId ?? "FGI",
+                STK_10 = stockId,
+                BUYID_10 = buyerId,
                 CUSORD_10 = "",
-                PLANID_10 = "",
+                PLANID_10 = plannerId,
                 ORDREF_10 = "",
                 SCHFLG_10 = "",
                 LOTNUM_10 = "",

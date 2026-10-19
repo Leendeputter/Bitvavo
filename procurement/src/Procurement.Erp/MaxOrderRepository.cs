@@ -181,12 +181,13 @@ WHERE dbo.Order_Master.ORDNUM_10 IN ({string.Join(",", paramNames)})";
         }
 
         /// <summary>
-        /// Part_Master-only lookup (no Order_Master join — there's no order yet) used by "Nieuwe
-        /// testaanvraag toevoegen" to fill in Desc1/Desc2/PartType/Customer for a manually-entered
-        /// intern artikelnummer, the same MAX fields a real synced order already gets via
-        /// GetOpenOrdersAsync. Returns null if the Part_Master row doesn't exist (e.g. a made-up test
-        /// artikelnummer) rather than throwing — that's an expected, common case for this form, not
-        /// an error.
+        /// Part_Master-only lookup (no Order_Master join — there's no order yet), used by two
+        /// unrelated callers: "Nieuwe testaanvraag toevoegen" (Desc1/Desc2/PartType/Customer, the
+        /// same MAX fields a real synced order already gets via GetOpenOrdersAsync) and
+        /// MaxPurchaseOrderRepository.BuildPurchaseOrderLine (Stock/Buyer/Planner, confirmed by the
+        /// user against a real created PO — okt 2026). Returns null if the Part_Master row doesn't
+        /// exist (e.g. a made-up test artikelnummer) rather than throwing — an expected, common case
+        /// for the test-request form, not an error.
         /// </summary>
         public async Task<MaxPartInfo> GetPartByIdAsync(string partId)
         {
@@ -197,7 +198,10 @@ SELECT
     dbo.Part_Master.PMDES1_01 AS Desc1,
     dbo.Part_Master.PMDES2_01 AS Desc2,
     dbo.Part_Master.COMCDE_01 AS Customer,
-    dbo.Part_Master.TYPE_01 AS PartType
+    dbo.Part_Master.TYPE_01 AS PartType,
+    dbo.Part_Master.DELSTK_01 AS Stock,
+    dbo.Part_Master.BUYER_01 AS Buyer,
+    dbo.Part_Master.PLANID_01 AS Planner
 FROM dbo.Part_Master
 WHERE dbo.Part_Master.PRTNUM_01 = @partId";
 
@@ -216,7 +220,10 @@ WHERE dbo.Part_Master.PRTNUM_01 = @partId";
                         Desc1 = ToDisplayString(reader["Desc1"]),
                         Desc2 = ToDisplayString(reader["Desc2"]),
                         Customer = ToDisplayString(reader["Customer"]),
-                        PartType = ToDisplayString(reader["PartType"])
+                        PartType = ToDisplayString(reader["PartType"]),
+                        Stock = ToDisplayString(reader["Stock"]),
+                        Buyer = ToDisplayString(reader["Buyer"]),
+                        Planner = ToDisplayString(reader["Planner"])
                     };
                 }
             }

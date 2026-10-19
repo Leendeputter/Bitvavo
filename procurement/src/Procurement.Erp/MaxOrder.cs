@@ -63,5 +63,11 @@ namespace Procurement.Erp
         public string Customer { get; set; }
         /// <summary>Part_Master.TYPE_01 (PartType).</summary>
         public string PartType { get; set; }
+        /// <summary>Part_Master.DELSTK_01 — the article's PrimaryStock, confirmed by the user against a real created PO (okt 2026). Copied onto a new PO line's Order_Master.STK_10, or left blank if the article has none (no "FGI"-style fallback).</summary>
+        public string Stock { get; set; }
+        /// <summary>Part_Master.BUYER_01 — the article's own Buyer ID, confirmed by the user (okt 2026). Copied onto a new PO line's Order_Master.BUYID_10; "000" if the article has none.</summary>
+        public string Buyer { get; set; }
+        /// <summary>Part_Master.PLANID_01 — confirmed by the user (okt 2026). Copied onto a new PO line's Order_Master.PLANID_10.</summary>
+        public string Planner { get; set; }
     }
 }
