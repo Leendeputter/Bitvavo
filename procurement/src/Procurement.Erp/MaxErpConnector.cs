@@ -26,9 +26,12 @@ namespace Procurement.Erp
     /// locally — see ReconcileAgainstMaxAsync (user request, sep 2026: "MAX is altijd leidend").
     ///
     /// CreatePurchaseOrderAsync/ApplyOrderConfirmationAsync (spec §6 step 9) delegate to
-    /// MockErpConnector by default (UseMockPurchaseOrders=true — this prototype's own
-    /// PurchaseOrder tracking) or to MaxPurchaseOrderRepository once the flag is flipped to false —
-    /// see that class's comment for why it isn't yet. Either way, a local Procurement_PurchaseOrder/
+    /// MockErpConnector (UseMockPurchaseOrders=true — this prototype's own PurchaseOrder tracking,
+    /// the only mode exercised before oct 2026) or to MaxPurchaseOrderRepository, now the default
+    /// (false) — see that class's comment for the still-open questions worth keeping in mind
+    /// (AssignPRsToPO as a possibly-better alternative, FixVar/RoundType/IncOrdRev's exact meaning)
+    /// while its real-mode behavior is still being verified against a live MAX administration.
+    /// Either way, a local Procurement_PurchaseOrder/
     /// PurchaseOrderLine row always gets created/updated — real mode additionally writes MAX's own
     /// Confirming/Reference/duedate fields once a confirmation comes back from the supplier.
     /// UpdatePurchaseOrderStatusAsync is a relic of the pre-confirmation-flow design (a plain
@@ -51,18 +54,25 @@ namespace Procurement.Erp
         public HashSet<string> IncludedOrderStatuses { get; set; } = new HashSet<string> { "2" };
 
         /// <summary>
-        /// Whether "Order plaatsen" writes to this app's own Procurement_PurchaseOrder table (true,
-        /// the default) or a real MAX PO via MaxPurchaseOrderRepository (false).
+        /// Whether "Order plaatsen" writes to this app's own Procurement_PurchaseOrder table (true)
+        /// or a real MAX PO via MaxPurchaseOrderRepository.AddPODetail (false, the default since oct
+        /// 2026 — see MaxPurchaseOrderRepository's class comment for the specific remaining open
+        /// questions, e.g. AssignPRsToPO as a possibly-better alternative, FixVar/RoundType/
+        /// IncOrdRev's exact meaning).
         ///
-        /// DO NOT flip this to false yet — not because the approach is still a guess (it's now
-        /// grounded in MaxOrderModule's own decompiled source for AddPODetail/
-        /// DeletePurchaseRequisitionLineItem, not hand-waving), but because none of it has been
-        /// exercised against a real MAX administration yet. See MaxPurchaseOrderRepository's class
-        /// comment for the specific remaining open questions (AssignPRsToPO as a possibly-better
-        /// alternative, FixVar/RoundType's exact meaning) before trusting this against live data —
-        /// ideally test it once against a MAX test/sandbox company first, if one exists.
+        /// There is no MAX test/sandbox company — real mode is being verified directly against the
+        /// live administration instead, deliberately starting with manually-entered test requests
+        /// (§8.1, "Nieuwe testaanvraag toevoegen") rather than real open PRs: those never get a
+        /// PurchaseRequestLine.MaxLineNumber (only MaxOrderRepository's sync sets that, from a real
+        /// Order_Master row), so MaxPurchaseOrderRepository's EnsurePurchaseRequisitionStillExistsAsync/
+        /// RemoveOriginalOrder both no-op for them by construction (empty MaxLineNumber short-circuits
+        /// both) — a real PO is still created for real (AddPODetail doesn't check MaxLineNumber at
+        /// all), but nothing gets deleted out of MAX as a side effect of this still-being-verified
+        /// code. Once that's confirmed solid, testing against a real, synced PR (where the delete
+        /// step actually runs) is the natural next step — don't treat this flag alone as "fully
+        /// verified" before that's happened too.
         /// </summary>
-        public bool UseMockPurchaseOrders { get; set; } = true;
+        public bool UseMockPurchaseOrders { get; set; } = false;
 
         /// <summary>Optional Order_Master.CURDUE_10 range — set from MainForm's "Due Date Range" group box (only applied when its Enable checkbox is checked).</summary>
         public DateTime? DueDateFilterStart { get; set; }

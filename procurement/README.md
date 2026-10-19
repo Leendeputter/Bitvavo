@@ -51,6 +51,16 @@ toevoegen (§8.1) blijft ook werken, als aanvulling op de echte MAX-orders.
 - De normale "Order plaatsen"-knop (MainForm) zelf is dus nog niet in real-mode beproefd — alleen de
   onderliggende `DigiKeyAdapter.CreateOrderAsync` via het losse tooltje.
 
+**MAX PO-aanmaak: nu actief in eerste echte test** (19 okt 2026): `MaxErpConnector.
+UseMockPurchaseOrders` staat voortaan standaard op `false` — "Order plaatsen" schrijft dus een echte
+PO via `MaxPurchaseOrderRepository.AddPODetail` in plaats van naar dit prototype's eigen
+`Procurement_PurchaseOrder`. Er is geen MAX-testomgeving, dus bewust eerst alleen uitgeprobeerd met
+een handmatige testaanvraag (§8.1) — die krijgt nooit een `MaxLineNumber`, waardoor zowel de
+PR-existence-check als de PR-verwijdering vanzelf no-oppen (zie "Nog niet gebouwd/MAX PO-aanmaak"
+hieronder voor de precieze reden). Nog niet daadwerkelijk via de UI uitgevoerd/geverifieerd in MAX —
+dat is de eerstvolgende concrete stap. Let op: dezelfde vlag zet ook "Orderbevestiging verwerken"'s
+echte MAX-schrijfkant aan.
+
 **Openstaande actie: terugschakelen naar OrderStatus v4** — de verwachting (gebaseerd op het eerdere,
 identieke 403-patroon bij Product Information V4, dat DigiKey destijds na een paar dagen zelf oploste)
 is dat dit portal/backend-desyncprobleem ook voor OrderStatus v4 vanzelf verdwijnt. Bewust gekozen om
@@ -678,10 +688,11 @@ raken dat mock-modus zelf nooit aanraakt:
 - **Audit log**: elke stap van de workflow schrijft een `ProcurementEvent`; `DbAuditLogger` maskeert
   bekende secret-sleutelnamen (`apiKey`, `secret`, `password`, `token`, ...) voordat een payload
   wordt weggeschreven.
-- **MAX PO-aanmaak: aanpak nu gegrond in MaxOrderModule's eigen (gedecompileerde) broncode, nog niet
-  live getest** — `MaxErpConnector.UseMockPurchaseOrders` (default `true`) bepaalt of "Order
-  plaatsen" naar dit prototype's eigen `Procurement_PurchaseOrder` blijft schrijven, of naar een
-  echte MAX-PO via `MaxPurchaseOrderRepository`. Wat wij in het requests-grid zien is in MAX een
+- **MAX PO-aanmaak: aanpak gegrond in MaxOrderModule's eigen (gedecompileerde) broncode, sinds okt
+  2026 actief in test tegen de live administratie** — `MaxErpConnector.UseMockPurchaseOrders`
+  (default sinds okt 2026: **`false`**) bepaalt of "Order plaatsen" naar dit prototype's eigen
+  `Procurement_PurchaseOrder` blijft schrijven, of naar een echte MAX-PO via
+  `MaxPurchaseOrderRepository`. Wat wij in het requests-grid zien is in MAX een
   Purchase Requisition (PR) — een `Order_Master`-rij — die omgezet moet worden naar een PO-regel en
   daarna verwijderd, anders blijft 'm als open aanvraag in de query staan. Dat gebeurt nu als twee
   stappen per regel, met bevestigde `MaxOrderModule`-methodes (geen tabellen rechtstreeks
@@ -699,19 +710,33 @@ raken dat mock-modus zelf nooit aanraakt:
      correct, dus de hele batch afbreken om één PR-rij zou een slechtere uitkomst zijn dan die ene
      regel voor handmatige opruiming te laten staan.
 
-  **Zet `UseMockPurchaseOrders` nog niet op `false`** — niet omdat de aanpak nog giswerk is (die is
-  nu gebaseerd op `MaxOrderModule`'s volledige, aangeleverde broncode, niet meer op één geïsoleerd
-  voorbeeld), maar omdat nog niets hiervan tegen een echte MAX-administratie getest is. Bevestigd via
-  de volledige module-code: `GetErrors()` is publiek (gebruikt voor foutmeldingen na een mislukte
-  `AddPODetail`), en een PR-rij gebruikt `"00"` voor zowel `LINNUM_10` als `DELNUM_10` (niet `"01"`
-  zoals eerst aangenomen). Zie de class-comment van `MaxPurchaseOrderRepository` voor de resterende
-  openstaande punten: `AssignPRsToPO` (en de verwante bulkmethode `AssignPONumber`) lijken mogelijk
-  een correctere, atomaire aanpak (PR direct ombouwen naar PO-regel i.p.v. nieuw aanmaken + apart
-  verwijderen), maar `OrderAssign`'s volledige veldenoverzicht, `TargetOrder`'s exacte gedrag, en of
-  een eigen hoeveelheid meegegeven kan worden (nodig na order-multiples/MOQ-afronding) zijn niet
-  bevestigd; de betekenis van `AddPODetail`'s `FixVar`/`RoundType`-parameters staat nog niet vast.
-  Test dit bij voorkeur eerst één keer tegen een MAX test-/sandbox-administratie voordat het tegen
-  een live administratie draait.
+  **Er is geen MAX test-/sandbox-administratie** — dit wordt daarom bewust stapsgewijs, direct tegen
+  de live administratie, uitgeprobeerd:
+  1. **Eerste stap (nu actief)**: alleen `AddPODetail` (een echte PO aanmaken) — getest met een
+     handmatig toegevoegde testaanvraag (§8.1, "Nieuwe testaanvraag toevoegen") in plaats van een
+     echte, synced MAX-PR. Zo'n testaanvraag krijgt wel een nep-`ErpRequestNumber` ("TEST-...") maar
+     nooit een `PurchaseRequestLine.MaxLineNumber` (dat veld wordt alleen door `MaxOrderRepository`'s
+     sync vanuit een echte `Order_Master`-rij gezet) — en zowel
+     `EnsurePurchaseRequisitionStillExistsAsync` als `RemoveOriginalOrder` slaan hun werk over zodra
+     `MaxLineNumber` leeg is. Resultaat: een echte PO wordt wél aangemaakt (dat wordt dus getest), maar
+     stap 2 hieronder (de originele PR verwijderen) gebeurt vanzelf niet — geen risico dat deze eerste
+     test een echte openstaande aanvraag laat verdwijnen.
+  2. **Nog niet getest**: `DeletePurchaseRequisitionLineItem` zelf — dat vereist een echte, gesyncte
+     PR (dus een echte openstaande MAX-aanvraag) om tegen te testen, een logische vervolgstap zodra
+     stap 1 bevestigd goed gaat.
+  3. **Let op**: dezelfde vlag (`UseMockPurchaseOrders=false`) zet ook **"Orderbevestiging
+     verwerken"**'s echte MAX-schrijfkant aan (`ApplyConfirmationAsync` hieronder) — niet alleen
+     "Order plaatsen". Wie stap 1 geïsoleerd wil houden, klikt die knop dus nog niet.
+
+  Bevestigd via de volledige, aangeleverde `MaxOrderModule`-broncode (niet giswerk): `GetErrors()` is
+  publiek (gebruikt voor foutmeldingen na een mislukte `AddPODetail`), en een PR-rij gebruikt `"00"`
+  voor zowel `LINNUM_10` als `DELNUM_10` (niet `"01"` zoals eerst aangenomen). Zie de class-comment
+  van `MaxPurchaseOrderRepository` voor de resterende openstaande punten: `AssignPRsToPO` (en de
+  verwante bulkmethode `AssignPONumber`) lijken mogelijk een correctere, atomaire aanpak (PR direct
+  ombouwen naar PO-regel i.p.v. nieuw aanmaken + apart verwijderen), maar `OrderAssign`'s volledige
+  veldenoverzicht, `TargetOrder`'s exacte gedrag, en of een eigen hoeveelheid meegegeven kan worden
+  (nodig na order-multiples/MOQ-afronding) zijn niet bevestigd; de betekenis van `AddPODetail`'s
+  `FixVar`/`RoundType`- en `ChangePODetail`'s `IncOrdRev`-parameters staat nog niet vast.
 
 - **Orderbevestiging verwerken** (MainForm-knop, `ProcurementEngine.ProcessOrderConfirmationsAsync`):
   haalt voor elke PO die nog op een leveranciersbevestiging wacht (`PurchaseOrderRepository.
