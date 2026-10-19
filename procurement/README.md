@@ -748,12 +748,18 @@ raken dat mock-modus zelf nooit aanraakt:
   `Part_Master`-lookup per regel (`MaxOrderRepository.GetPartByIdAsync`, uitgebreid met
   `DELSTK_01`/`BUYER_01`/`PLANID_01`): Stock blijft leeg zonder PrimaryStock (geen `"FGI"`-fallback
   meer), Buyer valt terug op `"000"` zonder artikel-Buyer, Planner wordt gewoon gekopieerd.
-  **Nog open**: `Purchase_Order_Code`'s eigen Buyer-veld op headerniveau (anders dan de per-regel
-  `BUYID_10` hierboven) moet de **daadwerkelijke** besteller koppelen, niet iets artikel-afgeleids —
-  er is nog geen betrouwbare link tussen de ingelogde gebruiker en een MAX `Buyers.BUYID_95` (de
-  gebruiker zelf noemde Buyer Name/Windows-user-matching en een Windows-username-in-UDFKEY-truc, maar
-  typeerde beide zelf als niet volledig waterdicht) — vereist nog een ontwerpkeuze voordat dit
-  geschreven kan worden.
+  **`Purchase_Order_Code`'s eigen Buyer-veld op headerniveau** (`BUYID_16`, anders dan de per-regel
+  `BUYID_10` hierboven, die artikel-afgeleid is) moet de **daadwerkelijke** besteller koppelen. Geen
+  MAX-native link daarvoor beschikbaar — in plaats daarvan een handmatige conventie die de gebruiker
+  zelf heeft opgezet (okt 2026): elke Buyer's Windows-gebruikersnaam staat in `Buyers.UDFKEY_95`.
+  `MaxOrderRepository.GetBuyerIdByWindowsUsernameAsync` matcht `ISessionContext.UserName` (de al
+  domeinloze Windows-gebruikersnaam, zie `LoginForm.ResolveWindowsUserName`) daartegen op; valt terug
+  op `"000"` als er geen match is. Omdat `AddPODetail` de header zelf volledig uit `Vendor_Master`
+  opbouwt (geen parameter om een Buyer ID direct mee te geven), gebeurt dit als follow-up
+  `ChangePOHeading`-call vlak na het aanmaken van de header (`MaxPurchaseOrderRepository.
+  SetHeaderBuyerIdAsync`) — hetzelfde read-modify-write-patroon als `ApplyHeaderConfirmationAsync`
+  hieronder gebruikt voor `CONFRM_16`. Let op: dit is een handmatig bijgehouden koppeling, geen
+  MAX-garantie — een Buyer die nog geen `UDFKEY_95` heeft gekregen valt stil terug op `"000"`.
 
 - **Orderbevestiging verwerken** (MainForm-knop, `ProcurementEngine.ProcessOrderConfirmationsAsync`):
   haalt voor elke PO die nog op een leveranciersbevestiging wacht (`PurchaseOrderRepository.

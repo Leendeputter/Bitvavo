@@ -229,6 +229,35 @@ WHERE dbo.Part_Master.PRTNUM_01 = @partId";
             }
         }
 
+        /// <summary>
+        /// Looks up dbo.Buyers.BUYID_95 by matching the app's resolved Windows username (ISessionContext.
+        /// UserName — already the bare username, domain prefix stripped, see LoginForm.
+        /// ResolveWindowsUserName) against Buyers.UDFKEY_95, where the user themselves has started
+        /// storing it (okt 2026) — not a MAX-native link, a manual convention the user set up
+        /// specifically so this app could find it. Returns null if nothing matches (a buyer who
+        /// hasn't been given a UDFKEY_95 value yet, or any other mismatch) rather than throwing — the
+        /// caller falls back to "000", the same documented fallback as a missing article-level Buyer.
+        /// </summary>
+        public async Task<string> GetBuyerIdByWindowsUsernameAsync(string windowsUsername)
+        {
+            if (string.IsNullOrWhiteSpace(windowsUsername)) return null;
+
+            const string sql = "SELECT TOP 1 BUYID_95 FROM dbo.Buyers WHERE UDFKEY_95 = @username";
+
+            using (var conn = new SqlConnection(_session.AdminConnectionString))
+            using (var cmd = new SqlCommand(sql, conn))
+            {
+                cmd.Parameters.AddWithValue("@username", windowsUsername.Trim());
+
+                await conn.OpenAsync();
+                using (var reader = await cmd.ExecuteReaderAsync())
+                {
+                    if (!await reader.ReadAsync()) return null;
+                    return ToDisplayString(reader["BUYID_95"]);
+                }
+            }
+        }
+
         private static string RangeFieldColumn(MaxOrderRangeField? field)
         {
             if (!field.HasValue) return null;

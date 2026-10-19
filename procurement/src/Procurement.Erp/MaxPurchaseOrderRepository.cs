@@ -63,6 +63,16 @@ namespace Procurement.Erp
     /// PLANID_10 comes from Part_Master.PLANID_01. See MaxOrderRepository.GetPartByIdAsync/MaxPartInfo
     /// for the lookup these three come from.
     ///
+    /// Purchase_Order_Code's own header-level BUYID_16 (distinct from Order_Master.BUYID_10, which is
+    /// per-line/detail and article-derived — see above) is set via SetHeaderBuyerIdAsync, a
+    /// follow-up ChangePOHeading right after AddPODetail creates the header (same pattern as
+    /// ApplyHeaderConfirmationAsync's CONFRM_16 below) — AddPODetail itself builds the header
+    /// entirely from Vendor_Master, with no parameter to hand it a Buyer ID directly. The value comes
+    /// from MaxOrderRepository.GetBuyerIdByWindowsUsernameAsync, matching ISessionContext.UserName
+    /// against dbo.Buyers.UDFKEY_95 — a manual convention the user set up themselves (okt 2026,
+    /// stashing each Buyer's Windows username into that field precisely so this app could find it),
+    /// not a MAX-native link; "000" if nothing matches.
+    ///
     /// Still open / worth confirming before relying on this in production:
     ///  1. MaxOrderModule.AssignPRsToPO(int, string TargetOrder, List&lt;OrderAssign&gt;, bool, bool,
     ///     bool, bool, bool, string) — and its sibling AssignPONumber, which wraps a bulk
@@ -83,15 +93,10 @@ namespace Procurement.Erp
     ///     example; still don't know precisely what they control.
     ///  3. IncOrdRev on ChangePODetail (used by ApplyConfirmationAsync below) — passed through as
     ///     true, same value AddPODetail already uses, but its exact effect isn't confirmed either.
-    ///  4. Purchase_Order_Code's own header-level Buyer field (distinct from Order_Master.BUYID_10,
-    ///     which is per-line/detail and comes from the article's Part_Master row — see above) still
-    ///     needs to reflect the actual person placing the order, not anything article-derived (user,
-    ///     okt 2026: "de Buyer in de PO_Header moet wel gekoppeld zijn aan de daadwerkelijke Buyer").
-    ///     Not yet implemented: there's no reliable existing link from this app's session/Windows user
-    ///     to a MAX Buyers.BUYID_95 (the user's own suggestions — matching Buyer Name to the Windows
-    ///     user, or stashing the Windows username in a UDFKEY field — were both flagged by the user
-    ///     themselves as not fully reliable). Needs a decision on where that link lives before this
-    ///     can be written.
+    ///  4. The UDFKEY_95-as-Windows-username convention is a manual, user-maintained mapping, not
+    ///     something MAX enforces — a Buyer the user hasn't gotten around to tagging yet silently
+    ///     falls back to "000" rather than erroring, so this is worth spot-checking against
+    ///     Buyers.UDFKEY_95 occasionally rather than assuming it's complete.
     /// </summary>
     public class MaxPurchaseOrderRepository
     {
@@ -142,6 +147,11 @@ namespace Procurement.Erp
                     string erpPoNumber = null;
                     var lineNumber = 1;
 
+                    // Resolved once (same value for every line of this one PO, and the header
+                    // itself only gets written once) rather than per line.
+                    var headerBuyerId = await _maxOrderRepository.GetBuyerIdByWindowsUsernameAsync(_session.UserName);
+                    if (string.IsNullOrWhiteSpace(headerBuyerId)) headerBuyerId = "000";
+
                     foreach (var draftLine in draft.Lines)
                     {
                         var requestLine = await _purchaseRequestRepository.GetLineByIdAsync(draftLine.PurchaseRequestLineId);
@@ -176,7 +186,10 @@ namespace Procurement.Erp
                         }
 
                         if (isFirstLine)
+                        {
                             erpPoNumber = poLine.ORDNUM_10;
+                            await SetHeaderBuyerIdAsync(admin, maxOrderModule, erpPoNumber, headerBuyerId, log);
+                        }
                         lineNumber++;
 
                         result.Lines.Add(new PurchaseOrderCreationResultLine
@@ -193,6 +206,32 @@ namespace Procurement.Erp
                     return result;
                 }
             }
+        }
+
+        /// <summary>
+        /// AddPODetail builds Purchase_Order_Code's header entirely itself (from Vendor_Master, see
+        /// the class comment) when CreateHeader:true — there's no parameter to hand it a Buyer ID
+        /// directly, so this is a follow-up read-modify-write right after, the same pattern
+        /// ApplyHeaderConfirmationAsync below already uses for CONFRM_16. Best-effort like that
+        /// method and RemoveOriginalOrder: a failure here is logged, not thrown — the PO itself
+        /// already exists and is correct at this point, only its header's Buyer field would be wrong.
+        /// </summary>
+        private static async Task SetHeaderBuyerIdAsync(SqlConnection admin, MaxOrderModule maxOrderModule, string erpPoNumber, string buyerId, NLog.Logger log)
+        {
+            var headerRows = await admin.QueryAsync<Purchase_Order_Code>(
+                "SELECT * FROM Purchase_Order_Code WHERE ORDNUM_16 = @Ordnum", new { Ordnum = erpPoNumber });
+            var header = headerRows.FirstOrDefault();
+            if (header == null)
+            {
+                log.Warn($"Kan Purchase_Order_Code niet vinden voor PO {erpPoNumber} — BUYID_16 niet gezet.");
+                return;
+            }
+
+            header.BUYID_16 = buyerId;
+
+            var changed = maxOrderModule.ChangePOHeading(header, out var errMsg);
+            if (!changed)
+                log.Warn($"MAX ChangePOHeading (BUYID_16) is mislukt voor PO {erpPoNumber}: {errMsg}");
         }
 
         /// <summary>
