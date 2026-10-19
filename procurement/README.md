@@ -21,23 +21,26 @@ toevoegen (§8.1) blijft ook werken, als aanvulling op de echte MAX-orders.
 **Werkt en is bevestigd tegen de echte DigiKey-sandbox:**
 - Product Information V4 (zoeken/prijzen/voorraad/verpakking) — `UseMockData=false` getest, inclusief
   het eerdere 403-probleem (DigiKey-portal-desync, door DigiKey zelf opgelost na contact).
-- Ordering v3 is volledig **geïmplementeerd** (`DigiKeyAdapter.CreateOrderAsync` in real-mode,
-  3-legged OAuth via `DigiKeyOrderingAuthorizer`), de Callback URL (`https://localhost`) staat goed
-  geregistreerd, en DigiKey heeft **sandbox-Ordering inmiddels geactiveerd** voor het account.
+- **Ordering v3 is nu end-to-end getest en werkend tegen de echte sandbox** (19 okt 2026): via
+  `Procurement.Tools.DigiKeyOrderTester` (buiten MAX om, zie hieronder) succesvol een testorder
+  geplaatst (`DK-019085`, 1x, €3,00) — DigiKey gaf `SalesOrderId = 12345` terug (een normaal,
+  positief ordernummer, dus niet de `0`/`-1`-specialgevallen). De 3-legged OAuth-flow
+  (`DigiKeyOrderingAuthorizer`, Callback URL `https://localhost`) werkt; DigiKey roteert het
+  refresh-token bij (vrijwel) elke token-ververing.
+- **Nog niet getest via de normale UI**: alleen het losse tooltje is geprobeerd, bewust, omdat er geen
+  MAX-testomgeving is en de normale "Order plaatsen"-knop altijd ook een echte PO naar MAX schrijft.
 
-**Nog niet getest / eerstvolgende stappen:**
-1. **De "Ordering autoriseren..."-flow zelf nog niet één keer doorlopen** (Instellingen → Suppliers →
-   DigiKey-rij) — browser-consent geven, de mislukte `https://localhost/...`-URL uit de adresbalk
-   plakken, en controleren dat het refresh-token succesvol wordt opgeslagen.
-2. **Eén echte testorder plaatsen tegen de sandbox** — dit is nog nooit end-to-end uitgeprobeerd. Niet
-   via de normale "Order plaatsen"-knop: er is geen MAX-testomgeving, en die knop schrijft altijd ook
-   een echte PO naar MAX. Gebruik in plaats daarvan het nieuwe losse tooltje
-   `Procurement.Tools.DigiKeyOrderTester` (zie "Suppliers" hieronder) dat `CreateOrderAsync`
-   rechtstreeks aanroept, buiten MAX om.
-3. Nog onbekend welk `DigiKeyPartNumber` de Ordering-sandbox accepteert — daar is niets over
-   gevonden, dus dat is grotendeels een kwestie van uitproberen met het tooltje.
-4. `GetOrderStatusAsync`/`CancelOrderAsync` blijven daarna nog steeds mock-only (geen bevestigd
-   contract voor die APIs).
+**Bekende frictie om bij een volgende poging rekening mee te houden:**
+- De SQL-login achter `PROCUREMENT_TEST_CONNECTION_STRING` heeft **geen UPDATE-rechten** op
+  `Procurement_Supplier` — een refresh-token-rotatie kan daardoor niet automatisch worden opgeslagen.
+  Het tooltje print in dat geval een kant-en-klaar, al-versleuteld `UPDATE`-statement dat je zelf in
+  SSMS tegen de `Unitron`-database moet plakken; sla je dat over, dan faalt de **volgende** run met
+  DigiKey's 401 "Invalid RefreshToken" (het dan verouderde token staat nog in de database) en moet
+  "Ordering autoriseren..." opnieuw. Permanente oplossing: UPDATE-rechten op die ene tabel regelen
+  voor die login, of consequent na elke run het geprinte statement draaien.
+- `GetOrderStatusAsync`/`CancelOrderAsync` blijven mock-only (geen bevestigd contract voor die APIs).
+- De normale "Order plaatsen"-knop (MainForm) zelf is dus nog niet in real-mode beproefd — alleen de
+  onderliggende `DigiKeyAdapter.CreateOrderAsync` via het losse tooltje.
 
 **Les uit deze sessie, voor toekomstige schema-wijzigingen**: elke nieuwe kolom heeft in
 `Program.cs`'s schema-existence-check een **eigen** `sys.columns`-probe nodig, ook als een andere
