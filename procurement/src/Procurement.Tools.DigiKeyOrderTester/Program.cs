@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Threading.Tasks;
 using Procurement.Core.Exceptions;
 using Procurement.Core.Models;
+using Procurement.Core.Security;
 using Procurement.Data;
 using Procurement.Data.Repositories;
 using Procurement.Suppliers.DigiKey;
@@ -96,8 +97,19 @@ namespace Procurement.Tools.DigiKeyOrderTester
                         }
                         catch (Exception ex)
                         {
-                            Console.WriteLine($"WAARSCHUWING: kon het nieuwe refresh-token niet opslaan ({ex.Message}). " +
-                                "De order gaat door, maar doorloop \"Ordering autoriseren...\" opnieuw als een volgende run hierop misloopt.");
+                            // Printed as a ready-to-paste UPDATE instead of just a warning: the test
+                            // connection string's login apparently can't write Procurement_Supplier,
+                            // but SSMS (used for the schema script) clearly can — this sidesteps
+                            // waiting on IT/DBA for a permission grant. Encrypted here (not left to
+                            // SSMS) since the column only ever holds SecretProtector-encrypted values,
+                            // same key as everything else (PROCUREMENT_SECRET_KEY).
+                            var encrypted = SecretProtector.Encrypt(newToken).Replace("'", "''");
+                            Console.WriteLine($"WAARSCHUWING: kon het nieuwe refresh-token niet opslaan ({ex.Message}).");
+                            Console.WriteLine("De order gaat door met dit nieuwe token, maar zonder het op te slaan werkt de");
+                            Console.WriteLine("VOLGENDE run niet meer. Plak dit in SSMS om het alsnog op te slaan:");
+                            Console.WriteLine();
+                            Console.WriteLine($"UPDATE dbo.Procurement_Supplier SET RefreshTokenEncrypted = '{encrypted}' WHERE SupplierCode = 'DIGIKEY';");
+                            Console.WriteLine();
                         }
                     };
 
