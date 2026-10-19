@@ -315,6 +315,14 @@ of scaffolding meer — schema's worden nu als volgt beheerd:
 3. Is de check positief, dan slaat de app de scriptgeneratie over en gaat direct verder met het
    seeden van de policy-tabellen (zie hieronder) en opstarten.
 
+**Let op — dit script wist ook ingevoerde supplier-credentials, niet alleen testaanvragen** (ontdekt
+okt 2026): omdat het script écht *elke* `Procurement_`-tabel dropt en opnieuw aanmaakt, inclusief
+`Procurement_Supplier`, verdwijnen bij het draaien ervan ook alle al via Instellingen ingevoerde
+Client Id/Client Secret/ApiKey/refresh-token én account-/verzendgegevens van elke supplier — niet
+alleen lokale testaanvragen zoals eerder hier stond. Na het draaien van dit script dus altijd even
+**Credentials bewerken...** en **Verzendgegevens bewerken...** opnieuw invullen voor elke supplier
+die al echte sandbox-credentials had, vóórdat je verder test.
+
 **Schone lei voor zowel `Unitron` als `Unitron_test`** (in plaats van de oude data behouden): het
 gegenereerde script begint met het opruimen van **alle** `Procurement_`-tabellen — ook de tabellen
 waarvan de vorm niet gewijzigd is, want `CreateDatabaseScript()` genereert altijd een volledig
