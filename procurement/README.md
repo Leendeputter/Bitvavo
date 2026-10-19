@@ -51,6 +51,23 @@ toevoegen (§8.1) blijft ook werken, als aanvulling op de echte MAX-orders.
 - De normale "Order plaatsen"-knop (MainForm) zelf is dus nog niet in real-mode beproefd — alleen de
   onderliggende `DigiKeyAdapter.CreateOrderAsync` via het losse tooltje.
 
+**Openstaande actie: terugschakelen naar OrderStatus v4** — de verwachting (gebaseerd op het eerdere,
+identieke 403-patroon bij Product Information V4, dat DigiKey destijds na een paar dagen zelf oploste)
+is dat dit portal/backend-desyncprobleem ook voor OrderStatus v4 vanzelf verdwijnt. Bewust gekozen om
+nu niet op die fix te wachten en gewoon met Order Management v1 door te testen (zie hierboven) — maar
+**dit moet later alsnog opnieuw geprobeerd worden**:
+1. Over een paar dagen `Procurement.Tools.DigiKeyOrderTester status <SalesOrderId>` nogmaals proberen
+   terwijl `DigiKeyAdapter.GetOrderStatusAsync` nog via Order Management v1 loopt, maar dan losstaand
+   even rechtstreeks `GetOrderStatusViaOrderStatusApiAsync` aanroepen (of tijdelijk de regel in
+   `GetOrderStatusAsync` terugzetten) om te checken of de 403 bij OrderStatus v4 weg is.
+2. Zodra dat werkt: `GetOrderStatusAsync`'s enige aanroep terugzetten van
+   `GetOrderStatusViaOrderManagementApiAsync` naar `GetOrderStatusViaOrderStatusApiAsync` (beide
+   methodes staan al klaar in `DigiKeyAdapter.cs` — dit is een wijziging van één regel, geen
+   herbouw) — dat geeft dan weer de rijkere data terug (prijs per regel, een echte DigiKey-statuscode
+   i.p.v. de afgeleide benadering).
+3. Nogmaals testen met het tooltje om te bevestigen dat de rijkere respons ook echt goed wordt
+   gemapt, en deze Status-sectie bijwerken.
+
 **Les uit deze sessie, voor toekomstige schema-wijzigingen**: elke nieuwe kolom heeft in
 `Program.cs`'s schema-existence-check een **eigen** `sys.columns`-probe nodig, ook als een andere
 kolom op dezelfde tabel al gecontroleerd wordt — een kolom die in een latere, aparte commit is
