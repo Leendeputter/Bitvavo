@@ -556,7 +556,7 @@ namespace Procurement.UI.Forms
                         // stille 0-waarde een verkeerde indruk geven.
                         ExtCost = ComputeExtCost(line?.RequestedQuantity ?? 0, line?.Cost, line?.CostConv),
                         DueDate = r.RequiredDate,
-                        // MAX's own CalculatePODueDateFromMRPDueDate applied to DueDate above — the
+                        // MAX's own CalculateMRPDueDateFromPODueDate applied to DueDate above — the
                         // date to actually hand the supplier, were a PO created for this line right
                         // now (see MaxOrderRepository.CalculatePoDueDatesAsync and the class comment
                         // on MaxPurchaseOrderRepository). Blank if DueDate or PartID is unknown.
@@ -653,7 +653,7 @@ namespace Procurement.UI.Forms
 
         /// <summary>
         /// One batched MAX round-trip (MaxOrderRepository.CalculatePoDueDatesAsync — MAX's own
-        /// CalculatePODueDateFromMRPDueDate SQLCLR function, see MaxPurchaseOrderRepository's class
+        /// CalculateMRPDueDateFromPODueDate SQLCLR function, see MaxPurchaseOrderRepository's class
         /// comment) for every distinct (RequiredDate, PartID) pair among the given lines, instead of
         /// one query per grid row. Lines without both a RequiredDate and a PartID are skipped — the
         /// function needs both arguments — and simply show a blank PoDueDate (see GetPoDueDate).

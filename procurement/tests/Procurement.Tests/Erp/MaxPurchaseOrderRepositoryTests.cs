@@ -81,9 +81,10 @@ namespace Procurement.Tests.Erp
         [Fact]
         public void BuildPurchaseOrderLine_PassesThroughTheGivenDueDateUnchanged()
         {
-            // The due-date calculation itself (MAX's own CalculatePODueDateFromMRPDueDate function)
-            // happens before this method is called — BuildPurchaseOrderLine just wires the already-
-            // resolved value straight onto CURDUE_10, no further adjustment of its own.
+            // The due-date calculation itself (MAX's own CalculateMRPDueDateFromPODueDate function —
+            // see MaxOrderRepository.CalculatePoDueDateAsync) happens before this method is called —
+            // BuildPurchaseOrderLine just wires the already-resolved value straight onto CURDUE_10,
+            // no further adjustment of its own.
             var dueDate = new DateTime(2026, 9, 1);
             var line = MaxPurchaseOrderRepository.BuildPurchaseOrderLine(
                 "VEN01", BuildRequestLine(), BuildDraftLine(), partInfo: null, dueDate, erpPoNumber: null, lineNumber: 1, isFirstLine: true, userName: "tester");

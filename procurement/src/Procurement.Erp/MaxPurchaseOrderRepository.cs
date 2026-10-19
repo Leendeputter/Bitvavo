@@ -63,11 +63,15 @@ namespace Procurement.Erp
     /// PLANID_10 comes from Part_Master.PLANID_01. See MaxOrderRepository.GetPartByIdAsync/MaxPartInfo
     /// for the lookup these three come from.
     ///
-    /// CURDUE_10's due-date adjustment (two earlier, wrong hand-rolled attempts at this — first
-    /// adding Part_Master.PURSTK_01 calendar days, then subtracting it as working days — are gone
-    /// now) is resolved properly as of okt 2026: the user found and supplied MAX's own SQLCLR
-    /// function dbo.CalculatePODueDateFromMRPDueDate (ExactMAXSQLUtilities.DateFunctions), which does
-    /// this calculation authoritatively. See MaxOrderRepository.CalculatePoDueDateAsync.
+    /// CURDUE_10's due-date adjustment has gone through several wrong attempts (okt 2026): two
+    /// hand-rolled ones (first adding Part_Master.PURSTK_01 calendar days, then subtracting it as
+    /// working days), then a first attempt at calling MAX's own SQLCLR function
+    /// dbo.CalculatePODueDateFromMRPDueDate — which, despite its name, turned out to land the due
+    /// date a full lead time *after* the MRP date instead of before it (same symptom as the very
+    /// first hand-rolled attempt). Current attempt: dbo.CalculateMRPDueDateFromPODueDate
+    /// (ExactMAXSQLUtilities.DateFunctions), called with RequiredDate in its @PODate slot — still
+    /// unconfirmed against a real MAX test as of this change. See
+    /// MaxOrderRepository.CalculatePoDueDateAsync for the full reasoning.
     ///
     /// Purchase_Order_Code's own header-level BUYID_16 (distinct from Order_Master.BUYER_10, which is
     /// per-line/detail and article-derived — see above) is set via SetHeaderBuyerIdAsync, a

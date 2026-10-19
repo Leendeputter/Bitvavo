@@ -259,20 +259,29 @@ WHERE dbo.Part_Master.PRTNUM_01 = @partId";
         }
 
         /// <summary>
-        /// Calls MAX's own SQLCLR scalar function dbo.CalculatePODueDateFromMRPDueDate
-        /// (ExactMAXSQLUtilities.DateFunctions — the user found and supplied this directly, okt 2026)
-        /// — the authoritative, MAX-native calculation for what a PO line's own due date should be,
-        /// given the MRP/need date and the article. Supersedes this app's own earlier (twice-wrong)
-        /// attempt to replicate this by hand with Part_Master.PURSTK_01 + working-day arithmetic:
-        /// MAX's own function already accounts for whatever MAX itself considers (working days,
-        /// any holiday calendar, etc.), so there's nothing left to get wrong by reimplementing it.
+        /// Calls MAX's own SQLCLR scalar function dbo.CalculateMRPDueDateFromPODueDate
+        /// (ExactMAXSQLUtilities.DateFunctions). Despite the name (and despite this method's own
+        /// name), this is the function that belongs here, not CalculatePODueDateFromMRPDueDate —
+        /// the first native-function attempt (okt 2026) used that one and came back a full lead
+        /// time *too late* (one week after the MRP due date instead of before it), the exact same
+        /// symptom as this app's very first hand-rolled attempt (add-calendar-days). The user's
+        /// own confirmed business rule has always been that a PO line's due date must be the MRP
+        /// date *minus* the lead time (see the two hand-rolled attempts below) — CalculateMRPDue-
+        /// DateFromPODueDate, called with the MRP-synced RequiredDate in the @PODate slot, is what
+        /// actually produces that. Still unconfirmed against a real MAX test as of this change —
+        /// ask the user to verify against a newly created PO before relying on this.
+        ///
+        /// Supersedes this app's own two earlier hand-rolled attempts to replicate this by hand with
+        /// Part_Master.PURSTK_01 + working-day arithmetic: MAX's own function already accounts for
+        /// whatever MAX itself considers (working days, any holiday calendar, etc.), so there's
+        /// nothing left to get wrong by reimplementing it — once the right function is confirmed.
         /// Falls back to the given MRP date unchanged if the function returns NULL (nothing in the
         /// user-supplied definition suggests it would, but a date this method can't compute is a
         /// worse outcome than falling back to the un-adjusted one it was given).
         /// </summary>
         public async Task<DateTime> CalculatePoDueDateAsync(DateTime mrpDate, string partNumber)
         {
-            const string sql = "SELECT dbo.CalculatePODueDateFromMRPDueDate(@MrpDate, @PartNum)";
+            const string sql = "SELECT dbo.CalculateMRPDueDateFromPODueDate(@MrpDate, @PartNum)";
 
             using (var conn = new SqlConnection(_session.AdminConnectionString))
             using (var cmd = new SqlCommand(sql, conn))
@@ -303,7 +312,7 @@ WHERE dbo.Part_Master.PRTNUM_01 = @partId";
             var distinct = items.Distinct().ToList();
             var valueRows = distinct.Select((_, i) => $"(@d{i}, @p{i})");
             var sql = $@"
-SELECT v.MrpDate, v.PartNum, dbo.CalculatePODueDateFromMRPDueDate(v.MrpDate, v.PartNum) AS PoDueDate
+SELECT v.MrpDate, v.PartNum, dbo.CalculateMRPDueDateFromPODueDate(v.MrpDate, v.PartNum) AS PoDueDate
 FROM (VALUES {string.Join(", ", valueRows)}) AS v(MrpDate, PartNum)";
 
             using (var conn = new SqlConnection(_session.AdminConnectionString))

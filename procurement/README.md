@@ -223,11 +223,13 @@ workflow-specifieke velden Manufacturer/Packaging/ReelRequirement die niet uit d
 
 Direct na **DueDate** staat **PO DueDate** (user request, okt 2026): de datum die een PO-regel voor
 deze aanvraag zou krijgen als er nu een order aangemaakt werd, dus `DueDate` met MAX's eigen
-`CalculatePODueDateFromMRPDueDate` erop toegepast — precies dezelfde berekening en dezelfde
-`MaxOrderRepository`-aanroep als `MaxPurchaseOrderRepository.BuildPurchaseOrderLine` straks echt
-gebruikt, hier alleen vooraf getoond zodat de juiste datum al bij de leverancier opgegeven kan worden
-vóórdat de PO er daadwerkelijk is. Eén gebatchte query per grid-load (`CalculatePoDueDatesAsync`,
-`MainForm.GetPoDueDatesByKeyAsync`) in plaats van één aanroep per rij; leeg zolang DueDate of PartID
+`CalculateMRPDueDateFromPODueDate` erop toegepast (zie de "Resultaat van een derde test" alinea
+verderop voor waarom het die functie is, niet `CalculatePODueDateFromMRPDueDate`) — precies dezelfde
+berekening en dezelfde `MaxOrderRepository`-aanroep als `MaxPurchaseOrderRepository.BuildPurchaseOrderLine`
+straks echt gebruikt, hier alleen vooraf getoond zodat de juiste datum al bij de leverancier opgegeven
+kan worden vóórdat de PO er daadwerkelijk is. Eén gebatchte query per grid-load
+(`CalculatePoDueDatesAsync`, `MainForm.GetPoDueDatesByKeyAsync`) in plaats van één aanroep per rij;
+leeg zolang DueDate of PartID
 van de regel nog onbekend is. Geen eigen opslag van deze waarde — altijd live opgevraagd bij MAX,
 nooit in de lokale database gecached.
 
@@ -799,18 +801,24 @@ raken dat mock-modus zelf nooit aanraakt:
   niet opgeteld. De eerste aanname (optellen, kalenderdagen) was dus zowel het verkeerde teken als de
   verkeerde eenheid, en liet elke regel precies één lead-time te laat uitkomen.
 
-  Beide eigen pogingen (optellen in kalenderdagen, daarna aftrekken in werkdagen) zijn inmiddels
-  vervangen: de gebruiker leverde MAX's eigen SQLCLR-functie `dbo.CalculatePODueDateFromMRPDueDate
-  (@MRPDate datetime, @PartNum nvarchar(30))` aan (`EXTERNAL NAME [ExactMAXSQLUtilities].
-  [DateFunctions].[CalculatePODueDateFromMRPDueDate]`) — dezelfde berekening die MAX zelf gebruikt,
-  inclusief wat die verder nog meeweegt (werkdagen, mogelijk een feestdagenkalender). `CURDUE_10` komt
-  nu rechtstreeks uit `MaxOrderRepository.CalculatePoDueDateAsync` (één regel tegelijk) resp.
-  `CalculatePoDueDatesAsync` (gebatcht, via een `VALUES`-tabel tegen de functie, voor toekomstig
-  grid-gebruik) — een scalar-functie-aanroep op de MAX-database, geen eigen datumrekenwerk meer.
-  `MaxPurchaseOrderRepository.BuildPurchaseOrderLine` krijgt `curDue` daarom als kant-en-klare,
-  al-berekende parameter mee en schrijft die ongewijzigd naar `CURDUE_10`. `Part_Master.PURSTK_01`
-  wordt om die reden ook niet meer apart opgehaald of lokaal opgeslagen (`MaxPartInfo.
-  StockLeadTimeDays` en `MaxPurchaseOrderRepository.SubtractWorkingDays` zijn beide verwijderd).
+  **Resultaat van een derde test (okt 2026), met nog een correctie**: beide eigen pogingen
+  (optellen in kalenderdagen, daarna aftrekken in werkdagen) zijn vervangen door een MAX-eigen
+  SQLCLR-functie — al kostte dat zelf ook een foute eerste poging. De
+  gebruiker leverde eerst `dbo.CalculatePODueDateFromMRPDueDate(@MRPDate datetime, @PartNum
+  nvarchar(30))` aan (`EXTERNAL NAME [ExactMAXSQLUtilities].[DateFunctions].
+  [CalculatePODueDateFromMRPDueDate]`), maar die bleek — ondanks de naam — de due date juist een
+  volle lead time **na** de MRP due date te leggen in plaats van ervoor, exact hetzelfde symptoom als
+  de allereerste (foute) handmatige poging. In gebruik is nu `dbo.CalculateMRPDueDateFromPODueDate
+  (@PODate datetime, @PartNum nvarchar(30))` — dezelfde signatuur, aangeroepen met de MAX-gesynct
+  `RequiredDate` in de `@PODate`-parameter — wat wél het verwachte resultaat geeft. Nog niet bevestigd
+  tegen een echte MAX-test. `CURDUE_10` komt rechtstreeks uit `MaxOrderRepository.CalculatePoDueDateAsync`
+  (één regel tegelijk) resp. `CalculatePoDueDatesAsync` (gebatcht, via een `VALUES`-tabel tegen de
+  functie, ook gebruikt voor de PO DueDate-kolom in de grids) — een scalar-functie-aanroep op de
+  MAX-database, geen eigen datumrekenwerk meer. `MaxPurchaseOrderRepository.BuildPurchaseOrderLine`
+  krijgt `curDue` daarom als kant-en-klare, al-berekende parameter mee en schrijft die ongewijzigd naar
+  `CURDUE_10`. `Part_Master.PURSTK_01` wordt om die reden ook niet meer apart opgehaald of lokaal
+  opgeslagen (`MaxPartInfo.StockLeadTimeDays` en `MaxPurchaseOrderRepository.SubtractWorkingDays` zijn
+  beide verwijderd).
   **`Purchase_Order_Code`'s eigen Buyer-veld op headerniveau** (`BUYID_16`, anders dan de per-regel
   `BUYER_10` hierboven, die artikel-afgeleid is) moet de **daadwerkelijke** besteller koppelen. Geen
   MAX-native link daarvoor beschikbaar — in plaats daarvan een handmatige conventie die de gebruiker
