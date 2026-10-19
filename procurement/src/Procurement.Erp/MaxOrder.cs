@@ -51,4 +51,17 @@ namespace Procurement.Erp
         /// <summary>Desc1 + Desc2 combined — kept for PurchaseRequestLine.Description, which the sourcing/matching logic (ProcurementEngine) actually reads; Desc1/Desc2 themselves are display-only.</summary>
         public string Description => string.Join(" ", new[] { Desc1, Desc2 }.Where(s => !string.IsNullOrWhiteSpace(s)));
     }
+
+    /// <summary>Part_Master fields only (no order) — see MaxOrderRepository.GetPartByIdAsync.</summary>
+    public class MaxPartInfo
+    {
+        /// <summary>Part_Master.PMDES1_01 (Desc1).</summary>
+        public string Desc1 { get; set; }
+        /// <summary>Part_Master.PMDES2_01 (Desc2).</summary>
+        public string Desc2 { get; set; }
+        /// <summary>Part_Master.COMCDE_01 (Customer).</summary>
+        public string Customer { get; set; }
+        /// <summary>Part_Master.TYPE_01 (PartType).</summary>
+        public string PartType { get; set; }
+    }
 }

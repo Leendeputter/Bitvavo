@@ -604,7 +604,11 @@ Zet `Procurement.UI` als startproject en start (F5). Eerst verschijnt het inlogs
 het hoofdscherm (`MainForm`, Purchase Requests-overzicht) met de gekozen administratie in de
 titelbalk. Via "Nieuwe testaanvraag toevoegen" kan een testmatige aanvraag worden ingevoerd,
 waarna "Sourcing starten" een aanvraag zo ver mogelijk brengt — maar bestelt hem nog niet, zie
-hieronder.
+hieronder. Die dialoog heeft sinds okt 2026 een **"Ophalen uit MAX"**-knop naast het interne
+artikelnummer: vult Desc1/Desc2/PartType/Customer (en, als "Omschrijving" nog leeg is, ook dat veld)
+in vanuit `Part_Master`, dezelfde velden die een echte gesyncte MAX-order al automatisch krijgt
+(`MaxOrderRepository.GetPartByIdAsync`) — voorheen bleven die altijd leeg voor een handmatige
+testaanvraag.
 
 **Sourcing en order plaatsen zijn losgekoppeld** (spec-correctie, aug 2026): sourcing brengt een
 aanvraag maximaal tot `ReadyToOrder` (elke regel heeft een `SupplierSelection`, automatisch bij een

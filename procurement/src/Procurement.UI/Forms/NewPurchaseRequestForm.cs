@@ -4,6 +4,7 @@ using System.Windows.Forms;
 using Procurement.Core.Entities;
 using Procurement.Core.Enums;
 using Procurement.Data.Repositories;
+using Procurement.Erp;
 
 namespace Procurement.UI.Forms
 {
@@ -11,6 +12,12 @@ namespace Procurement.UI.Forms
     public class NewPurchaseRequestForm : Form
     {
         private readonly PurchaseRequestRepository _repository;
+        private readonly MaxOrderRepository _maxOrderRepository;
+
+        private string _lookedUpDesc1;
+        private string _lookedUpDesc2;
+        private string _lookedUpPartType;
+        private string _lookedUpCustomer;
 
         private TextBox _erpArticleIdBox;
         private TextBox _manufacturerBox;
@@ -24,9 +31,10 @@ namespace Procurement.UI.Forms
         private TextBox _projectBox;
         private NumericUpDown _priorityBox;
 
-        public NewPurchaseRequestForm(PurchaseRequestRepository repository)
+        public NewPurchaseRequestForm(PurchaseRequestRepository repository, MaxOrderRepository maxOrderRepository)
         {
             _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+            _maxOrderRepository = maxOrderRepository ?? throw new ArgumentNullException(nameof(maxOrderRepository));
             InitializeComponent();
         }
 
@@ -45,6 +53,14 @@ namespace Procurement.UI.Forms
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 60));
 
             _erpArticleIdBox = new TextBox { Dock = DockStyle.Fill, Text = "ART-" + DateTime.UtcNow.Ticks % 100000 };
+            var lookupButton = new Button { Text = "Ophalen uit MAX", AutoSize = true };
+            lookupButton.Click += async (s, e) => await LookupFromMaxAsync();
+            var articleIdPanel = new Panel { Dock = DockStyle.Fill, Height = 24 };
+            _erpArticleIdBox.Dock = DockStyle.Left;
+            _erpArticleIdBox.Width = 140;
+            lookupButton.Dock = DockStyle.Right;
+            articleIdPanel.Controls.Add(_erpArticleIdBox);
+            articleIdPanel.Controls.Add(lookupButton);
             _manufacturerBox = new TextBox { Dock = DockStyle.Fill, Text = "Vishay" };
             _mpnBox = new TextBox { Dock = DockStyle.Fill, Text = "CRCW060310K0FKEA" };
             _descriptionBox = new TextBox { Dock = DockStyle.Fill };
@@ -58,7 +74,7 @@ namespace Procurement.UI.Forms
             _projectBox = new TextBox { Dock = DockStyle.Fill, Text = "PROTOTYPE" };
             _priorityBox = new NumericUpDown { Dock = DockStyle.Fill, Minimum = 1, Maximum = 10, Value = 5 };
 
-            AddRow(layout, "Intern artikelnummer:", _erpArticleIdBox);
+            AddRow(layout, "Intern artikelnummer:", articleIdPanel);
             AddRow(layout, "Manufacturer:", _manufacturerBox);
             AddRow(layout, "Manufacturer part number:", _mpnBox);
             AddRow(layout, "Omschrijving:", _descriptionBox);
@@ -92,6 +108,41 @@ namespace Procurement.UI.Forms
             layout.Controls.Add(control, 1, row);
         }
 
+        /// <summary>
+        /// Looks up Part_Master by the typed "intern artikelnummer" (MaxOrderRepository.
+        /// GetPartByIdAsync) and fills in Desc1/Desc2/PartType/Customer — the same MAX fields a real
+        /// synced order already gets (MaxOrder/MaxErpConnector), but a manually-entered test request
+        /// never had an equivalent lookup for. Also fills "Omschrijving" from Desc1+Desc2 (only if
+        /// still empty, so it never overwrites something the user already typed), mirroring
+        /// MaxOrder.Description's own convention — that field is what sourcing/matching actually
+        /// reads, Desc1/Desc2 themselves stay display-only.
+        /// </summary>
+        private async System.Threading.Tasks.Task LookupFromMaxAsync()
+        {
+            var partId = _erpArticleIdBox.Text.Trim();
+            if (string.IsNullOrEmpty(partId)) return;
+
+            var part = await _maxOrderRepository.GetPartByIdAsync(partId);
+            if (part == null)
+            {
+                MessageBox.Show(this, $"Geen Part_Master-rij gevonden voor '{partId}'.", "Niet gevonden", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            _lookedUpDesc1 = part.Desc1;
+            _lookedUpDesc2 = part.Desc2;
+            _lookedUpPartType = part.PartType;
+            _lookedUpCustomer = part.Customer;
+
+            if (string.IsNullOrWhiteSpace(_descriptionBox.Text))
+            {
+                var descriptionParts = new List<string>();
+                if (!string.IsNullOrWhiteSpace(part.Desc1)) descriptionParts.Add(part.Desc1);
+                if (!string.IsNullOrWhiteSpace(part.Desc2)) descriptionParts.Add(part.Desc2);
+                _descriptionBox.Text = string.Join(" ", descriptionParts);
+            }
+        }
+
         private async System.Threading.Tasks.Task SaveAsync()
         {
             if (string.IsNullOrWhiteSpace(_mpnBox.Text))
@@ -117,6 +168,10 @@ namespace Procurement.UI.Forms
                         Manufacturer = _manufacturerBox.Text,
                         ManufacturerPartNumber = _mpnBox.Text,
                         Description = _descriptionBox.Text,
+                        Desc1 = _lookedUpDesc1,
+                        Desc2 = _lookedUpDesc2,
+                        PartType = _lookedUpPartType,
+                        Customer = _lookedUpCustomer,
                         RequestedQuantity = (int)_quantityBox.Value,
                         RequiredDate = _requiredDatePicker.Value,
                         PackagingRequirement = (PackagingRequirement)Enum.Parse(typeof(PackagingRequirement), (string)_packagingCombo.SelectedItem),

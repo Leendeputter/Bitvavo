@@ -180,6 +180,48 @@ WHERE dbo.Order_Master.ORDNUM_10 IN ({string.Join(",", paramNames)})";
             return result;
         }
 
+        /// <summary>
+        /// Part_Master-only lookup (no Order_Master join — there's no order yet) used by "Nieuwe
+        /// testaanvraag toevoegen" to fill in Desc1/Desc2/PartType/Customer for a manually-entered
+        /// intern artikelnummer, the same MAX fields a real synced order already gets via
+        /// GetOpenOrdersAsync. Returns null if the Part_Master row doesn't exist (e.g. a made-up test
+        /// artikelnummer) rather than throwing — that's an expected, common case for this form, not
+        /// an error.
+        /// </summary>
+        public async Task<MaxPartInfo> GetPartByIdAsync(string partId)
+        {
+            if (string.IsNullOrWhiteSpace(partId)) return null;
+
+            const string sql = @"
+SELECT
+    dbo.Part_Master.PMDES1_01 AS Desc1,
+    dbo.Part_Master.PMDES2_01 AS Desc2,
+    dbo.Part_Master.COMCDE_01 AS Customer,
+    dbo.Part_Master.TYPE_01 AS PartType
+FROM dbo.Part_Master
+WHERE dbo.Part_Master.PRTNUM_01 = @partId";
+
+            using (var conn = new SqlConnection(_session.AdminConnectionString))
+            using (var cmd = new SqlCommand(sql, conn))
+            {
+                cmd.Parameters.AddWithValue("@partId", partId.Trim());
+
+                await conn.OpenAsync();
+                using (var reader = await cmd.ExecuteReaderAsync())
+                {
+                    if (!await reader.ReadAsync()) return null;
+
+                    return new MaxPartInfo
+                    {
+                        Desc1 = ToDisplayString(reader["Desc1"]),
+                        Desc2 = ToDisplayString(reader["Desc2"]),
+                        Customer = ToDisplayString(reader["Customer"]),
+                        PartType = ToDisplayString(reader["PartType"])
+                    };
+                }
+            }
+        }
+
         private static string RangeFieldColumn(MaxOrderRangeField? field)
         {
             if (!field.HasValue) return null;

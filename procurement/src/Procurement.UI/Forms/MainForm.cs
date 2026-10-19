@@ -785,7 +785,7 @@ namespace Procurement.UI.Forms
 
         private async System.Threading.Tasks.Task NewRequestAsync()
         {
-            using (var form = new NewPurchaseRequestForm(_composition.PurchaseRequestRepository))
+            using (var form = new NewPurchaseRequestForm(_composition.PurchaseRequestRepository, _composition.MaxOrderRepository))
             {
                 if (form.ShowDialog(this) == DialogResult.OK)
                 {

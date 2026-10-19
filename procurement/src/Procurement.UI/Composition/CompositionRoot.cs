@@ -39,6 +39,7 @@ namespace Procurement.UI.Composition
         public ProcurementEventRepository ProcurementEventRepository { get; }
         public IReadOnlyList<ISupplierAdapter> Adapters { get; }
         public MaxErpConnector ErpConnector { get; }
+        public MaxOrderRepository MaxOrderRepository { get; }
 
         public CompositionRoot()
         {
@@ -162,13 +163,13 @@ namespace Procurement.UI.Composition
                 .Concat(genericAdapters)
                 .ToList();
 
-            var maxOrderRepository = new MaxOrderRepository(Session);
+            MaxOrderRepository = new MaxOrderRepository(Session);
             var maxVendorPartRepository = new MaxVendorPartRepository(Session);
             var maxPurchaseOrderRepository = new MaxPurchaseOrderRepository(Session, SupplierRepository, PurchaseRequestRepository);
             ErpConnector = new MaxErpConnector(
                 PurchaseRequestRepository,
                 PurchaseOrderRepository,
-                maxOrderRepository,
+                MaxOrderRepository,
                 maxVendorPartRepository,
                 SupplierRepository,
                 SupplierProductMappingRepository,
