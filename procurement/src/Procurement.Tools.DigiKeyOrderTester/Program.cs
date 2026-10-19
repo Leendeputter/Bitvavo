@@ -83,10 +83,22 @@ namespace Procurement.Tools.DigiKeyOrderTester
                 {
                     // Blocking (not fire-and-forget like CompositionRoot's version) since this
                     // short-lived process would otherwise risk exiting before the write lands.
+                    // Swallowed on failure (e.g. a read-only test connection string without UPDATE
+                    // rights on Procurement_Supplier) rather than left to abort the whole order
+                    // attempt — losing the rotated token only risks needing to redo "Ordering
+                    // autoriseren..." before the *next* run, it shouldn't block *this* one.
                     httpClient.OnRefreshTokenRotated = newToken =>
                     {
                         Console.WriteLine("Refresh-token is geroteerd tijdens deze aanroep, wordt teruggeschreven...");
-                        supplierRepository.UpdateRefreshTokenAsync("DIGIKEY", newToken).GetAwaiter().GetResult();
+                        try
+                        {
+                            supplierRepository.UpdateRefreshTokenAsync("DIGIKEY", newToken).GetAwaiter().GetResult();
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"WAARSCHUWING: kon het nieuwe refresh-token niet opslaan ({ex.Message}). " +
+                                "De order gaat door, maar doorloop \"Ordering autoriseren...\" opnieuw als een volgende run hierop misloopt.");
+                        }
                     };
 
                     var adapter = new DigiKeyAdapter(options, httpClient);
