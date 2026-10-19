@@ -311,6 +311,20 @@ overschreven. Zoals bij de purchase-request sync geldt ook hier: een bestaande
 `SupplierProductMapping` (bv. handmatig gecorrigeerd via het mapping-scherm, §8.5) wordt nooit
 overschreven door een latere sync.
 
+**Uitzondering op "nooit overschrijven": een gecachte mapping met een lege `SupplierPartNumber`**
+(gevonden door de gebruiker, okt 2026): zo'n rij is onbruikbaar — `BuildOfferAsync` gooit dan
+"SupplierPartNumber is required" (zichtbaar in het Audit-log als `OFFER_BUILD_FAILED`, zonder een
+voorafgaande `PRODUCT_SEARCHED`-regel, hét signaal dat `ResolveOneMappingAsync` de gecachte rij
+blindelings hergebruikte in plaats van opnieuw te zoeken). Dit kan ontstaan als een eerdere zoekopdracht
+wél een match vond, maar die match zelf geen bruikbaar partnummer had (bv. een marketplace-only
+listing). Zo'n mapping blokkeerde daarna *permanent* elke toekomstige sourcing-poging voor dat
+artikel/die supplier, want de code deed dan nooit meer een nieuwe zoekopdracht. `ResolveOneMappingAsync`
+behandelt een lege `SupplierPartNumber` nu hetzelfde als "nog geen mapping": er wordt alsnog een verse
+zoekopdracht gedaan, en bij succes wordt de bestaande rij **ge-update in plaats van een nieuwe rij
+toegevoegd** (`SupplierProductMappingRepository.UpdateSupplierPartAsync`) — anders zou de
+`(ErpArticleId, SupplierCode)`-unique-index een tweede insert blokkeren. Zelfherstellend dus: gewoon
+opnieuw sourcen op dezelfde aanvraag is genoeg, geen handmatige opschoning via het mapping-scherm nodig.
+
 ## Bouwen en draaien
 
 Dit prototype target `net48` (.NET Framework 4.8) met WinForms en EF6, en **draait alleen op

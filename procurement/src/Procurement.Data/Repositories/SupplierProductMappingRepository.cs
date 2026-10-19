@@ -49,5 +49,25 @@ namespace Procurement.Data.Repositories
             mapping.MatchConfidence = confidence;
             await _context.SaveChangesAsync();
         });
+
+        /// <summary>
+        /// Overwrites an existing mapping's found-product fields in place — used by
+        /// ProcurementEngine.ResolveOneMappingAsync to self-heal a mapping that was previously cached
+        /// with a blank SupplierPartNumber (which blocks every future offer for that article/supplier
+        /// — see EnsureKnownPart/"SupplierPartNumber is required" downstream) once a fresh search
+        /// actually finds a usable part number. Updates in place (never AddAsync here) because
+        /// (ErpArticleId, SupplierCode) has a unique index — a second insert for the same pair would
+        /// violate it.
+        /// </summary>
+        public Task UpdateSupplierPartAsync(int id, string supplierPartNumber, string manufacturer, string manufacturerPartNumber, MatchConfidence confidence) => _context.RunGuardedAsync(async () =>
+        {
+            var mapping = await _context.SupplierProductMappings.FindAsync(id);
+            if (mapping == null) return;
+            mapping.SupplierPartNumber = supplierPartNumber;
+            mapping.Manufacturer = manufacturer;
+            mapping.ManufacturerPartNumber = manufacturerPartNumber;
+            mapping.MatchConfidence = confidence;
+            await _context.SaveChangesAsync();
+        });
     }
 }

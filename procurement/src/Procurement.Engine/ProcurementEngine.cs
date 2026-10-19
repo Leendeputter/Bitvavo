@@ -332,7 +332,16 @@ namespace Procurement.Engine
             PurchaseRequestLine line, ISupplierAdapter adapter)
         {
             var existing = await _mappingRepository.FindAsync(line.ErpArticleId, adapter.SupplierCode);
-            if (existing != null)
+
+            // A cached mapping with a blank SupplierPartNumber is unusable (BuildOfferAsync's
+            // GetPricingAsync/GetAvailabilityAsync throw "SupplierPartNumber is required" on it,
+            // logged as OFFER_BUILD_FAILED) — found in practice (okt 2026): once such a row exists,
+            // every future sourcing attempt for that article/supplier silently reused it and never
+            // searched again, since the branch below never even runs. Treated the same as "no mapping
+            // yet" so a fresh search gets a chance to self-heal it (see the update-in-place branch
+            // below) instead of a one-time bad search result blocking that article/supplier forever.
+            var hasUsableMapping = existing != null && !string.IsNullOrWhiteSpace(existing.SupplierPartNumber);
+            if (hasUsableMapping)
                 return (adapter, existing.SupplierPartNumber, existing.MatchConfidence);
 
             if (adapter.Capabilities.ProductSearch != CapabilityStatus.Supported)
@@ -348,24 +357,43 @@ namespace Procurement.Engine
                     Quantity = line.RequestedQuantity
                 });
 
-                var best = products?.OrderByDescending(p => p.MatchConfidence).FirstOrDefault();
+                // Also excludes a match whose own SupplierPartNumber is blank (e.g. a marketplace-only
+                // listing with no direct part number) — same "unusable" reasoning as above, applied
+                // here so a mapping like that never gets cached in the first place.
+                var best = products?
+                    .Where(p => !string.IsNullOrWhiteSpace(p.SupplierPartNumber))
+                    .OrderByDescending(p => p.MatchConfidence)
+                    .FirstOrDefault();
                 if (best == null)
                 {
                     await _auditLogger.LogAsync("PurchaseRequestLine", line.Id.ToString(), "PRODUCT_NOT_FOUND", "Exception", adapter.SupplierCode);
                     return (adapter, null, MatchConfidence.Unknown);
                 }
 
-                var mapping = new SupplierProductMapping
+                int mappingId;
+                if (existing != null)
                 {
-                    ErpArticleId = line.ErpArticleId,
-                    SupplierCode = adapter.SupplierCode,
-                    SupplierPartNumber = best.SupplierPartNumber,
-                    Manufacturer = best.Manufacturer,
-                    ManufacturerPartNumber = best.ManufacturerPartNumber,
-                    MatchConfidence = best.MatchConfidence
-                };
-                await _mappingRepository.AddAsync(mapping);
-                await _auditLogger.LogAsync("SupplierProductMapping", mapping.Id.ToString(), "PRODUCT_SEARCHED", "Success", adapter.SupplierCode,
+                    // Update in place, never AddAsync here — (ErpArticleId, SupplierCode) has a
+                    // unique index, so a second insert for the same pair would violate it.
+                    await _mappingRepository.UpdateSupplierPartAsync(existing.Id, best.SupplierPartNumber, best.Manufacturer, best.ManufacturerPartNumber, best.MatchConfidence);
+                    mappingId = existing.Id;
+                }
+                else
+                {
+                    var mapping = new SupplierProductMapping
+                    {
+                        ErpArticleId = line.ErpArticleId,
+                        SupplierCode = adapter.SupplierCode,
+                        SupplierPartNumber = best.SupplierPartNumber,
+                        Manufacturer = best.Manufacturer,
+                        ManufacturerPartNumber = best.ManufacturerPartNumber,
+                        MatchConfidence = best.MatchConfidence
+                    };
+                    await _mappingRepository.AddAsync(mapping);
+                    mappingId = mapping.Id;
+                }
+
+                await _auditLogger.LogAsync("SupplierProductMapping", mappingId.ToString(), "PRODUCT_SEARCHED", "Success", adapter.SupplierCode,
                     requestPayload: $"Manufacturer={line.Manufacturer}; MPN={line.ManufacturerPartNumber}",
                     responsePayload: $"SupplierPartNumber={best.SupplierPartNumber}; Confidence={best.MatchConfidence}");
 
