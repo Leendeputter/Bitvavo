@@ -91,7 +91,7 @@ namespace Procurement.Tests.Erp
                 "VEN01", BuildRequestLine(), BuildDraftLine(), partInfo: null, erpPoNumber: null, lineNumber: 1, isFirstLine: true, userName: "tester");
 
             Assert.Equal("", line.STK_10);
-            Assert.Equal("000", line.BUYID_10);
+            Assert.Equal("000", line.BUYER_10);
             Assert.Equal("", line.PLANID_10);
         }
 
@@ -103,7 +103,7 @@ namespace Procurement.Tests.Erp
                 "VEN01", BuildRequestLine(), BuildDraftLine(), partInfo, erpPoNumber: null, lineNumber: 1, isFirstLine: true, userName: "tester");
 
             Assert.Equal("MAIN", line.STK_10);
-            Assert.Equal("007", line.BUYID_10);
+            Assert.Equal("007", line.BUYER_10);
             Assert.Equal("PLN1", line.PLANID_10);
         }
 
@@ -114,7 +114,7 @@ namespace Procurement.Tests.Erp
             var line = MaxPurchaseOrderRepository.BuildPurchaseOrderLine(
                 "VEN01", BuildRequestLine(), BuildDraftLine(), partInfo, erpPoNumber: null, lineNumber: 1, isFirstLine: true, userName: "tester");
 
-            Assert.Equal("000", line.BUYID_10);
+            Assert.Equal("000", line.BUYER_10);
         }
 
         [Fact]

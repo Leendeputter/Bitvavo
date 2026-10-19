@@ -743,13 +743,13 @@ raken dat mock-modus zelf nooit aanraakt:
   `FixVar`/`RoundType`- en `ChangePODetail`'s `IncOrdRev`-parameters staat nog niet vast.
 
   **Resultaat van de eerste echte test (okt 2026), met drie correcties van de gebruiker**:
-  `REVLEV_10` is voor een nieuwe PO altijd `"000"` (stond op `"1"`); `STK_10`/`BUYID_10`/`PLANID_10`
+  `REVLEV_10` is voor een nieuwe PO altijd `"000"` (stond op `"1"`); `STK_10`/`BUYER_10`/`PLANID_10`
   komen niet uit een hardcoded fallback of de lokale `PurchaseRequestLine`, maar uit een verse
   `Part_Master`-lookup per regel (`MaxOrderRepository.GetPartByIdAsync`, uitgebreid met
   `DELSTK_01`/`BUYER_01`/`PLANID_01`): Stock blijft leeg zonder PrimaryStock (geen `"FGI"`-fallback
   meer), Buyer valt terug op `"000"` zonder artikel-Buyer, Planner wordt gewoon gekopieerd.
   **`Purchase_Order_Code`'s eigen Buyer-veld op headerniveau** (`BUYID_16`, anders dan de per-regel
-  `BUYID_10` hierboven, die artikel-afgeleid is) moet de **daadwerkelijke** besteller koppelen. Geen
+  `BUYER_10` hierboven, die artikel-afgeleid is) moet de **daadwerkelijke** besteller koppelen. Geen
   MAX-native link daarvoor beschikbaar — in plaats daarvan een handmatige conventie die de gebruiker
   zelf heeft opgezet (okt 2026): elke Buyer's Windows-gebruikersnaam staat in `Buyers.UDFKEY_95`.
   `MaxOrderRepository.GetBuyerIdByWindowsUsernameAsync` matcht `ISessionContext.UserName` (de al

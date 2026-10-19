@@ -59,11 +59,11 @@ namespace Procurement.Erp
     /// Confirmed by the user against the first real PO this created (okt 2026): REVLEV_10 is always
     /// "000" for a new PO (not whatever AddPODetail/the type default otherwise produces); STK_10
     /// comes from Part_Master.DELSTK_01 for the article (blank if the article has none — no "FGI"
-    /// fallback); BUYID_10 (line/detail level) comes from Part_Master.BUYER_01 ("000" if none);
+    /// fallback); BUYER_10 (line/detail level) comes from Part_Master.BUYER_01 ("000" if none);
     /// PLANID_10 comes from Part_Master.PLANID_01. See MaxOrderRepository.GetPartByIdAsync/MaxPartInfo
     /// for the lookup these three come from.
     ///
-    /// Purchase_Order_Code's own header-level BUYID_16 (distinct from Order_Master.BUYID_10, which is
+    /// Purchase_Order_Code's own header-level BUYID_16 (distinct from Order_Master.BUYER_10, which is
     /// per-line/detail and article-derived — see above) is set via SetHeaderBuyerIdAsync, a
     /// follow-up ChangePOHeading right after AddPODetail creates the header (same pattern as
     /// ApplyHeaderConfirmationAsync's CONFRM_16 below) — AddPODetail itself builds the header
@@ -434,7 +434,7 @@ namespace Procurement.Erp
         /// <summary>
         /// Field values map to already-known data where possible (PRTNUM_10 from the originating
         /// PurchaseRequestLine.ErpArticleId, CURQTY_10 from the draft line's ordered quantity,
-        /// VENID_10 from the supplier); STK_10/BUYID_10/PLANID_10 come from the article's own
+        /// VENID_10 from the supplier); STK_10/BUYER_10/PLANID_10 come from the article's own
         /// Part_Master row (partInfo — null if MAX has no Part_Master row for this ErpArticleId, e.g.
         /// a made-up test artikelnummer, in which case all three fall back as noted below); STATUS_10
         /// = "3" is copied from the originally supplied example verbatim, still unconfirmed for a
@@ -485,7 +485,7 @@ namespace Procurement.Erp
                 FRMPLN_10 = "Y",
                 STATUS_10 = "3",
                 STK_10 = stockId,
-                BUYID_10 = buyerId,
+                BUYER_10 = buyerId,
                 CUSORD_10 = "",
                 PLANID_10 = plannerId,
                 ORDREF_10 = "",
