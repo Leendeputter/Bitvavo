@@ -372,16 +372,83 @@ namespace Procurement.UI.Forms
             _composition.ErpConnector.IncludedOrderStatuses = statuses;
         }
 
-        /// <summary>Laadt enkel de al lokaal gesynchroniseerde aanvragen — raakt MAX niet aan. Gefilterd op de "Weergeven"-checkboxen (welke Workflow-statussen getoond worden), niet op een vaste "openstaande"-lijst. Gebruikt na lokale wijzigingen (nieuwe testaanvraag, sourcing, goedkeuringen) en bij het wijzigen van de statusfilter zelf, niet bij het openen van het scherm.</summary>
+        /// <summary>
+        /// Laadt enkel de al lokaal gesynchroniseerde aanvragen — raakt MAX niet aan. Gefilterd op de
+        /// "Weergeven"-checkboxen (welke Workflow-statussen getoond worden) én op de huidige Due Date
+        /// Range/Select By-instelling (zelfde filter als "Query" tegen MAX toepast, hier lokaal
+        /// nagebouwd — zie ApplyRangeAndDueDateFilters) zodat een checkbox omzetten niet alsnog alles
+        /// laat verschijnen dat net met "Query" buiten beeld was gefilterd. Handmatige testaanvragen
+        /// blijven, net als bij GetOpenPurchaseRequestsAsync, altijd zichtbaar ongeacht dat filter —
+        /// zij waren nooit onderdeel van enige MAX-query. Gebruikt na lokale wijzigingen (nieuwe
+        /// testaanvraag, sourcing, goedkeuringen) en bij het wijzigen van de statusfilter zelf, niet
+        /// bij het openen van het scherm.
+        /// </summary>
         private async System.Threading.Tasks.Task LoadLocalRequestsAsync()
         {
             SetStatus("Aanvragen laden...");
             var statuses = GetCheckedRequestStatuses();
             var allRequests = await _composition.PurchaseRequestRepository.GetAllAsync();
-            var requests = allRequests.Where(r => statuses.Contains(r.Status)).ToList();
+            var requests = ApplyRangeAndDueDateFilters(allRequests.Where(r => statuses.Contains(r.Status)));
             await PopulateRequestsGrid(requests);
             SetStatus($"{requests.Count} aanvraag/aanvragen getoond (statusfilter).");
             await LoadLinesForSelectedRequestAsync();
+        }
+
+        /// <summary>
+        /// Client-side herbouw van het Due Date Range/Select By-filter dat ApplyFiltersToErpConnector
+        /// op MAX-niveau doorgeeft aan MaxOrderRepository.GetOpenOrdersAsync — nodig omdat
+        /// LoadLocalRequestsAsync (anders dan RefreshRequestsAsync/"Query") nooit MAX raakt, dus moet
+        /// hetzelfde filter hier lokaal nagebootst worden, anders verdwijnt het zodra een
+        /// "Weergeven"-checkbox wordt omgezet. Handmatige testaanvragen ("TEST-"-prefix) slaan dit
+        /// filter altijd over, consistent met GetOpenPurchaseRequestsAsync's eigen
+        /// IsManualTestRequest-uitzondering.
+        /// </summary>
+        private IReadOnlyList<PurchaseRequest> ApplyRangeAndDueDateFilters(IEnumerable<PurchaseRequest> requests)
+        {
+            IEnumerable<PurchaseRequest> result = requests.ToList();
+
+            if (_dueDateEnableCheckBox.Checked)
+            {
+                var start = _dueDateStartPicker.Value.Date;
+                var end = _dueDateEndPicker.Value.Date;
+                result = result.Where(r => IsManualTestRequest(r.ErpRequestNumber) ||
+                    (r.RequiredDate.HasValue && r.RequiredDate.Value.Date >= start && r.RequiredDate.Value.Date <= end));
+            }
+
+            var rangeStart = _rangeStartBox.Text.Trim();
+            var rangeEnd = _rangeEndBox.Text.Trim();
+            if (!string.IsNullOrEmpty(rangeStart) || !string.IsNullOrEmpty(rangeEnd))
+            {
+                var field = GetSelectedRangeField();
+                result = result.Where(r => IsManualTestRequest(r.ErpRequestNumber) || MatchesRange(r, field, rangeStart, rangeEnd));
+            }
+
+            return result.ToList();
+        }
+
+        private static bool IsManualTestRequest(string erpRequestNumber) =>
+            !string.IsNullOrEmpty(erpRequestNumber) && erpRequestNumber.StartsWith("TEST-", StringComparison.Ordinal);
+
+        private static bool MatchesRange(PurchaseRequest request, MaxOrderRangeField field, string rangeStart, string rangeEnd)
+        {
+            string value;
+            switch (field)
+            {
+                case MaxOrderRangeField.Part:
+                    value = request.Lines?.FirstOrDefault()?.ErpArticleId;
+                    break;
+                case MaxOrderRangeField.Customer:
+                    value = request.Lines?.FirstOrDefault()?.Customer;
+                    break;
+                default:
+                    value = request.ErpRequestNumber;
+                    break;
+            }
+
+            if (string.IsNullOrEmpty(value)) return false;
+            if (!string.IsNullOrEmpty(rangeStart) && string.CompareOrdinal(value, rangeStart) < 0) return false;
+            if (!string.IsNullOrEmpty(rangeEnd) && string.CompareOrdinal(value, rangeEnd) > 0) return false;
+            return true;
         }
 
         /// <summary>Vraagt open orders op uit MAX (Order_Master/Part_Master, incl. Part_Vendor-mapping sync) met de huidige filterinstellingen, en synchroniseert ze naar lokale aanvragen — enkel aangeroepen via de "Query"-knop.</summary>

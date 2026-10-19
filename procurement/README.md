@@ -187,6 +187,16 @@ altijd tonen" zijn behandeld — en dus nooit meer gefilterd worden (en ook z'n 
 nooit meer ververst krijgen, want die worden alleen bijgewerkt zodra de rij wél weer in een
 MAX-resultaat voorkomt). Dat was de daadwerkelijke oorzaak van "de filters doen niets".
 
+**Due Date Range/Select By gingen verloren bij het omzetten van een "Weergeven"-checkbox** (gebruiker,
+okt 2026): die checkboxen roepen `LoadLocalRequestsAsync` aan, dat — anders dan "Query" — nooit MAX
+raakt en dus ook nooit `GetOpenPurchaseRequestsAsync`'s eigen filtering doorloopt; het liet simpelweg
+alle lokaal gesynchroniseerde aanvragen weer zien die bij de huidige statuscheckboxen pasten, ongeacht
+een actief Due Date-/Select By-filter — vandaar dat "bijna alles" terugkwam zodra je een vinkje
+omzette. `MainForm.ApplyRangeAndDueDateFilters` bouwt dat filter nu ook lokaal na (zelfde
+velden/vergelijking als de MAX-query, client-side toegepast op de al-geladen lijst) en wordt nu ook
+door `LoadLocalRequestsAsync` aangeroepen — met dezelfde uitzondering voor handmatige testaanvragen
+als hierboven.
+
 De statusbalk toont na een Query ook hoeveel orders de MAX-query zelf teruggaf
 (`MaxErpConnector.LastMaxOrderCount`), los van hoeveel er na de lokale merge in de grid staan — handig
 om te zien of een filter al op MAX/SQL-niveau iets doet.
