@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Standalone console tool, deliberately outside MainForm/ProcurementEngine, for placing one real
+    order against DigiKey's Ordering v3 sandbox without writing a PO into MAX — there is no MAX test
+    environment to isolate that side effect into (oct-2026, see README's Status section). Reads the
+    already-authorized DIGIKEY supplier row directly (read-only access to Procurement_Supplier only,
+    never touches any MAX table) and calls DigiKeyAdapter.CreateOrderAsync exactly like the real app
+    would. Never referenced by Procurement.UI/Engine — run manually, by hand, once in a while.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>7.3</LangVersion>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Procurement.Tools.DigiKeyOrderTester</RootNamespace>
+    <AssemblyName>Procurement.Tools.DigiKeyOrderTester</AssemblyName>
+    <Nullable>disable</Nullable>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Procurement.Core\Procurement.Core.csproj" />
+    <ProjectReference Include="..\Procurement.Data\Procurement.Data.csproj" />
+    <ProjectReference Include="..\Procurement.Suppliers.DigiKey\Procurement.Suppliers.DigiKey.csproj" />
+  </ItemGroup>
+
+</Project>

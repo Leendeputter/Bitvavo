@@ -16,27 +16,26 @@ open purchase requests komen standaard uit MAX's eigen `Order_Master`/`Part_Mast
 [Purchase requests uit MAX](#purchase-requests-uit-max) hieronder. Handmatig een testaanvraag
 toevoegen (§8.1) blijft ook werken, als aanvulling op de echte MAX-orders.
 
-## Status (laatst bijgewerkt: 25 sep 2026)
+## Status (laatst bijgewerkt: 19 okt 2026)
 
 **Werkt en is bevestigd tegen de echte DigiKey-sandbox:**
 - Product Information V4 (zoeken/prijzen/voorraad/verpakking) — `UseMockData=false` getest, inclusief
   het eerdere 403-probleem (DigiKey-portal-desync, door DigiKey zelf opgelost na contact).
 - Ordering v3 is volledig **geïmplementeerd** (`DigiKeyAdapter.CreateOrderAsync` in real-mode,
-  3-legged OAuth via `DigiKeyOrderingAuthorizer`) en de Callback URL (`https://localhost`) staat
-  inmiddels goed geregistreerd in DigiKey's sandbox-portal. De schema-migratie hiervoor
-  (`Supplier.RefreshTokenEncrypted` + account-/verzendgegevenskolommen) is doorgevoerd en de app
-  start weer normaal op.
+  3-legged OAuth via `DigiKeyOrderingAuthorizer`), de Callback URL (`https://localhost`) staat goed
+  geregistreerd, en DigiKey heeft **sandbox-Ordering inmiddels geactiveerd** voor het account.
 
 **Nog niet getest / eerstvolgende stappen:**
 1. **De "Ordering autoriseren..."-flow zelf nog niet één keer doorlopen** (Instellingen → Suppliers →
-   DigiKey-rij) — dat is de eerste stap bij het weer oppakken: browser-consent geven, de mislukte
-   `https://localhost/...`-URL uit de adresbalk plakken, en controleren dat het refresh-token
-   succesvol wordt opgeslagen.
-2. **DigiKey moest nog reageren op het verzoek om sandbox-Ordering/sandbox-OrderStatus te activeren**
-   voor het account — zonder die activatie geeft een echte `CreateOrderAsync`-aanroep waarschijnlijk
-   alsnog een 403, ook met een geldig token. Nagaan of daar al reactie op is.
-3. Zodra 1 en 2 rond zijn: `UseMockData` voor DigiKey op `false` zetten en één keer een echte
-   testorder plaatsen tegen de sandbox — dit is nog nooit end-to-end uitgeprobeerd.
+   DigiKey-rij) — browser-consent geven, de mislukte `https://localhost/...`-URL uit de adresbalk
+   plakken, en controleren dat het refresh-token succesvol wordt opgeslagen.
+2. **Eén echte testorder plaatsen tegen de sandbox** — dit is nog nooit end-to-end uitgeprobeerd. Niet
+   via de normale "Order plaatsen"-knop: er is geen MAX-testomgeving, en die knop schrijft altijd ook
+   een echte PO naar MAX. Gebruik in plaats daarvan het nieuwe losse tooltje
+   `Procurement.Tools.DigiKeyOrderTester` (zie "Suppliers" hieronder) dat `CreateOrderAsync`
+   rechtstreeks aanroept, buiten MAX om.
+3. Nog onbekend welk `DigiKeyPartNumber` de Ordering-sandbox accepteert — daar is niets over
+   gevonden, dus dat is grotendeels een kwestie van uitproberen met het tooltje.
 4. `GetOrderStatusAsync`/`CancelOrderAsync` blijven daarna nog steeds mock-only (geen bevestigd
    contract voor die APIs).
 
@@ -500,6 +499,28 @@ plaats van de eerdere `SupplierException`. Belangrijke punten:
   mock-only — daarvoor is (nog) geen bevestigd API-contract beschikbaar, in tegenstelling tot
   Ordering zelf. Ook heeft dit nog nooit tegen een live DigiKey-account gedraaid; behandel het als
   ongeverifieerd totdat er één keer echt een order geplaatst is.
+
+**Een eerste echte testorder plaatsen zonder MAX te raken** (`Procurement.Tools.DigiKeyOrderTester`,
+okt 2026): er is geen MAX-testomgeving beschikbaar, en de normale "Order plaatsen"-knop schrijft altijd
+eerst een echte PO naar MAX (`ProcurementEngine.PlaceSupplierPurchaseOrderAsync`), ongeacht of de
+supplier-kant sandbox/mock is — niet geschikt dus om de eerste echte DigiKey-sandboxorder mee te
+testen. Dit losse console-tooltje (`src/Procurement.Tools.DigiKeyOrderTester`) roept
+`DigiKeyAdapter.CreateOrderAsync` rechtstreeks aan, met de al-opgeslagen, al-geautoriseerde
+DigiKey-credentials/refresh-token uit `Procurement_Supplier` (alleen-lezen toegang tot die ene tabel,
+nooit enige MAX-tabel). Draai het met:
+
+```
+set PROCUREMENT_SECRET_KEY=<dezelfde sleutel als de hoofdapplicatie>
+set PROCUREMENT_TEST_CONNECTION_STRING=<connection string naar de echte Unitron-database>
+Procurement.Tools.DigiKeyOrderTester.exe <DigiKeyPartNumber> [quantity] [unitPrice]
+```
+
+Vereist dat "Ordering autoriseren..." al minstens één keer succesvol is doorlopen (anders is
+`Supplier.RefreshToken` leeg en stopt het tooltje meteen met een duidelijke melding). Print het volledige
+resultaat (`SupplierOrderNumber`/`Status`/`OrderTotal`) of de `SupplierException` as-is — geen
+assertions, puur om te observeren wat DigiKey's sandbox teruggeeft, inclusief welk `DigiKeyPartNumber`
+die sandbox daadwerkelijk accepteert (daarover was bij het schrijven van deze tool nog niets
+gedocumenteerd gevonden, dus dat is deels gewoon uitproberen).
 
 **Nog niet gebouwd — bestellen (de overige tien suppliers)**: `CreateOrderAsync`/`GetOrderStatusAsync`/
 `CancelOrderAsync` blijven bij de rest van groep 1 in real-mode (`UseMockData=false`) een expliciete
