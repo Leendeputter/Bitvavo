@@ -253,7 +253,7 @@ namespace Procurement.Engine
                 catch (SupplierException ex)
                 {
                     await _auditLogger.LogAsync("PurchaseRequestLine", line.Id.ToString(), "OFFER_BUILD_FAILED", "Error",
-                        adapter.SupplierCode, error: ex.Message);
+                        adapter.SupplierCode, requestPayload: $"SupplierPartNumber={kvp.Value.SupplierPartNumber}", error: ex.Message);
                 }
             }
 

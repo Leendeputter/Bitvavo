@@ -118,7 +118,7 @@ namespace Procurement.Suppliers.DigiKey.Http
             catch (HttpRequestException ex)
             {
                 throw new SupplierException(DigiKeyAdapter.Code, SupplierErrorCode.Timeout,
-                    "Could not reach DigiKey API.", ex);
+                    $"Could not reach DigiKey API ({DescribeRequest(request)}).", ex);
             }
 
             var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
@@ -127,21 +127,32 @@ namespace Procurement.Suppliers.DigiKey.Http
                 response.StatusCode == System.Net.HttpStatusCode.Forbidden)
             {
                 throw new SupplierException(DigiKeyAdapter.Code, SupplierErrorCode.AuthenticationError,
-                    $"DigiKey API returned {(int)response.StatusCode}: {DescribeError(body)}");
+                    $"DigiKey API returned {(int)response.StatusCode} ({DescribeRequest(request)}): {DescribeError(body)}");
             }
             if (response.StatusCode == (System.Net.HttpStatusCode)429)
             {
                 throw new SupplierException(DigiKeyAdapter.Code, SupplierErrorCode.RateLimit,
-                    "DigiKey API rate limit exceeded.");
+                    $"DigiKey API rate limit exceeded ({DescribeRequest(request)}).");
             }
             if (!response.IsSuccessStatusCode)
             {
                 throw new SupplierException(DigiKeyAdapter.Code, SupplierErrorCode.UnknownError,
-                    $"DigiKey API returned {(int)response.StatusCode}: {DescribeError(body)}");
+                    $"DigiKey API returned {(int)response.StatusCode} ({DescribeRequest(request)}): {DescribeError(body)}");
             }
 
             return body;
         }
+
+        /// <summary>
+        /// Everything worth putting in a DigiKey support ticket alongside the error body's own
+        /// correlationId: which endpoint was called, this app's Client Id (not the secret — DigiKey
+        /// support needs the former to look up the app, never the latter), and a UTC timestamp (the
+        /// audit log's own Timestamp column already has one, but a ticket forwarded as plain text
+        /// loses that column) — added here (okt 2026) after the user asked for a more specific error
+        /// to forward directly to DigiKey, since the message previously only had the response body.
+        /// </summary>
+        private string DescribeRequest(HttpRequestMessage request) =>
+            $"{request.Method} {request.RequestUri}, ClientId {_options.ClientId}, {DateTime.UtcNow:yyyy-MM-ddTHH:mm:ssZ}";
 
         /// <summary>
         /// Ordering's error responses follow a confirmed shape (ApiErrorResponse: ErrorMessage/

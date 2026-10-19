@@ -509,6 +509,13 @@ echte HTTP-aanroepen tegen de publiek gedocumenteerde Product Information API va
   `GetPackagingOptionsAsync`, die de JSON-respons parst (`Http/*Dtos.cs`, `Newtonsoft.Json`) naar de
   bestaande `SupplierProduct`/`SupplierPricing`/`SupplierAvailability`/`SupplierPackagingOption`-
   modellen.
+- **DigiKey-foutmeldingen zijn uitgebreid met alles voor een support-ticket** (okt 2026, op verzoek
+  van de gebruiker): `DigiKeyHttpClientWrapper.DescribeRequest` voegt de HTTP-methode + volledige URL,
+  het Client Id (nooit het secret) en een UTC-tijdstip toe aan elke gegooide `SupplierException`,
+  naast de bestaande `correlationId`/`detail` uit DigiKey's eigen foutrespons (`DescribeError`) — zo
+  bevat het Audit-log's `Error`-veld zelf al voldoende context om rechtstreeks naar DigiKey support
+  door te sturen, zonder los de aanroep-URL te hoeven opzoeken. `OFFER_BUILD_FAILED` logt er ook het
+  opgezochte `SupplierPartNumber` bij (`requestPayload`), voorheen leeg.
 
 **Belangrijk voorbehoud (groep 1)**: dit is geschreven op basis van elke supplier's publiek
 gedocumenteerde API-vorm, **niet** getest tegen een echte (sandbox-)aanroep — er zijn nog geen
