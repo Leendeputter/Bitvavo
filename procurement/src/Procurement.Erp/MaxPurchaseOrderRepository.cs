@@ -63,6 +63,12 @@ namespace Procurement.Erp
     /// PLANID_10 comes from Part_Master.PLANID_01. See MaxOrderRepository.GetPartByIdAsync/MaxPartInfo
     /// for the lookup these three come from.
     ///
+    /// Also confirmed against that same real PO (okt 2026): MAX itself reduces a new line's CURDUE_10
+    /// by the article's Part_Master.PURSTK_01 (Stock Lead Time, in days) somewhere downstream of
+    /// AddPODetail — so BuildPurchaseOrderLine sends the supplier's actual required date *increased*
+    /// by that many days (MaxPartInfo.StockLeadTimeDays), to end up with the right date after MAX's
+    /// own reduction.
+    ///
     /// Purchase_Order_Code's own header-level BUYID_16 (distinct from Order_Master.BUYER_10, which is
     /// per-line/detail and article-derived — see above) is set via SetHeaderBuyerIdAsync, a
     /// follow-up ChangePOHeading right after AddPODetail creates the header (same pattern as
@@ -434,13 +440,14 @@ namespace Procurement.Erp
         /// <summary>
         /// Field values map to already-known data where possible (PRTNUM_10 from the originating
         /// PurchaseRequestLine.ErpArticleId, CURQTY_10 from the draft line's ordered quantity,
-        /// VENID_10 from the supplier); STK_10/BUYER_10/PLANID_10 come from the article's own
-        /// Part_Master row (partInfo — null if MAX has no Part_Master row for this ErpArticleId, e.g.
-        /// a made-up test artikelnummer, in which case all three fall back as noted below); STATUS_10
-        /// = "3" is copied from the originally supplied example verbatim, still unconfirmed for a
-        /// real PO line rather than that example's own test data. ORDNUM_10/LINNUM_10/DELNUM_10 are
-        /// left blank for the first line of a PO (AddPODetail assigns "01"/"01" and the new PO number
-        /// itself when CreateHeader:true) and set explicitly for every line after that.
+        /// VENID_10 from the supplier); STK_10/BUYER_10/PLANID_10/the CURDUE_10 lead-time adjustment
+        /// come from the article's own Part_Master row (partInfo — null if MAX has no Part_Master row
+        /// for this ErpArticleId, e.g. a made-up test artikelnummer, in which case all of these fall
+        /// back as noted below/above); STATUS_10 = "3" is copied from the originally supplied example
+        /// verbatim, still unconfirmed for a real PO line rather than that example's own test data.
+        /// ORDNUM_10/LINNUM_10/DELNUM_10 are left blank for the first line of a PO (AddPODetail
+        /// assigns "01"/"01" and the new PO number itself when CreateHeader:true) and set explicitly
+        /// for every line after that.
         ///
         /// Internal + static (userName passed explicitly instead of reading _session.UserName) so
         /// MaxPurchaseOrderRepositoryTests can exercise this field-by-field mapping directly —
@@ -460,6 +467,16 @@ namespace Procurement.Erp
             var buyerId = string.IsNullOrWhiteSpace(partInfo?.Buyer) ? "000" : partInfo.Buyer;
             var plannerId = partInfo?.Planner ?? "";
 
+            // Confirmed by the user against a real created PO (okt 2026): MAX itself reduces
+            // CURDUE_10 by the article's Stock Lead Time somewhere downstream of AddPODetail — so the
+            // supplier's actual required date has to be sent *increased* by that same number of days,
+            // otherwise the date MAX ends up showing is short by exactly the lead time. See
+            // MaxPartInfo.StockLeadTimeDays.
+            var requiredDate = requestLine.RequiredDate ?? now;
+            var curDue = partInfo?.StockLeadTimeDays.HasValue == true
+                ? requiredDate.AddDays(partInfo.StockLeadTimeDays.Value)
+                : requiredDate;
+
             return new Order_Master
             {
                 ORDNUM_10 = isFirstLine ? "" : erpPoNumber,
@@ -473,7 +490,7 @@ namespace Procurement.Erp
                 // an inserted row with this field left blank.
                 ORDER_10 = isFirstLine ? "" : $"{erpPoNumber}{lineNumber:D2}01",
                 PRTNUM_10 = requestLine.ErpArticleId,
-                CURDUE_10 = requestLine.RequiredDate ?? now,
+                CURDUE_10 = curDue,
                 // Confirmed by the user against a real created PO (okt 2026): a new PO's revision is
                 // always "000", not whatever AddPODetail/the Order_Master default otherwise produces.
                 REVLEV_10 = "000",

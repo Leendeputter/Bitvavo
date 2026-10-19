@@ -85,6 +85,17 @@ namespace Procurement.Tests.Erp
         }
 
         [Fact]
+        public void BuildPurchaseOrderLine_StockLeadTimeProvided_AddsItToRequiredDate()
+        {
+            var requiredDate = new DateTime(2026, 9, 1);
+            var partInfo = new MaxPartInfo { StockLeadTimeDays = 7 };
+            var line = MaxPurchaseOrderRepository.BuildPurchaseOrderLine(
+                "VEN01", BuildRequestLine(requiredDate), BuildDraftLine(), partInfo, erpPoNumber: null, lineNumber: 1, isFirstLine: true, userName: "tester");
+
+            Assert.Equal(requiredDate.AddDays(7), line.CURDUE_10);
+        }
+
+        [Fact]
         public void BuildPurchaseOrderLine_NoPartInfo_StockBlank_BuyerFallsBackTo000_PlannerBlank()
         {
             var line = MaxPurchaseOrderRepository.BuildPurchaseOrderLine(

@@ -201,7 +201,8 @@ SELECT
     dbo.Part_Master.TYPE_01 AS PartType,
     dbo.Part_Master.DELSTK_01 AS Stock,
     dbo.Part_Master.BUYER_01 AS Buyer,
-    dbo.Part_Master.PLANID_01 AS Planner
+    dbo.Part_Master.PLANID_01 AS Planner,
+    dbo.Part_Master.PURSTK_01 AS StockLeadTimeDays
 FROM dbo.Part_Master
 WHERE dbo.Part_Master.PRTNUM_01 = @partId";
 
@@ -223,7 +224,8 @@ WHERE dbo.Part_Master.PRTNUM_01 = @partId";
                         PartType = ToDisplayString(reader["PartType"]),
                         Stock = ToDisplayString(reader["Stock"]),
                         Buyer = ToDisplayString(reader["Buyer"]),
-                        Planner = ToDisplayString(reader["Planner"])
+                        Planner = ToDisplayString(reader["Planner"]),
+                        StockLeadTimeDays = ToNullableInt(reader["StockLeadTimeDays"])
                     };
                 }
             }
@@ -297,5 +299,17 @@ WHERE dbo.Part_Master.PRTNUM_01 = @partId";
 
         private static decimal? ToNullableDecimal(object value) =>
             value == null || value == DBNull.Value ? (decimal?)null : Convert.ToDecimal(value);
+
+        // Convert.ToInt32 rather than an unconditional cast: PURSTK_01's exact column type wasn't
+        // confirmed (could be a numeric type, or a char-coded number like several other Part_Master
+        // fields turned out to be) — this handles either without crashing, falling back to null
+        // (meaning "no lead-time adjustment") if it's neither parseable.
+        private static int? ToNullableInt(object value)
+        {
+            if (value == null || value == DBNull.Value) return null;
+            if (value is string s)
+                return int.TryParse(s.Trim(), out var parsed) ? parsed : (int?)null;
+            try { return Convert.ToInt32(value); } catch { return null; }
+        }
     }
 }
