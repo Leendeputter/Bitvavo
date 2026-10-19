@@ -402,6 +402,9 @@ namespace Procurement.Erp
                 ORDER_10 = isFirstLine ? "" : $"{erpPoNumber}{lineNumber:D2}01",
                 PRTNUM_10 = requestLine.ErpArticleId,
                 CURDUE_10 = requestLine.RequiredDate ?? now,
+                // Confirmed by the user against a real created PO (okt 2026): a new PO's revision is
+                // always "000", not whatever AddPODetail/the Order_Master default otherwise produces.
+                REVLEV_10 = "000",
                 RECFLG_10 = "N",
                 TAXABLE_10 = "N",
                 TYPE_10 = "PO",
