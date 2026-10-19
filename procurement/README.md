@@ -221,6 +221,16 @@ dezelfde kolomnamen/-breedtes als PartID/Manufacturing Part/Selected .../etc. (m
 Workflow-kolom, want per regel is dat altijd de status van de hele aanvraag), aangevuld met de
 workflow-specifieke velden Manufacturer/Packaging/ReelRequirement die niet uit de MAX-query komen.
 
+Direct na **DueDate** staat **PO DueDate** (user request, okt 2026): de datum die een PO-regel voor
+deze aanvraag zou krijgen als er nu een order aangemaakt werd, dus `DueDate` met MAX's eigen
+`CalculatePODueDateFromMRPDueDate` erop toegepast — precies dezelfde berekening en dezelfde
+`MaxOrderRepository`-aanroep als `MaxPurchaseOrderRepository.BuildPurchaseOrderLine` straks echt
+gebruikt, hier alleen vooraf getoond zodat de juiste datum al bij de leverancier opgegeven kan worden
+vóórdat de PO er daadwerkelijk is. Eén gebatchte query per grid-load (`CalculatePoDueDatesAsync`,
+`MainForm.GetPoDueDatesByKeyAsync`) in plaats van één aanroep per rij; leeg zolang DueDate of PartID
+van de regel nog onbekend is. Geen eigen opslag van deze waarde — altijd live opgevraagd bij MAX,
+nooit in de lokale database gecached.
+
 **Statusfilter ("Weergeven")**: een aparte groep checkboxen (los van de MAX-Query-filters ernaast),
 één per `PurchaseRequest.Status`-waarde, bepaalt welke Workflow-statussen in het grid getoond worden.
 Standaard alles behalve Ordered aangevinkt — een eenmaal daadwerkelijk bestelde aanvraag blijft zo uit

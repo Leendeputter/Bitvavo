@@ -525,6 +525,7 @@ namespace Procurement.UI.Forms
             // MaxErpConnector), dus de eerste regel volstaat hier; handmatige testaanvragen hebben
             // ook altijd precies één regel.
             var selectionsByLineId = await GetSelectionsByLineIdAsync(requests.Select(r => r.Lines.FirstOrDefault()?.Id));
+            var poDueDatesByKey = await GetPoDueDatesByKeyAsync(requests.Select(r => r.Lines.FirstOrDefault()));
 
             var rows = requests
                 .Select(r =>
@@ -555,6 +556,11 @@ namespace Procurement.UI.Forms
                         // stille 0-waarde een verkeerde indruk geven.
                         ExtCost = ComputeExtCost(line?.RequestedQuantity ?? 0, line?.Cost, line?.CostConv),
                         DueDate = r.RequiredDate,
+                        // MAX's own CalculatePODueDateFromMRPDueDate applied to DueDate above — the
+                        // date to actually hand the supplier, were a PO created for this line right
+                        // now (see MaxOrderRepository.CalculatePoDueDatesAsync and the class comment
+                        // on MaxPurchaseOrderRepository). Blank if DueDate or PartID is unknown.
+                        PoDueDate = GetPoDueDate(line, poDueDatesByKey),
                         Reference = r.Project,
                         ManufacturingPart = line?.ManufacturerPartNumber,
                         Customer = line?.Customer,
@@ -583,6 +589,7 @@ namespace Procurement.UI.Forms
                 _requestsGrid.Columns["Id"].Visible = false;
             SetHeaderText(_requestsGrid, "ManufacturingPart", "Manufacturing Part");
             SetHeaderText(_requestsGrid, "ExtCost", "Ext. Cost");
+            SetHeaderText(_requestsGrid, "PoDueDate", "PO DueDate");
             SetHeaderText(_requestsGrid, "SelectedSupplier", "Selected Supplier");
             SetHeaderText(_requestsGrid, "SelectedPrice", "Selected Price");
             SetHeaderText(_requestsGrid, "SelectedQuantity", "Selected Qty");
@@ -592,7 +599,7 @@ namespace Procurement.UI.Forms
             ApplyDateColumns(_requestsGrid, "SelectedDueDate");
             ApplyMaxColumnWidths(_requestsGrid);
             ApplyFrozenColumns(_requestsGrid,
-                "Order", "Workflow", "PartID", "Desc1", "Quantity", "Cost", "DueDate",
+                "Order", "Workflow", "PartID", "Desc1", "Quantity", "Cost", "DueDate", "PoDueDate",
                 "SelectedSupplier", "SelectedPrice", "SelectedQuantity", "SelectedDueDate");
             HighlightOrderedRows(_requestsGrid);
         }
@@ -645,6 +652,33 @@ namespace Procurement.UI.Forms
         }
 
         /// <summary>
+        /// One batched MAX round-trip (MaxOrderRepository.CalculatePoDueDatesAsync — MAX's own
+        /// CalculatePODueDateFromMRPDueDate SQLCLR function, see MaxPurchaseOrderRepository's class
+        /// comment) for every distinct (RequiredDate, PartID) pair among the given lines, instead of
+        /// one query per grid row. Lines without both a RequiredDate and a PartID are skipped — the
+        /// function needs both arguments — and simply show a blank PoDueDate (see GetPoDueDate).
+        /// </summary>
+        private async System.Threading.Tasks.Task<IReadOnlyDictionary<(DateTime MrpDate, string PartNumber), DateTime>> GetPoDueDatesByKeyAsync(
+            IEnumerable<PurchaseRequestLine> lines)
+        {
+            var items = lines
+                .Where(l => l != null && l.RequiredDate.HasValue && !string.IsNullOrEmpty(l.ErpArticleId))
+                .Select(l => (l.RequiredDate.Value, l.ErpArticleId))
+                .ToList();
+            return await _composition.MaxOrderRepository.CalculatePoDueDatesAsync(items);
+        }
+
+        private static DateTime? GetPoDueDate(
+            PurchaseRequestLine line,
+            IReadOnlyDictionary<(DateTime MrpDate, string PartNumber), DateTime> poDueDatesByKey)
+        {
+            if (line == null || !line.RequiredDate.HasValue || string.IsNullOrEmpty(line.ErpArticleId)) return null;
+            return poDueDatesByKey.TryGetValue((line.RequiredDate.Value, line.ErpArticleId), out var poDueDate)
+                ? poDueDate
+                : (DateTime?)null;
+        }
+
+        /// <summary>
         /// Column widths shared by both grids (see PopulateRequestsGrid/LoadLinesForSelectedRequestAsync).
         /// Every column named here gets AutoSizeMode.None, i.e. is excluded from the grid-level Fill
         /// distribution — without that, Fill would spread the remaining width evenly across short
@@ -683,6 +717,7 @@ namespace Procurement.UI.Forms
             SetCharacterBasedColumnWidth(grid, "Cnv", 6);
             SetCharacterBasedColumnWidth(grid, "ExtCost", 14);
             SetCharacterBasedColumnWidth(grid, "DueDate", 12);
+            SetCharacterBasedColumnWidth(grid, "PoDueDate", 12);
             SetCharacterBasedColumnWidth(grid, "Customer", 14);
             SetCharacterBasedColumnWidth(grid, "StockID", 14);
             SetCharacterBasedColumnWidth(grid, "Workflow", 16);
@@ -708,7 +743,7 @@ namespace Procurement.UI.Forms
             ApplyQuantityColumns(grid, "Quantity");
             ApplyCurrencyColumns(grid, "Cost", "ExtCost");
             ApplyDecimalColumns(grid, 2, "Cnv");
-            ApplyDateColumns(grid, "DueDate");
+            ApplyDateColumns(grid, "DueDate", "PoDueDate");
         }
 
         /// <summary>
@@ -777,6 +812,7 @@ namespace Procurement.UI.Forms
             // staan daarom achteraan, gevolgd door de gekozen-offerte-kolommen (zie
             // PopulateRequestsGrid's eigen commentaar bij de gelijknamige kolommen daar).
             var selectionsByLineId = await GetSelectionsByLineIdAsync(request.Lines.Select(l => (int?)l.Id));
+            var poDueDatesByKey = await GetPoDueDatesByKeyAsync(request.Lines);
 
             _linesGrid.DataSource = request.Lines.Select(l =>
             {
@@ -794,6 +830,7 @@ namespace Procurement.UI.Forms
                     l.Cost,
                     Cnv = l.CostConv,
                     DueDate = l.RequiredDate,
+                    PoDueDate = GetPoDueDate(l, poDueDatesByKey),
                     ManufacturingPart = l.ManufacturerPartNumber,
                     l.Customer,
                     StockID = l.StockId,
@@ -810,6 +847,7 @@ namespace Procurement.UI.Forms
             if (_linesGrid.Columns["Id"] != null)
                 _linesGrid.Columns["Id"].Visible = false;
             SetHeaderText(_linesGrid, "ManufacturingPart", "Manufacturing Part");
+            SetHeaderText(_linesGrid, "PoDueDate", "PO DueDate");
             SetHeaderText(_linesGrid, "SelectedSupplier", "Selected Supplier");
             SetHeaderText(_linesGrid, "SelectedPrice", "Selected Price");
             SetHeaderText(_linesGrid, "SelectedQuantity", "Selected Qty");
@@ -819,7 +857,7 @@ namespace Procurement.UI.Forms
             ApplyDateColumns(_linesGrid, "SelectedDueDate");
             ApplyMaxColumnWidths(_linesGrid);
             ApplyFrozenColumns(_linesGrid,
-                "PartID", "Desc1", "Quantity", "Cost", "DueDate",
+                "PartID", "Desc1", "Quantity", "Cost", "DueDate", "PoDueDate",
                 "SelectedSupplier", "SelectedPrice", "SelectedQuantity", "SelectedDueDate");
         }
 
