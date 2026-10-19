@@ -38,14 +38,16 @@ toevoegen (§8.1) blijft ook werken, als aanvulling op de echte MAX-orders.
   DigiKey's 401 "Invalid RefreshToken" (het dan verouderde token staat nog in de database) en moet
   "Ordering autoriseren..." opnieuw. Permanente oplossing: UPDATE-rechten op die ene tabel regelen
   voor die login, of consequent na elke run het geprinte statement draaien.
-- `GetOrderStatusAsync` is geïmplementeerd tegen **twee** confirmed specs (OrderStatus v4 en Order
-  Management v1 — zie "Suppliers" hieronder). OrderStatus v4 gaf een 403 ("not authorized") tegen de
-  sandbox ondanks Enabled in het portal — vermoedelijk hetzelfde portal/backend-desyncprobleem als
-  destijds bij Product Information V4. **Order Management v1 wordt daarom nu actief gebruikt** (3-legged,
-  zelfde token als Ordering, al bewezen te werken), met als trade-off geen prijs- en geen rijke
-  statusdata. Nog niet via het tooltje getest (`status <SalesOrderId>` nog niet opnieuw gedraaid na
-  deze wijziging).
-  `CancelOrderAsync` blijft mock-only (nog geen contract aangeleverd).
+- **`GetOrderStatusAsync` is nu ook end-to-end getest en werkend tegen de echte sandbox** (19 okt
+  2026): geïmplementeerd tegen **twee** confirmed specs (OrderStatus v4 en Order Management v1).
+  OrderStatus v4 gaf een 403 ("not authorized") tegen de sandbox ondanks Enabled in het portal —
+  vermoedelijk hetzelfde portal/backend-desyncprobleem als destijds bij Product Information V4.
+  **Order Management v1 wordt daarom actief gebruikt** (3-legged, zelfde token als Ordering) en gaf via
+  `Procurement.Tools.DigiKeyOrderTester status 12345` succesvol `Status=Confirmed` terug, met als
+  bevestigde trade-off `ConfirmedAt`/`ConfirmedUnitPrice` altijd leeg (die velden bestaan niet in
+  Order Management's respons). De teruggekomen regel (`296-1005-5-ND`, 1000 stuks) kwam niet overeen
+  met de zelf geplaatste order (`DK-019085`, 1x) — vermoedelijk vaste sandboxtestdata, net als bij
+  Product Information, geen fout. `CancelOrderAsync` blijft mock-only (nog geen contract aangeleverd).
 - De normale "Order plaatsen"-knop (MainForm) zelf is dus nog niet in real-mode beproefd — alleen de
   onderliggende `DigiKeyAdapter.CreateOrderAsync` via het losse tooltje.
 
