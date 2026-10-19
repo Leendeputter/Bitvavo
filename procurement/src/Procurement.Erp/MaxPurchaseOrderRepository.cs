@@ -63,11 +63,12 @@ namespace Procurement.Erp
     /// PLANID_10 comes from Part_Master.PLANID_01. See MaxOrderRepository.GetPartByIdAsync/MaxPartInfo
     /// for the lookup these three come from.
     ///
-    /// Also confirmed against that same real PO (okt 2026): MAX itself reduces a new line's CURDUE_10
-    /// by the article's Part_Master.PURSTK_01 (Stock Lead Time, in days) somewhere downstream of
-    /// AddPODetail — so BuildPurchaseOrderLine sends the supplier's actual required date *increased*
-    /// by that many days (MaxPartInfo.StockLeadTimeDays), to end up with the right date after MAX's
-    /// own reduction.
+    /// Also confirmed against a second real PO (okt 2026, correcting an initial wrong guess at both
+    /// the sign and the unit): PurchaseRequestLine.RequiredDate already has the article's
+    /// Part_Master.PURSTK_01 (Stock Lead Time) factored in, so a new line's own CURDUE_10 must be
+    /// built as that required date *minus* the Stock Lead Time, counted in **working days**
+    /// (SubtractWorkingDays, Sat/Sun skipped) — not calendar days, and not added. See
+    /// MaxPartInfo.StockLeadTimeDays.
     ///
     /// Purchase_Order_Code's own header-level BUYID_16 (distinct from Order_Master.BUYER_10, which is
     /// per-line/detail and article-derived — see above) is set via SetHeaderBuyerIdAsync, a
@@ -437,6 +438,20 @@ namespace Procurement.Erp
         private static string Truncate(string value, int maxLength) =>
             string.IsNullOrEmpty(value) || value.Length <= maxLength ? value : value.Substring(0, maxLength);
 
+        /// <summary>Counts back from <paramref name="date"/>, skipping Saturday/Sunday, until <paramref name="workingDays"/> working days have been passed — no holiday calendar, just weekends (confirmed scope: the user only ever referred to "werkdagen", not holidays).</summary>
+        private static DateTime SubtractWorkingDays(DateTime date, int workingDays)
+        {
+            var result = date;
+            var remaining = workingDays;
+            while (remaining > 0)
+            {
+                result = result.AddDays(-1);
+                if (result.DayOfWeek != DayOfWeek.Saturday && result.DayOfWeek != DayOfWeek.Sunday)
+                    remaining--;
+            }
+            return result;
+        }
+
         /// <summary>
         /// Field values map to already-known data where possible (PRTNUM_10 from the originating
         /// PurchaseRequestLine.ErpArticleId, CURQTY_10 from the draft line's ordered quantity,
@@ -467,14 +482,16 @@ namespace Procurement.Erp
             var buyerId = string.IsNullOrWhiteSpace(partInfo?.Buyer) ? "000" : partInfo.Buyer;
             var plannerId = partInfo?.Planner ?? "";
 
-            // Confirmed by the user against a real created PO (okt 2026): MAX itself reduces
-            // CURDUE_10 by the article's Stock Lead Time somewhere downstream of AddPODetail — so the
-            // supplier's actual required date has to be sent *increased* by that same number of days,
-            // otherwise the date MAX ends up showing is short by exactly the lead time. See
-            // MaxPartInfo.StockLeadTimeDays.
+            // Confirmed by the user against a second real PO (okt 2026, correcting an initial wrong
+            // guess at both the sign and the unit): RequiredDate already is the date the business
+            // needs the part, with the article's Stock Lead Time already factored in — a new PO
+            // line's own CURDUE_10 must be *that date minus* the Stock Lead Time, counted in
+            // **working days** (Sat/Sun skipped), not calendar days and not added. Getting this
+            // backwards (adding calendar days) made every line's due date land a full lead time late.
+            // See MaxPartInfo.StockLeadTimeDays.
             var requiredDate = requestLine.RequiredDate ?? now;
             var curDue = partInfo?.StockLeadTimeDays.HasValue == true
-                ? requiredDate.AddDays(partInfo.StockLeadTimeDays.Value)
+                ? SubtractWorkingDays(requiredDate, partInfo.StockLeadTimeDays.Value)
                 : requiredDate;
 
             return new Order_Master

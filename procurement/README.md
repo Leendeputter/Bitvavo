@@ -780,13 +780,16 @@ raken dat mock-modus zelf nooit aanraakt:
   `DELSTK_01`/`BUYER_01`/`PLANID_01`): Stock blijft leeg zonder PrimaryStock (geen `"FGI"`-fallback
   meer), Buyer valt terug op `"000"` zonder artikel-Buyer, Planner wordt gewoon gekopieerd.
 
-  **Resultaat van een tweede echte test (okt 2026, via Farnell als supplier)**: MAX zelf verlaagt de
-  `CURDUE_10` van een nieuwe PO-regel ergens stroomafwaarts van `AddPODetail` met het artikel's eigen
-  `Part_Master.PURSTK_01` (Stock Lead Time, in dagen) — dat is geen gedrag van deze applicatie zelf,
-  maar van MAX. `BuildPurchaseOrderLine` stuurt de daadwerkelijk gevraagde leverdatum daarom nu
-  **verhoogd** met diezelfde Stock Lead Time mee (`MaxPartInfo.StockLeadTimeDays`, ook uit de
-  `Part_Master`-lookup hierboven), zodat de datum die uiteindelijk in MAX te zien is, na die
-  automatische verlaging door MAX zelf, weer klopt met wat de leverancier echt moet leveren.
+  **Resultaat van een tweede echte test (okt 2026, via Farnell als supplier), met een correctie op de
+  eerste aanname hierboven**: `PurchaseRequestLine.RequiredDate` (zoals gesynct vanuit MAX) heeft de
+  Stock Lead Time van het artikel (`Part_Master.PURSTK_01`) al verwerkt — die datum is dus de datum
+  waarop het bedrijf het onderdeel écht nodig heeft, lead time inbegrepen. Een nieuwe PO-regel's eigen
+  `CURDUE_10` moet daarom die gevraagde datum **min** de Stock Lead Time zijn, geteld in
+  **werkdagen** (zaterdag/zondag overgeslagen, geen feestdagenkalender) — niet in kalenderdagen, en
+  niet opgeteld. De eerste aanname (optellen, kalenderdagen) was dus zowel het verkeerde teken als de
+  verkeerde eenheid, en liet elke regel precies één lead-time te laat uitkomen.
+  `MaxPurchaseOrderRepository.SubtractWorkingDays` doet deze berekening nu (`MaxPartInfo.
+  StockLeadTimeDays`, ook uit de `Part_Master`-lookup hierboven).
   **`Purchase_Order_Code`'s eigen Buyer-veld op headerniveau** (`BUYID_16`, anders dan de per-regel
   `BUYER_10` hierboven, die artikel-afgeleid is) moet de **daadwerkelijke** besteller koppelen. Geen
   MAX-native link daarvoor beschikbaar — in plaats daarvan een handmatige conventie die de gebruiker

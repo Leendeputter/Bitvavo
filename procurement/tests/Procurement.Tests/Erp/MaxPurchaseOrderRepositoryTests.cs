@@ -85,14 +85,17 @@ namespace Procurement.Tests.Erp
         }
 
         [Fact]
-        public void BuildPurchaseOrderLine_StockLeadTimeProvided_AddsItToRequiredDate()
+        public void BuildPurchaseOrderLine_StockLeadTimeProvided_SubtractsWorkingDaysFromRequiredDate()
         {
-            var requiredDate = new DateTime(2026, 9, 1);
-            var partInfo = new MaxPartInfo { StockLeadTimeDays = 7 };
+            // Wednesday 2026-09-09 minus 5 working days (skipping the 2026-09-05/06 weekend) lands
+            // on Wednesday 2026-09-02 — independently verified against a calendar, not derived from
+            // the implementation under test.
+            var requiredDate = new DateTime(2026, 9, 9);
+            var partInfo = new MaxPartInfo { StockLeadTimeDays = 5 };
             var line = MaxPurchaseOrderRepository.BuildPurchaseOrderLine(
                 "VEN01", BuildRequestLine(requiredDate), BuildDraftLine(), partInfo, erpPoNumber: null, lineNumber: 1, isFirstLine: true, userName: "tester");
 
-            Assert.Equal(requiredDate.AddDays(7), line.CURDUE_10);
+            Assert.Equal(new DateTime(2026, 9, 2), line.CURDUE_10);
         }
 
         [Fact]
