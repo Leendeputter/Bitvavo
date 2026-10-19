@@ -788,8 +788,19 @@ raken dat mock-modus zelf nooit aanraakt:
   **werkdagen** (zaterdag/zondag overgeslagen, geen feestdagenkalender) — niet in kalenderdagen, en
   niet opgeteld. De eerste aanname (optellen, kalenderdagen) was dus zowel het verkeerde teken als de
   verkeerde eenheid, en liet elke regel precies één lead-time te laat uitkomen.
-  `MaxPurchaseOrderRepository.SubtractWorkingDays` doet deze berekening nu (`MaxPartInfo.
-  StockLeadTimeDays`, ook uit de `Part_Master`-lookup hierboven).
+
+  Beide eigen pogingen (optellen in kalenderdagen, daarna aftrekken in werkdagen) zijn inmiddels
+  vervangen: de gebruiker leverde MAX's eigen SQLCLR-functie `dbo.CalculatePODueDateFromMRPDueDate
+  (@MRPDate datetime, @PartNum nvarchar(30))` aan (`EXTERNAL NAME [ExactMAXSQLUtilities].
+  [DateFunctions].[CalculatePODueDateFromMRPDueDate]`) — dezelfde berekening die MAX zelf gebruikt,
+  inclusief wat die verder nog meeweegt (werkdagen, mogelijk een feestdagenkalender). `CURDUE_10` komt
+  nu rechtstreeks uit `MaxOrderRepository.CalculatePoDueDateAsync` (één regel tegelijk) resp.
+  `CalculatePoDueDatesAsync` (gebatcht, via een `VALUES`-tabel tegen de functie, voor toekomstig
+  grid-gebruik) — een scalar-functie-aanroep op de MAX-database, geen eigen datumrekenwerk meer.
+  `MaxPurchaseOrderRepository.BuildPurchaseOrderLine` krijgt `curDue` daarom als kant-en-klare,
+  al-berekende parameter mee en schrijft die ongewijzigd naar `CURDUE_10`. `Part_Master.PURSTK_01`
+  wordt om die reden ook niet meer apart opgehaald of lokaal opgeslagen (`MaxPartInfo.
+  StockLeadTimeDays` en `MaxPurchaseOrderRepository.SubtractWorkingDays` zijn beide verwijderd).
   **`Purchase_Order_Code`'s eigen Buyer-veld op headerniveau** (`BUYID_16`, anders dan de per-regel
   `BUYER_10` hierboven, die artikel-afgeleid is) moet de **daadwerkelijke** besteller koppelen. Geen
   MAX-native link daarvoor beschikbaar — in plaats daarvan een handmatige conventie die de gebruiker

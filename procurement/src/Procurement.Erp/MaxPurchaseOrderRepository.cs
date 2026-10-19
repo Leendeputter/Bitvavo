@@ -63,12 +63,11 @@ namespace Procurement.Erp
     /// PLANID_10 comes from Part_Master.PLANID_01. See MaxOrderRepository.GetPartByIdAsync/MaxPartInfo
     /// for the lookup these three come from.
     ///
-    /// Also confirmed against a second real PO (okt 2026, correcting an initial wrong guess at both
-    /// the sign and the unit): PurchaseRequestLine.RequiredDate already has the article's
-    /// Part_Master.PURSTK_01 (Stock Lead Time) factored in, so a new line's own CURDUE_10 must be
-    /// built as that required date *minus* the Stock Lead Time, counted in **working days**
-    /// (SubtractWorkingDays, Sat/Sun skipped) — not calendar days, and not added. See
-    /// MaxPartInfo.StockLeadTimeDays.
+    /// CURDUE_10's due-date adjustment (two earlier, wrong hand-rolled attempts at this — first
+    /// adding Part_Master.PURSTK_01 calendar days, then subtracting it as working days — are gone
+    /// now) is resolved properly as of okt 2026: the user found and supplied MAX's own SQLCLR
+    /// function dbo.CalculatePODueDateFromMRPDueDate (ExactMAXSQLUtilities.DateFunctions), which does
+    /// this calculation authoritatively. See MaxOrderRepository.CalculatePoDueDateAsync.
     ///
     /// Purchase_Order_Code's own header-level BUYID_16 (distinct from Order_Master.BUYER_10, which is
     /// per-line/detail and article-derived — see above) is set via SetHeaderBuyerIdAsync, a
@@ -180,8 +179,12 @@ namespace Procurement.Erp
                         // fresh lookup here always reflects Part_Master's current values.
                         var partInfo = await _maxOrderRepository.GetPartByIdAsync(requestLine.ErpArticleId);
 
+                        // MAX's own function, not this app's own date math — see the class comment.
+                        var mrpDueDate = requestLine.RequiredDate ?? DateTime.Now;
+                        var poDueDate = await _maxOrderRepository.CalculatePoDueDateAsync(mrpDueDate, requestLine.ErpArticleId);
+
                         var isFirstLine = erpPoNumber == null;
-                        var poLine = BuildPurchaseOrderLine(supplier.VendorId, requestLine, draftLine, partInfo, erpPoNumber, lineNumber, isFirstLine, _session.UserName);
+                        var poLine = BuildPurchaseOrderLine(supplier.VendorId, requestLine, draftLine, partInfo, poDueDate, erpPoNumber, lineNumber, isFirstLine, _session.UserName);
 
                         var added = maxOrderModule.AddPODetail(poLine, IncOrdRev: true, CreateHeader: isFirstLine, FixVar: "F", RoundType: 3);
                         if (!added)
@@ -438,31 +441,19 @@ namespace Procurement.Erp
         private static string Truncate(string value, int maxLength) =>
             string.IsNullOrEmpty(value) || value.Length <= maxLength ? value : value.Substring(0, maxLength);
 
-        /// <summary>Counts back from <paramref name="date"/>, skipping Saturday/Sunday, until <paramref name="workingDays"/> working days have been passed — no holiday calendar, just weekends (confirmed scope: the user only ever referred to "werkdagen", not holidays).</summary>
-        private static DateTime SubtractWorkingDays(DateTime date, int workingDays)
-        {
-            var result = date;
-            var remaining = workingDays;
-            while (remaining > 0)
-            {
-                result = result.AddDays(-1);
-                if (result.DayOfWeek != DayOfWeek.Saturday && result.DayOfWeek != DayOfWeek.Sunday)
-                    remaining--;
-            }
-            return result;
-        }
-
         /// <summary>
         /// Field values map to already-known data where possible (PRTNUM_10 from the originating
         /// PurchaseRequestLine.ErpArticleId, CURQTY_10 from the draft line's ordered quantity,
-        /// VENID_10 from the supplier); STK_10/BUYER_10/PLANID_10/the CURDUE_10 lead-time adjustment
-        /// come from the article's own Part_Master row (partInfo — null if MAX has no Part_Master row
-        /// for this ErpArticleId, e.g. a made-up test artikelnummer, in which case all of these fall
-        /// back as noted below/above); STATUS_10 = "3" is copied from the originally supplied example
-        /// verbatim, still unconfirmed for a real PO line rather than that example's own test data.
-        /// ORDNUM_10/LINNUM_10/DELNUM_10 are left blank for the first line of a PO (AddPODetail
-        /// assigns "01"/"01" and the new PO number itself when CreateHeader:true) and set explicitly
-        /// for every line after that.
+        /// VENID_10 from the supplier); STK_10/BUYER_10/PLANID_10 come from the article's own
+        /// Part_Master row (partInfo — null if MAX has no Part_Master row for this ErpArticleId, e.g.
+        /// a made-up test artikelnummer, in which case all three fall back as noted below); CURDUE_10
+        /// is passed in already-computed (via MaxOrderRepository.CalculatePoDueDateAsync, MAX's own
+        /// due-date calculation — see the class comment) rather than derived here, so this method
+        /// doesn't need to know anything about how that date was arrived at; STATUS_10 = "3" is
+        /// copied from the originally supplied example verbatim, still unconfirmed for a real PO line
+        /// rather than that example's own test data. ORDNUM_10/LINNUM_10/DELNUM_10 are left blank for
+        /// the first line of a PO (AddPODetail assigns "01"/"01" and the new PO number itself when
+        /// CreateHeader:true) and set explicitly for every line after that.
         ///
         /// Internal + static (userName passed explicitly instead of reading _session.UserName) so
         /// MaxPurchaseOrderRepositoryTests can exercise this field-by-field mapping directly —
@@ -473,26 +464,14 @@ namespace Procurement.Erp
         /// </summary>
         internal static Order_Master BuildPurchaseOrderLine(
             string vendorId, PurchaseRequestLine requestLine, PurchaseOrderDraftLine draftLine, MaxPartInfo partInfo,
-            string erpPoNumber, int lineNumber, bool isFirstLine, string userName)
+            DateTime curDue, string erpPoNumber, int lineNumber, bool isFirstLine, string userName)
         {
-            var now = DateTime.Now;
             // Confirmed by the user against a real created PO (okt 2026): Stock stays blank with no
             // article-level PrimaryStock (no "FGI"-style fallback), Buyer falls back to "000".
             var stockId = partInfo?.Stock ?? "";
             var buyerId = string.IsNullOrWhiteSpace(partInfo?.Buyer) ? "000" : partInfo.Buyer;
             var plannerId = partInfo?.Planner ?? "";
-
-            // Confirmed by the user against a second real PO (okt 2026, correcting an initial wrong
-            // guess at both the sign and the unit): RequiredDate already is the date the business
-            // needs the part, with the article's Stock Lead Time already factored in — a new PO
-            // line's own CURDUE_10 must be *that date minus* the Stock Lead Time, counted in
-            // **working days** (Sat/Sun skipped), not calendar days and not added. Getting this
-            // backwards (adding calendar days) made every line's due date land a full lead time late.
-            // See MaxPartInfo.StockLeadTimeDays.
-            var requiredDate = requestLine.RequiredDate ?? now;
-            var curDue = partInfo?.StockLeadTimeDays.HasValue == true
-                ? SubtractWorkingDays(requiredDate, partInfo.StockLeadTimeDays.Value)
-                : requiredDate;
+            var now = DateTime.Now;
 
             return new Order_Master
             {

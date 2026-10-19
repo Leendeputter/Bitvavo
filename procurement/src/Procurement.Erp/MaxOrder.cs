@@ -69,15 +69,5 @@ namespace Procurement.Erp
         public string Buyer { get; set; }
         /// <summary>Part_Master.PLANID_01 — confirmed by the user (okt 2026). Copied onto a new PO line's Order_Master.PLANID_10.</summary>
         public string Planner { get; set; }
-        /// <summary>
-        /// Part_Master.PURSTK_01 — the article's Stock Lead Time, in **working days** (confirmed by
-        /// the user, okt 2026, after an initial wrong guess at the sign/unit — see
-        /// BuildPurchaseOrderLine's own comment). PurchaseRequestLine.RequiredDate (as synced from
-        /// MAX) is the date the business actually needs the part, which already has this lead time
-        /// baked in — so a new PO line's own CURDUE_10 must be built as that required date *minus*
-        /// this many *working* days (Sat/Sun skipped, no holiday calendar), not calendar days and not
-        /// added. Null if Part_Master has no value here (no adjustment applied).
-        /// </summary>
-        public int? StockLeadTimeDays { get; set; }
     }
 }

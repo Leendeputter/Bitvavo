@@ -201,8 +201,7 @@ SELECT
     dbo.Part_Master.TYPE_01 AS PartType,
     dbo.Part_Master.DELSTK_01 AS Stock,
     dbo.Part_Master.BUYER_01 AS Buyer,
-    dbo.Part_Master.PLANID_01 AS Planner,
-    dbo.Part_Master.PURSTK_01 AS StockLeadTimeDays
+    dbo.Part_Master.PLANID_01 AS Planner
 FROM dbo.Part_Master
 WHERE dbo.Part_Master.PRTNUM_01 = @partId";
 
@@ -224,8 +223,7 @@ WHERE dbo.Part_Master.PRTNUM_01 = @partId";
                         PartType = ToDisplayString(reader["PartType"]),
                         Stock = ToDisplayString(reader["Stock"]),
                         Buyer = ToDisplayString(reader["Buyer"]),
-                        Planner = ToDisplayString(reader["Planner"]),
-                        StockLeadTimeDays = ToNullableInt(reader["StockLeadTimeDays"])
+                        Planner = ToDisplayString(reader["Planner"])
                     };
                 }
             }
@@ -258,6 +256,79 @@ WHERE dbo.Part_Master.PRTNUM_01 = @partId";
                     return ToDisplayString(reader["BUYID_95"]);
                 }
             }
+        }
+
+        /// <summary>
+        /// Calls MAX's own SQLCLR scalar function dbo.CalculatePODueDateFromMRPDueDate
+        /// (ExactMAXSQLUtilities.DateFunctions — the user found and supplied this directly, okt 2026)
+        /// — the authoritative, MAX-native calculation for what a PO line's own due date should be,
+        /// given the MRP/need date and the article. Supersedes this app's own earlier (twice-wrong)
+        /// attempt to replicate this by hand with Part_Master.PURSTK_01 + working-day arithmetic:
+        /// MAX's own function already accounts for whatever MAX itself considers (working days,
+        /// any holiday calendar, etc.), so there's nothing left to get wrong by reimplementing it.
+        /// Falls back to the given MRP date unchanged if the function returns NULL (nothing in the
+        /// user-supplied definition suggests it would, but a date this method can't compute is a
+        /// worse outcome than falling back to the un-adjusted one it was given).
+        /// </summary>
+        public async Task<DateTime> CalculatePoDueDateAsync(DateTime mrpDate, string partNumber)
+        {
+            const string sql = "SELECT dbo.CalculatePODueDateFromMRPDueDate(@MrpDate, @PartNum)";
+
+            using (var conn = new SqlConnection(_session.AdminConnectionString))
+            using (var cmd = new SqlCommand(sql, conn))
+            {
+                cmd.Parameters.AddWithValue("@MrpDate", mrpDate);
+                cmd.Parameters.AddWithValue("@PartNum", partNumber ?? (object)DBNull.Value);
+
+                await conn.OpenAsync();
+                var result = await cmd.ExecuteScalarAsync();
+                return result == null || result == DBNull.Value ? mrpDate : (DateTime)result;
+            }
+        }
+
+        /// <summary>
+        /// Batched form of CalculatePoDueDateAsync, for displaying many lines at once (MainForm's
+        /// requests/lines grids) without one round-trip per row — a single query evaluates the
+        /// function once per distinct (date, article) pair via a VALUES table, the same batching
+        /// idiom GetByOrderNumbersAsync already uses for an IN-list. Pairs with no RequiredDate are
+        /// the caller's responsibility to filter out before calling this (a function call needs both
+        /// arguments).
+        /// </summary>
+        public async Task<IReadOnlyDictionary<(DateTime MrpDate, string PartNumber), DateTime>> CalculatePoDueDatesAsync(
+            IReadOnlyCollection<(DateTime MrpDate, string PartNumber)> items)
+        {
+            var result = new Dictionary<(DateTime, string), DateTime>();
+            if (items == null || items.Count == 0) return result;
+
+            var distinct = items.Distinct().ToList();
+            var valueRows = distinct.Select((_, i) => $"(@d{i}, @p{i})");
+            var sql = $@"
+SELECT v.MrpDate, v.PartNum, dbo.CalculatePODueDateFromMRPDueDate(v.MrpDate, v.PartNum) AS PoDueDate
+FROM (VALUES {string.Join(", ", valueRows)}) AS v(MrpDate, PartNum)";
+
+            using (var conn = new SqlConnection(_session.AdminConnectionString))
+            using (var cmd = new SqlCommand(sql, conn))
+            {
+                for (var i = 0; i < distinct.Count; i++)
+                {
+                    cmd.Parameters.AddWithValue($"@d{i}", distinct[i].MrpDate);
+                    cmd.Parameters.AddWithValue($"@p{i}", distinct[i].PartNumber);
+                }
+
+                await conn.OpenAsync();
+                using (var reader = await cmd.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        var mrpDate = (DateTime)reader["MrpDate"];
+                        var partNum = reader["PartNum"].ToString();
+                        var poDueDate = reader["PoDueDate"] as DateTime? ?? mrpDate;
+                        result[(mrpDate, partNum)] = poDueDate;
+                    }
+                }
+            }
+
+            return result;
         }
 
         private static string RangeFieldColumn(MaxOrderRangeField? field)
@@ -299,17 +370,5 @@ WHERE dbo.Part_Master.PRTNUM_01 = @partId";
 
         private static decimal? ToNullableDecimal(object value) =>
             value == null || value == DBNull.Value ? (decimal?)null : Convert.ToDecimal(value);
-
-        // Convert.ToInt32 rather than an unconditional cast: PURSTK_01's exact column type wasn't
-        // confirmed (could be a numeric type, or a char-coded number like several other Part_Master
-        // fields turned out to be) — this handles either without crashing, falling back to null
-        // (meaning "no lead-time adjustment") if it's neither parseable.
-        private static int? ToNullableInt(object value)
-        {
-            if (value == null || value == DBNull.Value) return null;
-            if (value is string s)
-                return int.TryParse(s.Trim(), out var parsed) ? parsed : (int?)null;
-            try { return Convert.ToInt32(value); } catch { return null; }
-        }
     }
 }
