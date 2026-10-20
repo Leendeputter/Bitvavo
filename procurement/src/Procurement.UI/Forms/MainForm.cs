@@ -1061,7 +1061,11 @@ namespace Procurement.UI.Forms
             }
 
             var summary = $"Orderbevestiging verwerkt: {result.CheckedOrderCount} order(s) gecontroleerd";
-            if (result.SkippedOrderCount > 0) summary += $", {result.SkippedOrderCount} overgeslagen (geen OrderStatus-ondersteuning of nog niet bij leverancier ingediend)";
+            // "Overgeslagen" covers two different causes that ProcessOrderConfirmationsAsync doesn't
+            // distinguish in its own count: no OrderStatus-ondersteuning/nog niet ingediend (silent,
+            // no audit entry), or a SupplierException from GetOrderStatusAsync itself (logged as
+            // ORDER_CONFIRMATION_CHECK_FAILED) — the Audit Log is the place to tell those apart.
+            if (result.SkippedOrderCount > 0) summary += $", {result.SkippedOrderCount} overgeslagen (zie Audit Log voor de reden per order)";
             if (result.Exceptions.Count > 0) summary += $", {result.Exceptions.Count} afwijking(en)";
             SetStatus(summary + ".");
 
@@ -1078,6 +1082,16 @@ namespace Procurement.UI.Forms
             {
                 MessageBox.Show(this, "Alle gecontroleerde orders zijn bevestigd zoals besteld — geen afwijkingen.",
                     "Orderbevestiging verwerkt", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            else if (result.SkippedOrderCount > 0)
+            {
+                // Orders die wél op bevestiging wachten, maar stuk voor stuk zijn overgeslagen (geen
+                // ondersteuning, of een fout bij het opvragen van de status) — dit is dus niet "er
+                // waren geen orders", en moet dat ook niet zeggen (user feedback, 20 okt 2026: deze
+                // melding verscheen terwijl er wel degelijk een order op Acknowledged stond).
+                MessageBox.Show(this,
+                    $"{result.SkippedOrderCount} order(s) wachten op een bevestiging, maar konden niet gecontroleerd worden — zie Audit Log voor de reden per order.",
+                    "Orderbevestiging verwerkt", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
             else
             {
