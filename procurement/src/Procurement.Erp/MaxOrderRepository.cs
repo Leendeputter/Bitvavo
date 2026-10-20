@@ -137,13 +137,31 @@ ORDER BY dbo.Order_Master.ORDNUM_10";
         /// enough to detect "still exists, drifted" vs. "gone"; the full row (Desc1/Desc2/etc.) is
         /// still only refreshed for orders present in the current filtered GetOpenOrdersAsync batch.
         /// </summary>
+        // Same SQL Server 2100-parameter-per-command ceiling as CalculatePoDueDatesAsync (see that
+        // field's comment) — one parameter per order number here, so this has twice the headroom,
+        // but ReconcileAgainstMaxAsync passes every open local request on every Query, the same
+        // data volume that already tripped the other query. Chunked pre-emptively rather than
+        // waiting for this one to fail the same way.
+        private const int GetByOrderNumbersBatchSize = 2000;
+
         public async Task<IReadOnlyDictionary<string, MaxOrder>> GetByOrderNumbersAsync(IReadOnlyCollection<string> orderNumbers)
         {
             var result = new Dictionary<string, MaxOrder>(StringComparer.OrdinalIgnoreCase);
             if (orderNumbers == null || orderNumbers.Count == 0) return result;
 
             var numbers = orderNumbers.Distinct().ToList();
-            var paramNames = numbers.Select((_, i) => $"@o{i}").ToList();
+            for (var offset = 0; offset < numbers.Count; offset += GetByOrderNumbersBatchSize)
+            {
+                var batch = numbers.Skip(offset).Take(GetByOrderNumbersBatchSize).ToList();
+                await GetByOrderNumbersBatchAsync(batch, result);
+            }
+
+            return result;
+        }
+
+        private async Task GetByOrderNumbersBatchAsync(IReadOnlyList<string> batch, Dictionary<string, MaxOrder> result)
+        {
+            var paramNames = batch.Select((_, i) => $"@o{i}").ToList();
 
             var sql = $@"
 SELECT
@@ -157,8 +175,8 @@ WHERE dbo.Order_Master.ORDNUM_10 IN ({string.Join(",", paramNames)})";
             using (var conn = new SqlConnection(_session.AdminConnectionString))
             using (var cmd = new SqlCommand(sql, conn))
             {
-                for (var i = 0; i < numbers.Count; i++)
-                    cmd.Parameters.AddWithValue(paramNames[i], numbers[i]);
+                for (var i = 0; i < batch.Count; i++)
+                    cmd.Parameters.AddWithValue(paramNames[i], batch[i]);
 
                 await conn.OpenAsync();
                 using (var reader = await cmd.ExecuteReaderAsync())
@@ -176,8 +194,6 @@ WHERE dbo.Order_Master.ORDNUM_10 IN ({string.Join(",", paramNames)})";
                     }
                 }
             }
-
-            return result;
         }
 
         /// <summary>
@@ -295,11 +311,20 @@ WHERE dbo.Part_Master.PRTNUM_01 = @partId";
             }
         }
 
+        // SQL Server rejects a command with more than 2100 parameters ("The incoming request has too
+        // many parameters") — hit for real (20 okt 2026) once the requests grid had enough open PRs
+        // that CalculatePoDueDatesAsync's one-query-for-everything VALUES table, at 2 parameters per
+        // distinct (date, article) pair, crossed that line. 900 rows (1800 parameters) leaves
+        // comfortable headroom under the limit while still keeping this to a handful of round-trips
+        // even for a large grid.
+        private const int CalculatePoDueDatesBatchSize = 900;
+
         /// <summary>
         /// Batched form of CalculatePoDueDateAsync, for displaying many lines at once (MainForm's
-        /// requests/lines grids) without one round-trip per row — a single query evaluates the
-        /// function once per distinct (date, article) pair via a VALUES table, the same batching
-        /// idiom GetByOrderNumbersAsync already uses for an IN-list. Pairs with no RequiredDate are
+        /// requests/lines grids) without one round-trip per row — each batch evaluates the function
+        /// once per distinct (date, article) pair via a VALUES table, the same batching idiom
+        /// GetByOrderNumbersAsync already uses for an IN-list, chunked (CalculatePoDueDatesBatchSize)
+        /// to stay under SQL Server's 2100-parameter-per-command limit. Pairs with no RequiredDate are
         /// the caller's responsibility to filter out before calling this (a function call needs both
         /// arguments).
         /// </summary>
@@ -310,7 +335,20 @@ WHERE dbo.Part_Master.PRTNUM_01 = @partId";
             if (items == null || items.Count == 0) return result;
 
             var distinct = items.Distinct().ToList();
-            var valueRows = distinct.Select((_, i) => $"(@d{i}, @p{i})");
+            for (var offset = 0; offset < distinct.Count; offset += CalculatePoDueDatesBatchSize)
+            {
+                var batch = distinct.Skip(offset).Take(CalculatePoDueDatesBatchSize).ToList();
+                await CalculatePoDueDatesBatchAsync(batch, result);
+            }
+
+            return result;
+        }
+
+        private async Task CalculatePoDueDatesBatchAsync(
+            IReadOnlyList<(DateTime MrpDate, string PartNumber)> batch,
+            Dictionary<(DateTime, string), DateTime> result)
+        {
+            var valueRows = batch.Select((_, i) => $"(@d{i}, @p{i})");
             var sql = $@"
 SELECT v.MrpDate, v.PartNum, dbo.CalculateMRPDueDateFromPODueDate(v.MrpDate, v.PartNum) AS PoDueDate
 FROM (VALUES {string.Join(", ", valueRows)}) AS v(MrpDate, PartNum)";
@@ -318,10 +356,10 @@ FROM (VALUES {string.Join(", ", valueRows)}) AS v(MrpDate, PartNum)";
             using (var conn = new SqlConnection(_session.AdminConnectionString))
             using (var cmd = new SqlCommand(sql, conn))
             {
-                for (var i = 0; i < distinct.Count; i++)
+                for (var i = 0; i < batch.Count; i++)
                 {
-                    cmd.Parameters.AddWithValue($"@d{i}", distinct[i].MrpDate);
-                    cmd.Parameters.AddWithValue($"@p{i}", distinct[i].PartNumber);
+                    cmd.Parameters.AddWithValue($"@d{i}", batch[i].MrpDate);
+                    cmd.Parameters.AddWithValue($"@p{i}", batch[i].PartNumber);
                 }
 
                 await conn.OpenAsync();
@@ -336,8 +374,6 @@ FROM (VALUES {string.Join(", ", valueRows)}) AS v(MrpDate, PartNum)";
                     }
                 }
             }
-
-            return result;
         }
 
         private static string RangeFieldColumn(MaxOrderRangeField? field)
