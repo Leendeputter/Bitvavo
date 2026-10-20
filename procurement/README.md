@@ -249,11 +249,30 @@ oorspronkelijke MAX-aanvraag komen maar uit de gekozen `SupplierOffer` (via de a
 `SupplierSelection` voor die regel, spec correctie sep 2026): **Selected Supplier/Price/Qty/DueDate**
 — leeg zolang er nog geen selectie is, en bewust apart van (niet in plaats van) de oorspronkelijke
 Quantity/Cost/DueDate hierboven, want dat blijft tonen wat er in MAX oorspronkelijk aangevraagd is.
-"Offers bekijken" blijft de plek voor de volledige vergelijking (alle offertes, niet alleen de
-gekozen). Het regels-grid onder het hoofdscherm (regels van de geselecteerde aanvraag) gebruikt
-dezelfde kolomnamen/-breedtes als PartID/Manufacturing Part/Selected .../etc. (maar niet de
-Workflow-kolom, want per regel is dat altijd de status van de hele aanvraag), aangevuld met de
-workflow-specifieke velden Manufacturer/Packaging/ReelRequirement die niet uit de MAX-query komen.
+**Onderste grid vervangen door offers, niet langer "regels"** (user feedback, 20 okt 2026 — "de regel
+die in het bovenste grid wordt geselecteerd wordt hetzelfde weergegeven in het onderste grid [...] ik
+zou het logischer vinden als onderaan dan direct de offers worden weergegeven [...] met de optie om
+daar het gewenste offer te kiezen"): het oude onderste grid toonde de regel(s) van de geselecteerde
+aanvraag — maar elke MAX-PR/PL heeft er altijd precies één, dus dat was vrijwel een letterlijke
+herhaling van de bovenste rij. `MainForm.LoadOffersForSelectedRequestAsync` toont daar nu in plaats
+daarvan rechtstreeks de offers (`ProcurementEngine.GetOffersForLineAsync`) van die ene regel — dezelfde
+kolommen als het oude "Offers bekijken"-scherm (Supplier, Supplier Part Number, Match, Quantity, Unit
+Price, Currency, Packaging, Reel, Landed Cost, Lead Time, Available Qty, LevertDatum), plus een
+**"Kiezen"**-checkboxkolom vooraan: de huidig geselecteerde offerte staat aangevinkt, een ander vakje
+aanvinken kiest meteen die offerte (`ProcurementEngine.SelectOfferManuallyAsync`) en ververst beide
+grids. Het losse "Offers bekijken"-scherm (`OfferComparisonForm`, met zijn verplichte
+reden-tekstveld-vóór-kiezen-flow) is hiermee overbodig geworden en verwijderd — zie "Verplichte reden
+bij handmatige keuze vervallen" hieronder voor waarom die eis zelf ook is losgelaten, niet alleen het
+scherm errond.
+
+**Verplichte reden bij handmatige keuze vervallen** (zelfde user feedback): `SelectOfferManuallyAsync`
+eiste tot nu toe een niet-lege `reason` (gooide anders een `ArgumentException`) — een bewuste
+audit-eis uit spec §8.2. Met offers nu rechtstreeks via een checkbox te kiezen in plaats van via een
+apart scherm met tekstveld-plus-knop, koos de gebruiker er expliciet voor die eis te laten vervallen in
+plaats van een extra invoerschermpje bij het aanvinken te tonen. `reason` blijft wel een parameter
+(voor eventuele toekomstige aanroepers die er nog een willen meegeven) — `ReasonSummary` in de audit
+trail/`SupplierSelection` noemt dan nog steeds wie de keuze maakte, alleen zonder verplichte
+toelichting erbij.
 
 Direct na **DueDate** staat **PO DueDate** (user request, okt 2026): de datum die een PO-regel voor
 deze aanvraag zou krijgen als er nu een order aangemaakt werd, dus `DueDate` met MAX's eigen
@@ -925,8 +944,12 @@ raken dat mock-modus zelf nooit aanraakt:
 - **Schermstructuur/navigatie is niet optimaal** (gebruiker, okt 2026, na het testen van de volledige
   MAX-PO-flow): met de losse "Orders..."-, "Order details"-, requests-grid- en
   "Orderbevestiging verwerken"-vensters naast elkaar is het niet altijd logisch waar je welke
-  informatie vindt. Nog geen concreet plan voor — gewoon vastgelegd als iets om bij een volgende
-  sessie samen te herbekijken, geen losse code-wijziging.
+  informatie vindt. Eén concreet stuk hiervan is inmiddels opgelost (20 okt 2026): het hoofdscherm
+  laat Ordered-aanvragen niet meer zien (enkel nog via het "Orders..."-scherm) en toont onderaan
+  rechtstreeks de offers van de geselecteerde aanvraag met een "Kiezen"-checkbox, in plaats van het
+  oude, vrijwel-letterlijk-dubbele "regels"-grid plus een apart "Offers bekijken"-scherm — zie
+  "Onderste grid vervangen door offers" hierboven. De rest (Order details/Orderbevestiging verwerken
+  als losse vensters) staat nog open, verder geen concreet plan voor.
 - **Opnieuw testen zodra er niet meer tegen de DigiKey-sandbox getest wordt (user request, 20 okt
   2026 — expliciet vastleggen voor go-live)**: het `ConfirmedQuantity` niet gevuld krijgen bij
   "Orderbevestiging verwerken" is zo goed als zeker een sandbox-testdata-beperking, geen bug in deze

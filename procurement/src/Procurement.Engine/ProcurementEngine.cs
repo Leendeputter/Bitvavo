@@ -110,12 +110,15 @@ namespace Procurement.Engine
             await _auditLogger.LogAsync("PurchaseRequest", request.Id.ToString(), "SOURCING_COMPLETED", finalStatus.ToString());
         }
 
-        /// <summary>Spec §8.2: user picks a different offer than the engine's proposal. Requires a reason, which becomes part of the audit trail.</summary>
+        /// <summary>
+        /// Spec §8.2: user picks a different offer than the engine's proposal. A reason used to be
+        /// required here (part of the audit trail) — dropped (user request, 20 okt 2026) once offers
+        /// became directly selectable via a checkbox in MainForm's grid instead of only through the
+        /// old OfferComparisonForm dialog's reason box, for a lower-friction pick. ReasonSummary still
+        /// records who made the choice, just without a mandatory free-text justification attached.
+        /// </summary>
         public async Task SelectOfferManuallyAsync(int purchaseRequestLineId, int selectedOfferId, string reason, string user)
         {
-            if (string.IsNullOrWhiteSpace(reason))
-                throw new ArgumentException("A reason is required for a manual offer selection.", nameof(reason));
-
             var offer = await _offerRepository.GetByIdAsync(selectedOfferId);
             if (offer == null || offer.PurchaseRequestLineId != purchaseRequestLineId)
                 throw new InvalidOperationException("Offer does not belong to the given purchase request line.");
@@ -126,7 +129,9 @@ namespace Procurement.Engine
             {
                 PurchaseRequestLineId = purchaseRequestLineId,
                 SelectedOfferId = offer.Id,
-                ReasonSummary = $"Handmatig gekozen door {user}: {reason}",
+                ReasonSummary = string.IsNullOrWhiteSpace(reason)
+                    ? $"Handmatig gekozen door {user}"
+                    : $"Handmatig gekozen door {user}: {reason}",
                 Mode = SelectionMode.Manual
             };
             await _selectionRepository.AddAsync(selection);

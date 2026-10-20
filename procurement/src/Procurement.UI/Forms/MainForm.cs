@@ -17,7 +17,13 @@ namespace Procurement.UI.Forms
         private readonly CompositionRoot _composition;
 
         private DataGridView _requestsGrid;
-        private DataGridView _linesGrid;
+        private DataGridView _offersGrid;
+
+        // The one PurchaseRequestLine the offers grid currently shows — set whenever
+        // LoadOffersForSelectedRequestAsync (re)loads, read when a "Kiezen" checkbox is ticked.
+        // Every MAX-synced PR has exactly one line (see PopulateRequestsGrid's own comment), so the
+        // offers grid never needs to represent more than one line's offers at a time.
+        private int? _currentLineId;
 
         // "Orders ophalen uit MAX" group — status filter + the Query button that actually triggers
         // the MAX round-trip (nothing here runs automatically, only on Query click).
@@ -48,7 +54,6 @@ namespace Procurement.UI.Forms
         private Button _sourceAllButton;
         private Button _placeOrdersButton;
         private Button _processConfirmationsButton;
-        private Button _viewOffersButton;
         private Button _orderDetailButton;
         private Button _ordersButton;
         private Button _approvalsButton;
@@ -170,44 +175,41 @@ namespace Procurement.UI.Forms
             EnableDoubleBuffering(_requestsGrid);
             EnableRowNumberHeaders(_requestsGrid);
             _requestsGrid.SelectionChanged += RequestsGrid_SelectionChanged;
-            // Same drill-down as double-clicking a line below (ShowOffersForSelectedLine) — added
-            // once the Selected Supplier/Price/Qty/DueDate columns made this grid itself show the
-            // current pick, so "I want to change what's shown here" needs a way in from here too,
-            // not only via the lines grid underneath. Fetches the line directly from the
-            // double-clicked request instead of trusting _linesGrid.CurrentRow, which could still be
-            // mid-refresh from RequestsGrid_SelectionChanged's own async reload at this point.
-            _requestsGrid.CellDoubleClick += async (s, e) => await ShowOffersForSelectedRequestAsync();
 
-            var linesLabel = new Label { Text = "Regels van geselecteerde aanvraag:", Dock = DockStyle.Top, Height = 20, Padding = new Padding(4) };
+            var offersLabel = new Label { Text = "Offers voor geselecteerde aanvraag (vink \"Kiezen\" aan om een offerte te selecteren):", Dock = DockStyle.Top, Height = 20, Padding = new Padding(4) };
 
-            _linesGrid = new DataGridView
+            _offersGrid = new DataGridView
             {
                 Dock = DockStyle.Fill,
-                ReadOnly = true,
+                // Niet grid-breed ReadOnly (anders dan elk ander grid in dit scherm) — enkel de
+                // "Kiezen"-kolom mag bewerkt worden, de rest wordt individueel op ReadOnly gezet na
+                // het vullen (zie het eind van LoadOffersForSelectedRequestAsync). Nodig omdat
+                // DataGridView geen per-kolom ReadOnly toestaat zolang de grid zelf ReadOnly staat.
+                ReadOnly = false,
                 AllowUserToAddRows = false,
                 AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
                 RowHeadersWidthSizeMode = DataGridViewRowHeadersWidthSizeMode.DisableResizing,
                 SelectionMode = DataGridViewSelectionMode.RowHeaderSelect,
                 MultiSelect = false
             };
-            EnableDoubleBuffering(_linesGrid);
-            EnableRowNumberHeaders(_linesGrid);
-            _linesGrid.CellDoubleClick += (s, e) => ShowOffersForSelectedLine();
-
-            // Dock=Bottom op de knop zelf zou 'm over de hele breedte uitrekken (zag er dan niet
-            // meer uit als knop) — in een AutoSize FlowLayoutPanel houdt hij zijn eigen breedte.
-            var viewOffersPanel = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true };
-            _viewOffersButton = new Button { Text = "Offers bekijken (dubbelklik ook mogelijk)", AutoSize = true };
-            _viewOffersButton.Click += (s, e) => ShowOffersForSelectedLine();
-            viewOffersPanel.Controls.Add(_viewOffersButton);
+            EnableDoubleBuffering(_offersGrid);
+            EnableRowNumberHeaders(_offersGrid);
+            // Standaard WinForms-truc voor een checkbox-kolom: CellValueChanged vuurt pas nadat de
+            // cel "committed" is, en een checkbox-cel committed vanzelf pas zodra de focus verplaatst
+            // — CurrentCellDirtyStateChanged forceert dat meteen bij het klikken zelf.
+            _offersGrid.CurrentCellDirtyStateChanged += (s, e) =>
+            {
+                if (_offersGrid.IsCurrentCellDirty)
+                    _offersGrid.CommitEdit(DataGridViewDataErrorContexts.Commit);
+            };
+            _offersGrid.CellValueChanged += async (s, e) => await OffersGrid_CellValueChangedAsync(e);
 
             _statusLabel = new Label { Dock = DockStyle.Bottom, Height = 24, Text = "Gereed. Klik op \"Query\" om orders op te halen uit MAX.", Padding = new Padding(4) };
 
             // Volgorde bepaalt de docking-stapeling (laatst toegevoegde Top-control komt bovenaan):
             // toolPanel (buitenste rand), dan filterPanel, dan requestsGrid.
-            Controls.Add(_linesGrid);
-            Controls.Add(linesLabel);
-            Controls.Add(viewOffersPanel);
+            Controls.Add(_offersGrid);
+            Controls.Add(offersLabel);
             Controls.Add(_requestsGrid);
             Controls.Add(filterPanel);
             Controls.Add(toolPanel);
@@ -400,7 +402,7 @@ namespace Procurement.UI.Forms
             var requests = ApplyRangeAndDueDateFilters(allRequests.Where(r => statuses.Contains(r.Status)));
             await PopulateRequestsGrid(requests);
             SetStatus($"{requests.Count} aanvraag/aanvragen getoond (statusfilter).");
-            await LoadLinesForSelectedRequestAsync();
+            await LoadOffersForSelectedRequestAsync();
         }
 
         /// <summary>
@@ -479,7 +481,7 @@ namespace Procurement.UI.Forms
             // lokale lijst) — handig om te zien of een filter al op MAX-niveau iets doet, los van
             // hoeveel er uiteindelijk in de grid staan.
             SetStatus($"{filteredRequests.Count} aanvraag/aanvragen getoond ({_composition.ErpConnector.LastMaxOrderCount} orders uit MAX opgehaald met huidig filter).");
-            await LoadLinesForSelectedRequestAsync();
+            await LoadOffersForSelectedRequestAsync();
         }
 
         private void ApplyFiltersToErpConnector()
@@ -671,15 +673,15 @@ namespace Procurement.UI.Forms
         }
 
         /// <summary>
-        /// Column widths shared by both grids (see PopulateRequestsGrid/LoadLinesForSelectedRequestAsync).
-        /// Every column named here gets AutoSizeMode.None, i.e. is excluded from the grid-level Fill
-        /// distribution — without that, Fill would spread the remaining width evenly across short
-        /// fixed-format columns (Status, Firm, Quantity, DueDate, ...) and long free-text ones
-        /// (Desc1, Reference) alike, which looks arbitrary. Only genuinely variable-length text
-        /// columns (Desc1, Reference — and whichever unnamed column each grid happens to have) are
-        /// left to Fill. SetHeaderText/SetFixedColumnWidth calls for missing columns are harmless
-        /// no-ops (see GridFormatting), so this one method still safely serves both grids' different
-        /// column sets.
+        /// Column widths for the requests grid (see PopulateRequestsGrid) — used to be shared with
+        /// the old "lines of selected request" grid too, before that was replaced by the offers grid
+        /// (LoadOffersForSelectedRequestAsync, which has its own, much smaller column set and doesn't
+        /// call this). Every column named here gets AutoSizeMode.None, i.e. is excluded from the
+        /// grid-level Fill distribution — without that, Fill would spread the remaining width evenly
+        /// across short fixed-format columns (Status, Firm, Quantity, DueDate, ...) and long free-text
+        /// ones (Desc1, Reference) alike, which looks arbitrary. Only genuinely variable-length text
+        /// columns (Desc1, Reference) are left to Fill. SetHeaderText/SetFixedColumnWidth calls for a
+        /// missing column are harmless no-ops (see GridFormatting).
         /// </summary>
         private static void ApplyMaxColumnWidths(DataGridView grid)
         {
@@ -773,84 +775,113 @@ namespace Procurement.UI.Forms
         {
             try
             {
-                await LoadLinesForSelectedRequestAsync();
+                await LoadOffersForSelectedRequestAsync();
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, ex.Message, "Fout bij laden van regels", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, ex.Message, "Fout bij laden van offers", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
-        private async System.Threading.Tasks.Task LoadLinesForSelectedRequestAsync()
+        /// <summary>
+        /// Toont de offers van de ene regel van de geselecteerde aanvraag rechtstreeks (user request,
+        /// 20 okt 2026: "ik zou het logischer vinden als onderaan dan direct de offers worden
+        /// weergegeven... met de optie om daar het gewenste offer te kiezen") — vervangt het oude
+        /// "regels van deze aanvraag"-grid, dat toch altijd precies één (vrijwel identieke) regel liet
+        /// zien, zie PopulateRequestsGrid's eigen commentaar. Het losse "Offers bekijken"-scherm
+        /// (OfferComparisonForm) verviel hiermee; kiezen gebeurt nu via de "Kiezen"-checkbox hieronder.
+        /// </summary>
+        private async System.Threading.Tasks.Task LoadOffersForSelectedRequestAsync()
         {
             var requestId = GetSelectedRequestId();
             if (requestId == null)
             {
-                _linesGrid.DataSource = null;
+                _currentLineId = null;
+                _offersGrid.DataSource = null;
                 return;
             }
 
             var request = await _composition.PurchaseRequestRepository.GetByIdAsync(requestId.Value);
-            if (request == null)
+            var line = request?.Lines.FirstOrDefault();
+            _currentLineId = line?.Id;
+            if (line == null)
             {
-                _linesGrid.DataSource = null;
+                _offersGrid.DataSource = null;
                 return;
             }
 
-            // Zelfde kolomnamen als het requests-grid hierboven (PartID, Type, Rev, Firm, Desc1,
-            // Desc2, Quantity, Cost, Cnv, DueDate, Manufacturing Part, Customer, StockID) — dit is
-            // dezelfde data, enkel op regelniveau i.p.v. de eerste regel van de aanvraag. Manufacturer/
-            // Packaging/ReelRequirement zijn workflow-specifieke velden, niet uit de MAX-query, en
-            // staan daarom achteraan, gevolgd door de gekozen-offerte-kolommen (zie
-            // PopulateRequestsGrid's eigen commentaar bij de gelijknamige kolommen daar).
-            var selectionsByLineId = await GetSelectionsByLineIdAsync(request.Lines.Select(l => (int?)l.Id));
-            var poDueDatesByKey = await GetPoDueDatesByKeyAsync(request.Lines);
+            var offers = await _composition.Engine.GetOffersForLineAsync(line.Id);
+            var selection = await _composition.Engine.GetSelectionForLineAsync(line.Id);
 
-            _linesGrid.DataSource = request.Lines.Select(l =>
+            _offersGrid.DataSource = offers.Select(o => new
             {
-                var selectedOffer = selectionsByLineId.TryGetValue(l.Id, out var selection) ? selection.SelectedOffer : null;
-                return new
-                {
-                    l.Id,
-                    PartID = l.ErpArticleId,
-                    Type = l.PartType,
-                    Rev = l.Revision,
-                    l.Firm,
-                    l.Desc1,
-                    l.Desc2,
-                    Quantity = l.RequestedQuantity,
-                    l.Cost,
-                    Cnv = l.CostConv,
-                    DueDate = l.RequiredDate,
-                    PoDueDate = GetPoDueDate(l, poDueDatesByKey),
-                    ManufacturingPart = l.ManufacturerPartNumber,
-                    l.Customer,
-                    StockID = l.StockId,
-                    l.Manufacturer,
-                    Packaging = l.PackagingRequirement.ToString(),
-                    l.ReelRequirement,
-                    SelectedSupplier = selectedOffer?.SupplierCode,
-                    SelectedPrice = selectedOffer?.UnitPrice,
-                    SelectedQuantity = (int?)selectedOffer?.OfferedQuantity,
-                    SelectedDueDate = selectedOffer?.EstimatedDeliveryDate
-                };
+                o.Id,
+                Kiezen = selection != null && selection.SelectedOfferId == o.Id,
+                o.SupplierCode,
+                o.SupplierPartNumber,
+                MatchConfidence = o.MatchConfidence.ToString(),
+                o.OfferedQuantity,
+                o.UnitPrice,
+                o.Currency,
+                Packaging = o.PackagingType.ToString(),
+                Reel = o.ReelType?.ToString() ?? "-",
+                o.LandedCost,
+                o.LeadTimeDays,
+                o.AvailableQuantity,
+                LevertDatum = o.EstimatedDeliveryDate
             }).ToList();
 
-            if (_linesGrid.Columns["Id"] != null)
-                _linesGrid.Columns["Id"].Visible = false;
-            SetHeaderText(_linesGrid, "ManufacturingPart", "Manufacturing Part");
-            SetHeaderText(_linesGrid, "PoDueDate", "PO DueDate");
-            SetHeaderText(_linesGrid, "SelectedSupplier", "Selected Supplier");
-            SetHeaderText(_linesGrid, "SelectedPrice", "Selected Price");
-            SetHeaderText(_linesGrid, "SelectedQuantity", "Selected Qty");
-            SetHeaderText(_linesGrid, "SelectedDueDate", "Selected DueDate");
-            ApplyCurrencyColumns(_linesGrid, "SelectedPrice");
-            ApplyQuantityColumns(_linesGrid, "SelectedQuantity");
-            ApplyDateColumns(_linesGrid, "SelectedDueDate");
-            ApplyMaxColumnWidths(_linesGrid);
-            ApplyFrozenColumns(_linesGrid,
-                "PartID", "Desc1", "Quantity", "Cost", "DueDate", "PoDueDate",
-                "SelectedSupplier", "SelectedPrice", "SelectedQuantity", "SelectedDueDate");
+            if (_offersGrid.Columns["Id"] != null)
+                _offersGrid.Columns["Id"].Visible = false;
+            SetHeaderText(_offersGrid, "SupplierCode", "Supplier");
+            SetHeaderText(_offersGrid, "SupplierPartNumber", "Supplier Part Number");
+            SetHeaderText(_offersGrid, "MatchConfidence", "Match");
+            SetHeaderText(_offersGrid, "OfferedQuantity", "Quantity");
+            SetHeaderText(_offersGrid, "UnitPrice", "Unit Price");
+            SetHeaderText(_offersGrid, "LandedCost", "Landed Cost");
+            SetHeaderText(_offersGrid, "LeadTimeDays", "Lead Time (dagen)");
+            SetHeaderText(_offersGrid, "AvailableQuantity", "Available Qty");
+            ApplyQuantityColumns(_offersGrid, "OfferedQuantity", "AvailableQuantity");
+            ApplyCurrencyColumns(_offersGrid, "UnitPrice", "LandedCost");
+            ApplyDateColumns(_offersGrid, "LevertDatum");
+
+            // Enkel "Kiezen" mag bewerkt worden — zie de ReadOnly=false op de grid zelf.
+            foreach (DataGridViewColumn column in _offersGrid.Columns)
+                column.ReadOnly = column.Name != "Kiezen";
+        }
+
+        /// <summary>
+        /// Aanvinken kiest die offerte. Uitvinken doet zelf niets (een regel kan niet "geen offerte"
+        /// hebben zodra er al een selectie is) maar ververst wél altijd — zonder dat zou een per
+        /// ongeluk uitgevinkt vakje op de al-gekozen regel in het grid blijven staan als "uit", ook al
+        /// is er in de database niets veranderd.
+        /// </summary>
+        private async System.Threading.Tasks.Task OffersGrid_CellValueChangedAsync(DataGridViewCellEventArgs e)
+        {
+            if (e.RowIndex < 0 || _offersGrid.Columns[e.ColumnIndex].Name != "Kiezen") return;
+            if (_currentLineId == null) return;
+
+            var row = _offersGrid.Rows[e.RowIndex];
+            var nowChecked = (bool)row.Cells["Kiezen"].Value;
+
+            try
+            {
+                SetBusy(true);
+                if (nowChecked)
+                {
+                    var offerId = (int)row.Cells["Id"].Value;
+                    await _composition.Engine.SelectOfferManuallyAsync(_currentLineId.Value, offerId, reason: null, _composition.Session.UserName);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message, "Fout bij kiezen van offerte", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                await LoadLocalRequestsAsync();
+                SetBusy(false);
+            }
         }
 
         private int? GetSelectedRequestId()
@@ -873,12 +904,6 @@ namespace Procurement.UI.Forms
 
         private List<int> GetAllRequestIds() =>
             _requestsGrid.Rows.Cast<DataGridViewRow>().Where(r => !r.IsNewRow).Select(r => (int)r.Cells["Id"].Value).ToList();
-
-        private int? GetSelectedLineId()
-        {
-            if (_linesGrid.CurrentRow == null) return null;
-            return (int)_linesGrid.CurrentRow.Cells["Id"].Value;
-        }
 
         private async System.Threading.Tasks.Task NewRequestAsync()
         {
@@ -1092,42 +1117,6 @@ namespace Procurement.UI.Forms
             }
         }
 
-        private void ShowOffersForSelectedLine()
-        {
-            var lineId = GetSelectedLineId();
-            if (lineId == null)
-            {
-                MessageBox.Show(this, "Selecteer eerst een regel.", "Geen selectie", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            using (var form = new OfferComparisonForm(_composition.Engine, lineId.Value))
-            {
-                form.ShowDialog(this);
-            }
-        }
-
-        /// <summary>Dubbelklik op een rij in het bovenste overzicht — leest de regel rechtstreeks van de aanvraag i.p.v. via het (mogelijk nog niet bijgewerkte) regels-grid, en ververst na afloop zodat een handmatige herkeuze meteen in de Selected-kolommen zichtbaar is.</summary>
-        private async System.Threading.Tasks.Task ShowOffersForSelectedRequestAsync()
-        {
-            var requestId = GetSelectedRequestId();
-            if (requestId == null) return;
-
-            var request = await _composition.PurchaseRequestRepository.GetByIdAsync(requestId.Value);
-            var lineId = request?.Lines.FirstOrDefault()?.Id;
-            if (lineId == null)
-            {
-                MessageBox.Show(this, "Geen regel gevonden voor deze aanvraag.", "Geen regel", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            using (var form = new OfferComparisonForm(_composition.Engine, lineId.Value))
-            {
-                form.ShowDialog(this);
-            }
-            await LoadLocalRequestsAsync();
-        }
-
         private void ShowOrderDetail()
         {
             var requestId = GetSelectedRequestId();
@@ -1205,7 +1194,7 @@ namespace Procurement.UI.Forms
             if (!busy)
             {
                 _requestsGrid.Cursor = Cursors.Default;
-                _linesGrid.Cursor = Cursors.Default;
+                _offersGrid.Cursor = Cursors.Default;
             }
 
             var enabled = !busy;
