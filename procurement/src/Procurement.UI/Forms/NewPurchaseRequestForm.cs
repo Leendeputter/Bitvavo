@@ -40,7 +40,7 @@ namespace Procurement.UI.Forms
 
         private void InitializeComponent()
         {
-            Text = "Nieuwe testaanvraag toevoegen";
+            Text = "Add New Test Request";
             Width = 480;
             Height = 480;
             StartPosition = FormStartPosition.CenterParent;
@@ -53,7 +53,7 @@ namespace Procurement.UI.Forms
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 60));
 
             _erpArticleIdBox = new TextBox { Dock = DockStyle.Fill, Text = "ART-" + DateTime.UtcNow.Ticks % 100000 };
-            var lookupButton = new Button { Text = "Ophalen uit MAX", AutoSize = true };
+            var lookupButton = new Button { Text = "Fetch from MAX", AutoSize = true };
             lookupButton.Click += async (s, e) => await LookupFromMaxAsync();
             var articleIdPanel = new Panel { Dock = DockStyle.Fill, Height = 24 };
             _erpArticleIdBox.Dock = DockStyle.Left;
@@ -69,26 +69,26 @@ namespace Procurement.UI.Forms
             _packagingCombo = new ComboBox { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList };
             _packagingCombo.Items.AddRange(Enum.GetNames(typeof(PackagingRequirement)));
             _packagingCombo.SelectedItem = nameof(PackagingRequirement.OriginalReel);
-            _reelRequiredCheck = new CheckBox { Dock = DockStyle.Fill, Checked = true, Text = "Reel vereist" };
-            _warehouseBox = new TextBox { Dock = DockStyle.Fill, Text = "MAGAZIJN-1" };
+            _reelRequiredCheck = new CheckBox { Dock = DockStyle.Fill, Checked = true, Text = "Reel Required" };
+            _warehouseBox = new TextBox { Dock = DockStyle.Fill, Text = "WAREHOUSE-1" };
             _projectBox = new TextBox { Dock = DockStyle.Fill, Text = "PROTOTYPE" };
             _priorityBox = new NumericUpDown { Dock = DockStyle.Fill, Minimum = 1, Maximum = 10, Value = 5 };
 
-            AddRow(layout, "Intern artikelnummer:", articleIdPanel);
+            AddRow(layout, "Internal Article Number:", articleIdPanel);
             AddRow(layout, "Manufacturer:", _manufacturerBox);
-            AddRow(layout, "Manufacturer part number:", _mpnBox);
-            AddRow(layout, "Omschrijving:", _descriptionBox);
-            AddRow(layout, "Gevraagde hoeveelheid:", _quantityBox);
-            AddRow(layout, "Gewenste leverdatum:", _requiredDatePicker);
-            AddRow(layout, "Packaging-eis:", _packagingCombo);
+            AddRow(layout, "Manufacturer Part Number:", _mpnBox);
+            AddRow(layout, "Description:", _descriptionBox);
+            AddRow(layout, "Requested Quantity:", _quantityBox);
+            AddRow(layout, "Required Date:", _requiredDatePicker);
+            AddRow(layout, "Packaging Requirement:", _packagingCombo);
             AddRow(layout, string.Empty, _reelRequiredCheck);
-            AddRow(layout, "Magazijn:", _warehouseBox);
+            AddRow(layout, "Warehouse:", _warehouseBox);
             AddRow(layout, "Project:", _projectBox);
-            AddRow(layout, "Prioriteit (1=hoog):", _priorityBox);
+            AddRow(layout, "Priority (1=high):", _priorityBox);
 
             var buttonPanel = new FlowLayoutPanel { Dock = DockStyle.Bottom, FlowDirection = FlowDirection.RightToLeft, Height = 40 };
-            var cancelButton = new Button { Text = "Annuleren", DialogResult = DialogResult.Cancel };
-            var okButton = new Button { Text = "Opslaan" };
+            var cancelButton = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel };
+            var okButton = new Button { Text = "Save" };
             okButton.Click += async (s, e) => await SaveAsync();
             buttonPanel.Controls.Add(cancelButton);
             buttonPanel.Controls.Add(okButton);

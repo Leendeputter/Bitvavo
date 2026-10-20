@@ -31,17 +31,28 @@ namespace Procurement.UI.Forms
                 e.ConfirmedUnitPrice,
                 e.RequiredDate,
                 e.ConfirmedShipDate,
-                Reden = DescribeReason(e)
+                Reason = DescribeReason(e)
             }).ToList();
 
             ApplyQuantityColumns(_grid, "OrderedQuantity", "ConfirmedQuantity");
             ApplyCurrencyColumns(_grid, "OrderedUnitPrice", "ConfirmedUnitPrice");
             ApplyDateColumns(_grid, "RequiredDate", "ConfirmedShipDate");
+            // Reason is the one genuinely free-text column here, left in Fill with a floor.
+            SetCharacterBasedColumnWidth(_grid, "ErpPoNumber", 12);
+            SetCharacterBasedColumnWidth(_grid, "SupplierCode", 12);
+            SetMinimumWidth(_grid, "SupplierPartNumber", 140);
+            SetCharacterBasedColumnWidth(_grid, "OrderedQuantity", 12);
+            SetCharacterBasedColumnWidth(_grid, "ConfirmedQuantity", 14);
+            SetCharacterBasedColumnWidth(_grid, "OrderedUnitPrice", 14);
+            SetCharacterBasedColumnWidth(_grid, "ConfirmedUnitPrice", 16);
+            SetCharacterBasedColumnWidth(_grid, "RequiredDate", 12);
+            SetCharacterBasedColumnWidth(_grid, "ConfirmedShipDate", 14);
+            SetMinimumWidth(_grid, "Reason", 160);
         }
 
         private void InitializeComponent()
         {
-            Text = "Orderbevestiging – afwijkingen";
+            Text = "Order Confirmation – Deviations";
             Width = 1000;
             Height = 500;
             StartPosition = FormStartPosition.CenterParent;
@@ -58,7 +69,7 @@ namespace Procurement.UI.Forms
             EnableDoubleBuffering(_grid);
             EnableRowNumberHeaders(_grid);
 
-            var closeButton = new Button { Text = "Sluiten", AutoSize = true, Dock = DockStyle.Bottom };
+            var closeButton = new Button { Text = "Close", AutoSize = true, Dock = DockStyle.Bottom };
             closeButton.Click += (s, e) => Close();
 
             Controls.Add(_grid);
@@ -68,9 +79,9 @@ namespace Procurement.UI.Forms
         private static string DescribeReason(OrderConfirmationException e)
         {
             var reasons = new List<string>();
-            if (e.QuantityMismatch) reasons.Add("aantal wijkt af");
-            if (e.PriceMismatch) reasons.Add("prijs wijkt af");
-            if (e.DeliveryIsLate) reasons.Add("levering te laat");
+            if (e.QuantityMismatch) reasons.Add("quantity mismatch");
+            if (e.PriceMismatch) reasons.Add("price mismatch");
+            if (e.DeliveryIsLate) reasons.Add("delivery late");
             return string.Join(", ", reasons);
         }
     }

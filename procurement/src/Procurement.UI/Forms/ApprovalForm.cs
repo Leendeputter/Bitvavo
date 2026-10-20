@@ -26,7 +26,7 @@ namespace Procurement.UI.Forms
 
         private void InitializeComponent()
         {
-            Text = "Goedkeuringen";
+            Text = "Approvals";
             Width = 1000;
             Height = 550;
             StartPosition = FormStartPosition.CenterParent;
@@ -44,11 +44,11 @@ namespace Procurement.UI.Forms
             EnableRowNumberHeaders(_grid);
 
             var actionPanel = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 70, FlowDirection = FlowDirection.LeftToRight };
-            actionPanel.Controls.Add(new Label { Text = "Commentaar:", AutoSize = true, Padding = new Padding(0, 8, 4, 0) });
+            actionPanel.Controls.Add(new Label { Text = "Comment:", AutoSize = true, Padding = new Padding(0, 8, 4, 0) });
             _commentBox = new TextBox { Width = 400 };
-            _approveButton = new Button { Text = "Goedkeuren", AutoSize = true };
+            _approveButton = new Button { Text = "Approve", AutoSize = true };
             _approveButton.Click += async (s, e) => await DecideAsync(approve: true);
-            _rejectButton = new Button { Text = "Afwijzen", AutoSize = true };
+            _rejectButton = new Button { Text = "Reject", AutoSize = true };
             _rejectButton.Click += async (s, e) => await DecideAsync(approve: false);
             actionPanel.Controls.Add(_commentBox);
             actionPanel.Controls.Add(_approveButton);
@@ -67,17 +67,26 @@ namespace Procurement.UI.Forms
             _grid.DataSource = pending.Select(a => new
             {
                 a.Id,
-                Regel = a.PurchaseRequestLineId,
-                Onderdeel = a.PurchaseRequestLine?.ManufacturerPartNumber,
-                Leverancier = a.ProposedOffer?.SupplierCode,
-                Aangeboden = a.ProposedOffer?.OfferedQuantity,
-                Prijs = a.ProposedOffer?.UnitPrice,
-                Reden = a.Reasons,
+                Line = a.PurchaseRequestLineId,
+                Part = a.PurchaseRequestLine?.ManufacturerPartNumber,
+                Supplier = a.ProposedOffer?.SupplierCode,
+                OfferedQty = a.ProposedOffer?.OfferedQuantity,
+                Price = a.ProposedOffer?.UnitPrice,
+                Reason = a.Reasons,
                 a.CreatedAt
             }).ToList();
-            ApplyQuantityColumns(_grid, "Aangeboden");
-            ApplyCurrencyColumns(_grid, "Prijs");
+            ApplyQuantityColumns(_grid, "OfferedQty");
+            ApplyCurrencyColumns(_grid, "Price");
             ApplyDateTimeColumns(_grid, "CreatedAt");
+            SetHeaderText(_grid, "OfferedQty", "Offered Qty");
+            // Reason is the one genuinely free-text column here, left in Fill with a floor.
+            SetCharacterBasedColumnWidth(_grid, "Line", 8);
+            SetCharacterBasedColumnWidth(_grid, "Part", 18);
+            SetCharacterBasedColumnWidth(_grid, "Supplier", 12);
+            SetCharacterBasedColumnWidth(_grid, "OfferedQty", 12);
+            SetCharacterBasedColumnWidth(_grid, "Price", 12);
+            SetMinimumWidth(_grid, "Reason", 160);
+            SetCharacterBasedColumnWidth(_grid, "CreatedAt", 19);
 
             _statusLabel.Text = $"{pending.Count} regel(s) wachten op goedkeuring.";
         }

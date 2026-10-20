@@ -76,13 +76,13 @@ namespace Procurement.UI.Forms
 
             var lblUser = new Label
             {
-                Text = "Gebruiker",
+                Text = "User",
                 Location = new System.Drawing.Point(12, 12),
                 Size = new System.Drawing.Size(51, 13)
             };
             _userLabel = new Label
             {
-                Text = "(onbekend)",
+                Text = "(unknown)",
                 Location = new System.Drawing.Point(69, 12),
                 Size = new System.Drawing.Size(182, 13)
             };
@@ -102,7 +102,7 @@ namespace Procurement.UI.Forms
 
             _testModeCheckBox = new CheckBox
             {
-                Text = "Testmodus",
+                Text = "Test Mode",
                 Location = new System.Drawing.Point(69, 62 + 26),
                 Size = new System.Drawing.Size(76, 17),
                 AutoSize = true

@@ -37,12 +37,12 @@ namespace Procurement.UI.Forms
 
         private void InitializeComponent()
         {
-            Text = $"Order details – aanvraag {_purchaseRequestId}";
+            Text = $"Order Details – Request {_purchaseRequestId}";
             Width = 1000;
             Height = 600;
             StartPosition = FormStartPosition.CenterParent;
 
-            var poLabel = new Label { Text = "Purchase Orders (1 per leverancier) met een regel van deze aanvraag:", Dock = DockStyle.Top, Height = 20, Padding = new Padding(4) };
+            var poLabel = new Label { Text = "Purchase Orders (1 per supplier) with a line from this request:", Dock = DockStyle.Top, Height = 20, Padding = new Padding(4) };
             _purchaseOrdersGrid = new DataGridView
             {
                 Dock = DockStyle.Top,
@@ -57,7 +57,7 @@ namespace Procurement.UI.Forms
             EnableRowNumberHeaders(_purchaseOrdersGrid);
             _purchaseOrdersGrid.SelectionChanged += PurchaseOrdersGrid_SelectionChanged;
 
-            var linesLabel = new Label { Text = "Regels van geselecteerde PO (kunnen ook van andere aanvragen zijn):", Dock = DockStyle.Top, Height = 20, Padding = new Padding(4) };
+            var linesLabel = new Label { Text = "Lines of Selected PO (may include lines from other requests):", Dock = DockStyle.Top, Height = 20, Padding = new Padding(4) };
             _linesGrid = new DataGridView
             {
                 Dock = DockStyle.Fill,
@@ -98,11 +98,21 @@ namespace Procurement.UI.Forms
                 po.CreatedAt,
                 po.OrderTotal,
                 po.Currency,
-                Regels = po.Lines.Count
+                Lines = po.Lines.Count
             }).ToList();
             _purchaseOrdersGrid.SelectionChanged += PurchaseOrdersGrid_SelectionChanged;
             ApplyCurrencyColumns(_purchaseOrdersGrid, "OrderTotal");
             ApplyDateTimeColumns(_purchaseOrdersGrid, "CreatedAt");
+            // Explicit widths for every column (user request, 20 okt 2026) — none of these are
+            // genuinely free-text.
+            SetCharacterBasedColumnWidth(_purchaseOrdersGrid, "ErpPoNumber", 12);
+            SetCharacterBasedColumnWidth(_purchaseOrdersGrid, "SupplierCode", 12);
+            SetCharacterBasedColumnWidth(_purchaseOrdersGrid, "SupplierOrderNumber", 16);
+            SetCharacterBasedColumnWidth(_purchaseOrdersGrid, "Status", 14);
+            SetCharacterBasedColumnWidth(_purchaseOrdersGrid, "CreatedAt", 19);
+            SetCharacterBasedColumnWidth(_purchaseOrdersGrid, "OrderTotal", 14);
+            SetCharacterBasedColumnWidth(_purchaseOrdersGrid, "Currency", 8);
+            SetCharacterBasedColumnWidth(_purchaseOrdersGrid, "Lines", 8);
 
             LoadLinesForSelectedOrder();
         }
@@ -138,6 +148,12 @@ namespace Procurement.UI.Forms
             }).ToList();
             ApplyQuantityColumns(_linesGrid, "Quantity", "ConfirmedQuantity");
             ApplyCurrencyColumns(_linesGrid, "UnitPrice", "LineTotal");
+            SetCharacterBasedColumnWidth(_linesGrid, "PurchaseRequestLineId", 10);
+            SetMinimumWidth(_linesGrid, "SupplierPartNumber", 140);
+            SetCharacterBasedColumnWidth(_linesGrid, "Quantity", 10);
+            SetCharacterBasedColumnWidth(_linesGrid, "ConfirmedQuantity", 12);
+            SetCharacterBasedColumnWidth(_linesGrid, "UnitPrice", 12);
+            SetCharacterBasedColumnWidth(_linesGrid, "LineTotal", 14);
 
             _statusBar.Text = $"{order.SupplierCode}: {order.Status}"
                 + (string.IsNullOrEmpty(order.SupplierOrderNumber) ? string.Empty : $" (ordernummer {order.SupplierOrderNumber})");

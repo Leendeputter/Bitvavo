@@ -197,7 +197,7 @@ query, met `Part_Master.TYPE_01 IN ('B','D','Y')` vast en `Order_Master.STATUS_1
 de checkboxes "1 - Planned" / "2 - Approved" op het hoofdscherm (standaard: alleen Approved).
 
 **Handmatig opvragen, niet automatisch**: het hoofdscherm laadt bij het openen helemaal niets — pas
-een klik op de knop **"Query"** (in het groepsvak "Orders ophalen uit MAX", samen met de status-
+een klik op de knop **"Query"** (in het groepsvak "Fetch Orders from MAX", samen met de status-
 checkboxes) start de MAX-query, met een busy-cursor tijdens het laden. Na lokale acties (nieuwe
 testaanvraag, sourcing starten, een goedkeuring) wordt het scherm wel ververst, maar enkel met de al
 lokaal gesynchroniseerde aanvragen (`PurchaseRequestRepository.GetOpenAsync`) — zonder MAX te raken.
@@ -221,7 +221,7 @@ altijd tonen" zijn behandeld — en dus nooit meer gefilterd worden (en ook z'n 
 nooit meer ververst krijgen, want die worden alleen bijgewerkt zodra de rij wél weer in een
 MAX-resultaat voorkomt). Dat was de daadwerkelijke oorzaak van "de filters doen niets".
 
-**Due Date Range/Select By gingen verloren bij het omzetten van een "Weergeven"-checkbox** (gebruiker,
+**Due Date Range/Select By gingen verloren bij het omzetten van een "Display"-checkbox** (gebruiker,
 okt 2026): die checkboxen roepen `LoadLocalRequestsAsync` aan, dat — anders dan "Query" — nooit MAX
 raakt en dus ook nooit `GetOpenPurchaseRequestsAsync`'s eigen filtering doorloopt; het liet simpelweg
 alle lokaal gesynchroniseerde aanvragen weer zien die bij de huidige statuscheckboxen pasten, ongeacht
@@ -240,7 +240,8 @@ Quantity, Cost, Cnv, DueDate, Reference, Manufacturing Part, Customer, StockID z
 uit de Order_Master/Part_Master-query (`FRMPLN_10`, `REVLEV_10`, `COST_10`, `CSTCNV_10`, `STK_10`,
 `COMCDE_01`, ...), op **Workflow** na. Deze velden zijn puur informatief en worden meegesynchroniseerd
 naar `PurchaseRequestLine` (niet gebruikt door de sourcing/matching-logica). Direct na StockID staat
-**VendorID** — `Part_Master.RECVEN_01`, de voorkeursleverancier van het artikel, bevestigd door de
+**Rec. Vendor** (`RecVendor` in de code, hernoemd vanuit `VendorID` op user request, 20 okt 2026) —
+`Part_Master.RECVEN_01`, de voorkeursleverancier van het artikel, bevestigd door de
 gebruiker (okt 2026). Anders dan de velden ervoor is dit géén nieuwe kolom op `PurchaseRequestLine`:
 een nieuwe EF-kolom triggert de schema-regen die ook Supplier-credentials wist (zie "Les uit deze
 sessie" verderop), dus net als bij PO DueDate hierboven wordt dit live en gebatcht opgehaald
@@ -282,8 +283,9 @@ wanneer koos) en zet de aanvraag terug naar **Sourcing**. Geblokkeerd zodra de a
 (er bestaat dan al een echte ERP-PO; deselecteren zou die toch niet ongedaan maken).
 
 **Testaanvragen niet meer standaard zichtbaar** (zelfde user feedback: "dit zijn uitzonderingen, die
-wil ik niet standaard zien"): een nieuwe checkbox **"Testaanvragen tonen"** in de "Weergeven"-groep,
-uit by default. Handmatige testaanvragen ("TEST-"-prefix) werden tot nu toe altijd getoond, ongeacht de
+wil ik niet standaard zien"): een nieuwe checkbox **"Show Test Requests"** in de "Display"-groep
+(hernoemd vanuit "Weergeven" — zie "Alle UI-labels omgezet naar Engels" verderop), uit by default.
+Handmatige testaanvragen ("TEST-"-prefix) werden tot nu toe altijd getoond, ongeacht de
 status-/Due Date-/Select By-filters (ze waren nooit onderdeel van een MAX-query, dus die filters zouden
 ze anders onterecht lijken te "verbergen") — dit nieuwe vakje overstemt die uitzondering juist weer: uit
 betekent nu echt niet zichtbaar, ook niet via de andere filters.
@@ -309,7 +311,7 @@ leeg zolang DueDate of PartID
 van de regel nog onbekend is. Geen eigen opslag van deze waarde — altijd live opgevraagd bij MAX,
 nooit in de lokale database gecached.
 
-**Statusfilter ("Weergeven")**: een aparte groep checkboxen (los van de MAX-Query-filters ernaast),
+**Statusfilter ("Display")**: een aparte groep checkboxen (los van de MAX-Query-filters ernaast),
 één per `PurchaseRequest.Status`-waarde **behalve Ordered**, bepaalt welke Workflow-statussen in het
 grid getoond worden. Dit raakt nooit MAX aan: aan- of uitvinken filtert enkel lokaal al
 gesynchroniseerde aanvragen opnieuw (`PurchaseRequestRepository.GetAllAsync()`, client-side gefilterd),
@@ -969,10 +971,28 @@ raken dat mock-modus zelf nooit aanraakt:
   "Orderbevestiging verwerken"-vensters naast elkaar is het niet altijd logisch waar je welke
   informatie vindt. Eén concreet stuk hiervan is inmiddels opgelost (20 okt 2026): het hoofdscherm
   laat Ordered-aanvragen niet meer zien (enkel nog via het "Orders..."-scherm) en toont onderaan
-  rechtstreeks de offers van de geselecteerde aanvraag met een "Kiezen"-checkbox, in plaats van het
+  rechtstreeks de offers van de geselecteerde aanvraag met een "Select"-checkbox, in plaats van het
   oude, vrijwel-letterlijk-dubbele "regels"-grid plus een apart "Offers bekijken"-scherm — zie
   "Onderste grid vervangen door offers" hierboven. De rest (Order details/Orderbevestiging verwerken
   als losse vensters) staat nog open, verder geen concreet plan voor.
+- **Alle UI-labels omgezet naar Engels, kolombreedtes app-breed nagelopen** (user feedback, 20 okt
+  2026 — "het is nu een beetje een ratjetoe"): elke Button/Label/CheckBox/GroupBox-titel/
+  kolomkop/Form-titel in `Procurement.UI/Forms/*.cs` die nog Nederlands was, is omgezet naar Engels
+  (bv. "Opslaan"→"Save", "Annuleren"→"Cancel", "Weergeven"→"Display", "Instellingen"→"Settings",
+  "Testaanvragen tonen"→"Show Test Requests") — inclusief de onderliggende C#-propertynamen achter
+  elke kolomkop (bv. `Regels`→`Lines`, `Reden`→`Reason`), niet enkel een `HeaderText`-override, zodat
+  code en scherm consistent Engels blijven. Bewust **niet** meegenomen: statusbalk-tekst
+  (`SetStatus`/inline label-tekst die bij elke actie verandert), `MessageBox`-titels/-berichten en
+  exception-teksten — die blijven Nederlands, dat viel buiten de vraag ("kolommen, velden en
+  knoppen", geen meldingen). Tegelijk zijn alle ~16 grids in de app nagelopen op kolombreedte: elke
+  kolom die geen expliciete breedte had (en dus door `AutoSizeColumnsMode.Fill` werd uitgerokken,
+  vooral zichtbaar in het nieuwe offers-grid, waar destijds alleen "Select" en "Currency" een
+  breedte hadden) kreeg een op de inhoud afgestemde `SetCharacterBasedColumnWidth`/`SetMinimumWidth`
+  — precies één (soms twee) écht vrije-tekstkolom per grid blijft in Fill staan (bv. Desc1/Reference
+  in het hoofdscherm, SupplierPartNumber in de offers-/orderregels-grids, Reason bij Approvals), de
+  rest krijgt een vaste, op de inhoud afgestemde breedte. Resultaat: lege ruimte rechts in plaats van
+  overal uitgerokken, onleesbare kolommen (user request, 20 okt 2026: "ik heb liever dat we rechts
+  wat ruimte over houden").
 - **Opnieuw testen zodra er niet meer tegen de DigiKey-sandbox getest wordt (user request, 20 okt
   2026 — expliciet vastleggen voor go-live)**: het `ConfirmedQuantity` niet gevuld krijgen bij
   "Orderbevestiging verwerken" is zo goed als zeker een sandbox-testdata-beperking, geen bug in deze

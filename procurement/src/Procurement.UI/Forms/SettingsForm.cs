@@ -43,7 +43,7 @@ namespace Procurement.UI.Forms
 
         private void InitializeComponent()
         {
-            Text = "Instellingen";
+            Text = "Settings";
             Width = 900;
             Height = 600;
             StartPosition = FormStartPosition.CenterParent;
@@ -74,16 +74,16 @@ namespace Procurement.UI.Forms
                 Dock = DockStyle.Top,
                 Height = 30,
                 Padding = new Padding(4),
-                Text = "VendorId: MAX Part_Vendor.VENID_07 voor deze leverancier (bv. Farnell = 0349, DigiKey = 10194) — gebruikt om de Part_Vendor-koppeltabel te vertalen naar herkende supplier-mappings."
+                Text = "VendorId: MAX Part_Vendor.VENID_07 for this supplier (e.g. Farnell = 0349, DigiKey = 10194) — used to translate the Part_Vendor cross-reference table into recognized supplier mappings."
             };
             var buttonPanel = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true };
-            var saveButton = new Button { Text = "Opslaan", AutoSize = true };
+            var saveButton = new Button { Text = "Save", AutoSize = true };
             saveButton.Click += async (s, e) => await SaveSuppliersAsync();
-            var credentialsButton = new Button { Text = "Credentials bewerken...", AutoSize = true };
+            var credentialsButton = new Button { Text = "Edit Credentials...", AutoSize = true };
             credentialsButton.Click += async (s, e) => await EditCredentialsForSelectedSupplierAsync();
-            var shippingButton = new Button { Text = "Verzendgegevens bewerken...", AutoSize = true };
+            var shippingButton = new Button { Text = "Edit Shipping Details...", AutoSize = true };
             shippingButton.Click += async (s, e) => await EditOrderingContactForSelectedSupplierAsync();
-            var authorizeOrderingButton = new Button { Text = "Ordering autoriseren...", AutoSize = true };
+            var authorizeOrderingButton = new Button { Text = "Authorize Ordering...", AutoSize = true };
             authorizeOrderingButton.Click += async (s, e) => await AuthorizeDigiKeyOrderingAsync();
             buttonPanel.Controls.Add(saveButton);
             buttonPanel.Controls.Add(credentialsButton);
@@ -107,7 +107,7 @@ namespace Procurement.UI.Forms
             };
             EnableDoubleBuffering(_supplierPreferenceGrid);
             EnableRowNumberHeaders(_supplierPreferenceGrid);
-            var saveButton = new Button { Text = "Opslaan", Dock = DockStyle.Bottom, AutoSize = true };
+            var saveButton = new Button { Text = "Save", Dock = DockStyle.Bottom, AutoSize = true };
             saveButton.Click += async (s, e) => await SaveSupplierPreferencesAsync();
 
             page.Controls.Add(_supplierPreferenceGrid);
@@ -131,9 +131,9 @@ namespace Procurement.UI.Forms
                 Dock = DockStyle.Top,
                 Height = 30,
                 Padding = new Padding(4),
-                Text = "AllowedPackaging: komma-gescheiden lijst van enum-namen, bv. OriginalReel,CutTape"
+                Text = "AllowedPackaging: comma-separated list of enum names, e.g. OriginalReel,CutTape"
             };
-            var saveButton = new Button { Text = "Opslaan", Dock = DockStyle.Bottom, AutoSize = true };
+            var saveButton = new Button { Text = "Save", Dock = DockStyle.Bottom, AutoSize = true };
             saveButton.Click += async (s, e) => await SavePackagingPoliciesAsync();
 
             page.Controls.Add(_packagingPolicyGrid);
@@ -153,13 +153,13 @@ namespace Procurement.UI.Forms
             _allowNonOriginalPackagingBox = new CheckBox();
             _allowAlternativePartBox = new CheckBox();
 
-            AddRow(layout, "Max orderwaarde voor auto-approval:", _maxOrderValueBox);
-            AddRow(layout, "Max prijsafwijking (%):", _maxPriceVarianceBox);
-            AddRow(layout, "Externe leverancier toegestaan:", _allowExternalSupplierBox);
-            AddRow(layout, "Niet-originele packaging toegestaan:", _allowNonOriginalPackagingBox);
-            AddRow(layout, "Alternatief onderdeel toegestaan:", _allowAlternativePartBox);
+            AddRow(layout, "Max order value for auto-approval:", _maxOrderValueBox);
+            AddRow(layout, "Max price variance (%):", _maxPriceVarianceBox);
+            AddRow(layout, "External supplier allowed:", _allowExternalSupplierBox);
+            AddRow(layout, "Non-original packaging allowed:", _allowNonOriginalPackagingBox);
+            AddRow(layout, "Alternative part allowed:", _allowAlternativePartBox);
 
-            var saveButton = new Button { Text = "Opslaan", Dock = DockStyle.Bottom, AutoSize = true };
+            var saveButton = new Button { Text = "Save", Dock = DockStyle.Bottom, AutoSize = true };
             saveButton.Click += async (s, e) => await SaveApprovalPolicyAsync();
 
             page.Controls.Add(layout);
@@ -214,11 +214,24 @@ namespace Procurement.UI.Forms
             })
                 if (_suppliersGrid.Columns[column] != null)
                     _suppliersGrid.Columns[column].Visible = false;
+            // Explicit widths (user request, 20 okt 2026) — Name is the one genuinely free-text
+            // column here, left in Fill with a floor.
+            SetCharacterBasedColumnWidth(_suppliersGrid, "Id", 6);
+            SetCharacterBasedColumnWidth(_suppliersGrid, "SupplierCode", 14);
+            SetMinimumWidth(_suppliersGrid, "Name", 140);
+            SetCharacterBasedColumnWidth(_suppliersGrid, "VendorId", 10);
+            SetCharacterBasedColumnWidth(_suppliersGrid, "IsSandbox", 10);
+            SetCharacterBasedColumnWidth(_suppliersGrid, "UseMockData", 12);
 
             var preferences = await _policyRepository.GetSupplierPreferencesAsync();
             _supplierPreferenceGrid.DataSource = new BindingList<SupplierPreference>(preferences.ToList());
             if (_supplierPreferenceGrid.Columns["Id"] != null)
                 _supplierPreferenceGrid.Columns["Id"].ReadOnly = true;
+            SetCharacterBasedColumnWidth(_supplierPreferenceGrid, "Id", 6);
+            SetCharacterBasedColumnWidth(_supplierPreferenceGrid, "SupplierCode", 14);
+            SetCharacterBasedColumnWidth(_supplierPreferenceGrid, "Priority", 10);
+            SetCharacterBasedColumnWidth(_supplierPreferenceGrid, "Active", 10);
+            SetCharacterBasedColumnWidth(_supplierPreferenceGrid, "AllowedForAutoOrder", 14);
 
             var packagingPolicies = await _policyRepository.GetPackagingPoliciesAsync();
             _packagingPolicyGrid.DataSource = new BindingList<PackagingPolicy>(packagingPolicies.ToList());
@@ -231,6 +244,14 @@ namespace Procurement.UI.Forms
             if (_packagingPolicyGrid.Columns["AllowedPackagingCsv"] != null)
                 _packagingPolicyGrid.Columns["AllowedPackagingCsv"].HeaderText = "AllowedPackaging (csv)";
             ApplyQuantityColumns(_packagingPolicyGrid, "MinimumQuantity");
+            // AllowedPackagingCsv is the one genuinely variable-length column here (a comma-separated
+            // list), left in Fill with a floor.
+            SetCharacterBasedColumnWidth(_packagingPolicyGrid, "Id", 6);
+            SetMinimumWidth(_packagingPolicyGrid, "ComponentCategory", 140);
+            SetCharacterBasedColumnWidth(_packagingPolicyGrid, "MinimumQuantity", 12);
+            SetCharacterBasedColumnWidth(_packagingPolicyGrid, "PreferredPackaging", 16);
+            SetMinimumWidth(_packagingPolicyGrid, "AllowedPackagingCsv", 160);
+            SetCharacterBasedColumnWidth(_packagingPolicyGrid, "OriginalReelRequired", 14);
 
             _approvalPolicy = await _policyRepository.GetApprovalPolicyAsync() ?? new ApprovalPolicy();
             _maxOrderValueBox.Value = _approvalPolicy.MaxOrderValueForAutoApproval;
@@ -249,6 +270,9 @@ namespace Procurement.UI.Forms
                 }))
                 .OrderBy(x => x.Supplier).ThenBy(x => x.Capability)
                 .ToList();
+            SetCharacterBasedColumnWidth(_capabilitiesGrid, "Supplier", 14);
+            SetCharacterBasedColumnWidth(_capabilitiesGrid, "Capability", 16);
+            SetCharacterBasedColumnWidth(_capabilitiesGrid, "Status", 16);
         }
 
         private async System.Threading.Tasks.Task SaveSuppliersAsync()
@@ -285,7 +309,7 @@ namespace Procurement.UI.Forms
 
             using (var dialog = new Form
             {
-                Text = $"Credentials bewerken – {supplierCode}",
+                Text = $"Edit Credentials – {supplierCode}",
                 Width = 420,
                 Height = 260,
                 StartPosition = FormStartPosition.CenterParent,
@@ -307,12 +331,12 @@ namespace Procurement.UI.Forms
                     Dock = DockStyle.Top,
                     Height = 40,
                     Padding = new Padding(10, 0, 10, 0),
-                    Text = "Leeg laten = ongewijzigd. Bestaande waarden worden hier nooit getoond."
+                    Text = "Leave blank = unchanged. Existing values are never shown here."
                 };
 
                 var buttonPanel = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(10) };
-                var saveButton = new Button { Text = "Opslaan", AutoSize = true, DialogResult = DialogResult.OK };
-                var cancelButton = new Button { Text = "Annuleren", AutoSize = true, DialogResult = DialogResult.Cancel };
+                var saveButton = new Button { Text = "Save", AutoSize = true, DialogResult = DialogResult.OK };
+                var cancelButton = new Button { Text = "Cancel", AutoSize = true, DialogResult = DialogResult.Cancel };
                 buttonPanel.Controls.Add(cancelButton);
                 buttonPanel.Controls.Add(saveButton);
 
@@ -357,7 +381,7 @@ namespace Procurement.UI.Forms
 
             using (var dialog = new Form
             {
-                Text = $"Verzendgegevens bewerken – {supplierCode}",
+                Text = $"Edit Shipping Details – {supplierCode}",
                 Width = 440,
                 Height = 460,
                 StartPosition = FormStartPosition.CenterParent,
@@ -378,19 +402,19 @@ namespace Procurement.UI.Forms
                 var postalCodeBox = new TextBox { Width = 220, Text = current.PostalCode };
                 var countryCodeBox = new TextBox { Width = 220, Text = current.CountryCode, MaxLength = 2 };
                 AddRow(layout, "Account ID:", accountIdBox);
-                AddRow(layout, "Contactnaam:", contactNameBox);
-                AddRow(layout, "Contact e-mail:", contactEmailBox);
-                AddRow(layout, "Contact telefoon:", contactTelephoneBox);
-                AddRow(layout, "Adresregel 1:", addressLine1Box);
-                AddRow(layout, "Adresregel 2:", addressLine2Box);
-                AddRow(layout, "Plaats:", cityBox);
-                AddRow(layout, "Provincie/staat:", provinceBox);
-                AddRow(layout, "Postcode:", postalCodeBox);
-                AddRow(layout, "Landcode (2 letters, ISO):", countryCodeBox);
+                AddRow(layout, "Contact Name:", contactNameBox);
+                AddRow(layout, "Contact Email:", contactEmailBox);
+                AddRow(layout, "Contact Phone:", contactTelephoneBox);
+                AddRow(layout, "Address Line 1:", addressLine1Box);
+                AddRow(layout, "Address Line 2:", addressLine2Box);
+                AddRow(layout, "City:", cityBox);
+                AddRow(layout, "Province/State:", provinceBox);
+                AddRow(layout, "Postal Code:", postalCodeBox);
+                AddRow(layout, "Country Code (2 letters, ISO):", countryCodeBox);
 
                 var buttonPanel = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(10) };
-                var saveButton = new Button { Text = "Opslaan", AutoSize = true, DialogResult = DialogResult.OK };
-                var cancelButton = new Button { Text = "Annuleren", AutoSize = true, DialogResult = DialogResult.Cancel };
+                var saveButton = new Button { Text = "Save", AutoSize = true, DialogResult = DialogResult.OK };
+                var cancelButton = new Button { Text = "Cancel", AutoSize = true, DialogResult = DialogResult.Cancel };
                 buttonPanel.Controls.Add(cancelButton);
                 buttonPanel.Controls.Add(saveButton);
 
@@ -496,7 +520,7 @@ namespace Procurement.UI.Forms
         {
             using (var dialog = new Form
             {
-                Text = "DigiKey Ordering autoriseren",
+                Text = "Authorize DigiKey Ordering",
                 Width = 520,
                 Height = 270,
                 StartPosition = FormStartPosition.CenterParent,
@@ -510,16 +534,16 @@ namespace Procurement.UI.Forms
                     Dock = DockStyle.Top,
                     Height = 90,
                     Padding = new Padding(10),
-                    Text = "Er is zojuist een browservenster geopend om bij DigiKey in te loggen en toestemming te geven. "
-                        + "Na goedkeuren stuurt DigiKey de browser naar \"https://localhost/...\" — die pagina laadt niet "
-                        + "(dat is verwacht, er draait daar niets), maar de adresbalk bevat wel de volledige URL. "
-                        + "Kopieer die complete URL uit de adresbalk en plak 'm hieronder."
+                    Text = "A browser window has just opened to log in to DigiKey and give consent. "
+                        + "After approving, DigiKey redirects the browser to \"https://localhost/...\" — that page won't "
+                        + "load (expected, nothing runs there), but the address bar will contain the full URL. "
+                        + "Copy that complete URL from the address bar and paste it below."
                 };
                 var textBox = new TextBox { Dock = DockStyle.Top, Height = 60 };
 
                 var buttonPanel = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(10) };
                 var okButton = new Button { Text = "OK", AutoSize = true, DialogResult = DialogResult.OK };
-                var cancelButton = new Button { Text = "Annuleren", AutoSize = true, DialogResult = DialogResult.Cancel };
+                var cancelButton = new Button { Text = "Cancel", AutoSize = true, DialogResult = DialogResult.Cancel };
                 buttonPanel.Controls.Add(cancelButton);
                 buttonPanel.Controls.Add(okButton);
 

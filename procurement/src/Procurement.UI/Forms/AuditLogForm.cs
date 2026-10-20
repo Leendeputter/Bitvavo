@@ -29,7 +29,7 @@ namespace Procurement.UI.Forms
 
         private void InitializeComponent()
         {
-            Text = "Audit-log";
+            Text = "Audit Log";
             Width = 1200;
             Height = 650;
             StartPosition = FormStartPosition.CenterParent;
@@ -48,19 +48,19 @@ namespace Procurement.UI.Forms
             _supplierCodeBox = new TextBox { Width = 100 };
             filterPanel.Controls.Add(_supplierCodeBox);
 
-            _fromEnabled = new CheckBox { Text = "Van:", AutoSize = true, Padding = new Padding(8, 4, 2, 0) };
+            _fromEnabled = new CheckBox { Text = "From:", AutoSize = true, Padding = new Padding(8, 4, 2, 0) };
             _fromPicker = new DateTimePicker { Width = 130, Value = DateTime.Today.AddDays(-7), Enabled = false };
             _fromEnabled.CheckedChanged += (s, e) => _fromPicker.Enabled = _fromEnabled.Checked;
             filterPanel.Controls.Add(_fromEnabled);
             filterPanel.Controls.Add(_fromPicker);
 
-            _toEnabled = new CheckBox { Text = "Tot:", AutoSize = true, Padding = new Padding(8, 4, 2, 0) };
+            _toEnabled = new CheckBox { Text = "To:", AutoSize = true, Padding = new Padding(8, 4, 2, 0) };
             _toPicker = new DateTimePicker { Width = 130, Value = DateTime.Today.AddDays(1), Enabled = false };
             _toEnabled.CheckedChanged += (s, e) => _toPicker.Enabled = _toEnabled.Checked;
             filterPanel.Controls.Add(_toEnabled);
             filterPanel.Controls.Add(_toPicker);
 
-            var searchButton = new Button { Text = "Zoeken", AutoSize = true, Margin = new Padding(8, 4, 0, 0) };
+            var searchButton = new Button { Text = "Search", AutoSize = true, Margin = new Padding(8, 4, 0, 0) };
             searchButton.Click += async (s, e) => await SearchAsync();
             filterPanel.Controls.Add(searchButton);
 
@@ -98,7 +98,7 @@ namespace Procurement.UI.Forms
 
             using (var dialog = new Form
             {
-                Text = "Audit-log detail",
+                Text = "Audit Log Detail",
                 Width = 700,
                 Height = 550,
                 StartPosition = FormStartPosition.CenterParent,
@@ -117,8 +117,8 @@ namespace Procurement.UI.Forms
                     Text = text
                 };
                 var buttonPanel = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(8) };
-                var closeButton = new Button { Text = "Sluiten", AutoSize = true, DialogResult = DialogResult.OK };
-                var copyButton = new Button { Text = "Kopiëren naar klembord", AutoSize = true };
+                var closeButton = new Button { Text = "Close", AutoSize = true, DialogResult = DialogResult.OK };
+                var copyButton = new Button { Text = "Copy to Clipboard", AutoSize = true };
                 copyButton.Click += (s, e) => Clipboard.SetText(text);
                 buttonPanel.Controls.Add(closeButton);
                 buttonPanel.Controls.Add(copyButton);
@@ -153,6 +153,19 @@ namespace Procurement.UI.Forms
                 e.Error
             }).ToList();
             ApplyDateTimeColumns(_grid, "Timestamp");
+            // RequestPayload/ResponsePayload/Error are the genuinely free-text columns here (per
+            // ShowRowDetail's own comment, routinely a full HTTP error body) — left in Fill with a
+            // floor; everything else gets an explicit width (user request, 20 okt 2026).
+            SetCharacterBasedColumnWidth(_grid, "Timestamp", 19);
+            SetCharacterBasedColumnWidth(_grid, "EntityType", 16);
+            SetCharacterBasedColumnWidth(_grid, "EntityId", 14);
+            SetCharacterBasedColumnWidth(_grid, "EventType", 26);
+            SetCharacterBasedColumnWidth(_grid, "SupplierCode", 12);
+            SetCharacterBasedColumnWidth(_grid, "Status", 10);
+            SetCharacterBasedColumnWidth(_grid, "UserOrSystem", 12);
+            SetMinimumWidth(_grid, "RequestPayload", 160);
+            SetMinimumWidth(_grid, "ResponsePayload", 160);
+            SetMinimumWidth(_grid, "Error", 160);
         }
     }
 }

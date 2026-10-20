@@ -25,15 +25,15 @@ namespace Procurement.UI.Forms
 
         private void InitializeComponent()
         {
-            Text = "Supplier-mapping beheer";
+            Text = "Supplier Mapping";
             Width = 900;
             Height = 550;
             StartPosition = FormStartPosition.CenterParent;
 
             var topPanel = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 40, FlowDirection = FlowDirection.LeftToRight };
-            topPanel.Controls.Add(new Label { Text = "Filter op match confidence:", AutoSize = true, Padding = new Padding(0, 8, 4, 0) });
+            topPanel.Controls.Add(new Label { Text = "Filter by match confidence:", AutoSize = true, Padding = new Padding(0, 8, 4, 0) });
             _filterCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 150 };
-            _filterCombo.Items.Add("(alle)");
+            _filterCombo.Items.Add("(all)");
             _filterCombo.Items.AddRange(Enum.GetNames(typeof(MatchConfidence)));
             _filterCombo.SelectedIndex = 0;
             _filterCombo.SelectedIndexChanged += async (s, e) => await RefreshAsync();
@@ -51,7 +51,7 @@ namespace Procurement.UI.Forms
             EnableDoubleBuffering(_grid);
             EnableRowNumberHeaders(_grid);
 
-            _verifyButton = new Button { Text = "Markeer als Verified", Dock = DockStyle.Bottom, AutoSize = true };
+            _verifyButton = new Button { Text = "Mark as Verified", Dock = DockStyle.Bottom, AutoSize = true };
             _verifyButton.Click += async (s, e) => await VerifySelectedAsync();
 
             Controls.Add(_grid);
@@ -78,6 +78,16 @@ namespace Procurement.UI.Forms
                 m.CreatedAt
             }).ToList();
             ApplyDateTimeColumns(_grid, "CreatedAt");
+            // ManufacturerPartNumber is the one genuinely free-text column here, left in Fill with a
+            // floor (user request, 20 okt 2026).
+            SetCharacterBasedColumnWidth(_grid, "Id", 6);
+            SetCharacterBasedColumnWidth(_grid, "ErpArticleId", 14);
+            SetCharacterBasedColumnWidth(_grid, "SupplierCode", 12);
+            SetMinimumWidth(_grid, "SupplierPartNumber", 120);
+            SetCharacterBasedColumnWidth(_grid, "Manufacturer", 16);
+            SetMinimumWidth(_grid, "ManufacturerPartNumber", 140);
+            SetCharacterBasedColumnWidth(_grid, "MatchConfidence", 14);
+            SetCharacterBasedColumnWidth(_grid, "CreatedAt", 19);
         }
 
         private async System.Threading.Tasks.Task VerifySelectedAsync()

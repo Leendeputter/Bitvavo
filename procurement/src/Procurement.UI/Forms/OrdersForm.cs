@@ -45,11 +45,11 @@ namespace Procurement.UI.Forms
             StartPosition = FormStartPosition.CenterParent;
 
             var topPanel = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 36, FlowDirection = FlowDirection.LeftToRight };
-            var refreshButton = new Button { Text = "Verversen", AutoSize = true, Margin = new Padding(4) };
+            var refreshButton = new Button { Text = "Refresh", AutoSize = true, Margin = new Padding(4) };
             refreshButton.Click += async (s, e) => await RefreshAsync();
             topPanel.Controls.Add(refreshButton);
 
-            var poLabel = new Label { Text = "Alle purchase orders:", Dock = DockStyle.Top, Height = 20, Padding = new Padding(4) };
+            var poLabel = new Label { Text = "All Purchase Orders:", Dock = DockStyle.Top, Height = 20, Padding = new Padding(4) };
             _ordersGrid = new DataGridView
             {
                 Dock = DockStyle.Top,
@@ -64,7 +64,7 @@ namespace Procurement.UI.Forms
             EnableRowNumberHeaders(_ordersGrid);
             _ordersGrid.SelectionChanged += OrdersGrid_SelectionChanged;
 
-            var linesLabel = new Label { Text = "Regels van geselecteerde PO:", Dock = DockStyle.Top, Height = 20, Padding = new Padding(4) };
+            var linesLabel = new Label { Text = "Lines of Selected PO:", Dock = DockStyle.Top, Height = 20, Padding = new Padding(4) };
             _linesGrid = new DataGridView
             {
                 Dock = DockStyle.Fill,
@@ -108,7 +108,7 @@ namespace Procurement.UI.Forms
                 po.ConfirmedAt,
                 po.OrderTotal,
                 po.Currency,
-                Regels = po.Lines.Count
+                Lines = po.Lines.Count
             }).ToList();
             _ordersGrid.SelectionChanged += OrdersGrid_SelectionChanged;
 
@@ -116,6 +116,18 @@ namespace Procurement.UI.Forms
                 _ordersGrid.Columns["Id"].Visible = false;
             ApplyCurrencyColumns(_ordersGrid, "OrderTotal");
             ApplyDateTimeColumns(_ordersGrid, "CreatedAt", "SubmittedAt", "ConfirmedAt");
+            // Explicit widths for every column (user request, 20 okt 2026) — none of these are
+            // genuinely free-text, so none need Fill's stretch-to-fill behavior.
+            SetCharacterBasedColumnWidth(_ordersGrid, "ErpPoNumber", 12);
+            SetCharacterBasedColumnWidth(_ordersGrid, "Supplier", 12);
+            SetCharacterBasedColumnWidth(_ordersGrid, "SupplierOrderNumber", 16);
+            SetCharacterBasedColumnWidth(_ordersGrid, "Status", 14);
+            SetCharacterBasedColumnWidth(_ordersGrid, "CreatedAt", 19);
+            SetCharacterBasedColumnWidth(_ordersGrid, "SubmittedAt", 19);
+            SetCharacterBasedColumnWidth(_ordersGrid, "ConfirmedAt", 19);
+            SetCharacterBasedColumnWidth(_ordersGrid, "OrderTotal", 14);
+            SetCharacterBasedColumnWidth(_ordersGrid, "Currency", 8);
+            SetCharacterBasedColumnWidth(_ordersGrid, "Lines", 8);
 
             _statusBar.Text = $"{_loadedOrders.Count} order(s).";
             await LoadLinesForSelectedOrderAsync();
@@ -198,10 +210,27 @@ namespace Procurement.UI.Forms
             ApplyQuantityColumns(_linesGrid, "Quantity", "ConfirmedQuantity");
             ApplyCurrencyColumns(_linesGrid, "UnitPrice", "ConfirmedUnitPrice", "LineTotal");
             ApplyDateColumns(_linesGrid, "RequiredDate", "ConfirmedShipDate");
-            SetHeaderText(_linesGrid, "QuantityMismatch", "Qty afwijkt?");
-            SetHeaderText(_linesGrid, "PriceMismatch", "Prijs afwijkt?");
-            SetHeaderText(_linesGrid, "DeliveryIsLate", "Te laat?");
+            SetHeaderText(_linesGrid, "QuantityMismatch", "Qty Mismatch?");
+            SetHeaderText(_linesGrid, "PriceMismatch", "Price Mismatch?");
+            SetHeaderText(_linesGrid, "DeliveryIsLate", "Late?");
             HighlightDeviatingLines(_linesGrid);
+            // Explicit widths for every column except SupplierPartNumber (genuinely variable-length,
+            // left in Fill with a floor) — same reasoning as MainForm's offers grid (user request,
+            // 20 okt 2026).
+            SetCharacterBasedColumnWidth(_linesGrid, "ErpRequestNumber", 12);
+            SetCharacterBasedColumnWidth(_linesGrid, "PartID", 14);
+            SetMinimumWidth(_linesGrid, "SupplierPartNumber", 140);
+            SetCharacterBasedColumnWidth(_linesGrid, "Confirmed", 10);
+            SetCharacterBasedColumnWidth(_linesGrid, "Quantity", 10);
+            SetCharacterBasedColumnWidth(_linesGrid, "ConfirmedQuantity", 12);
+            SetCharacterBasedColumnWidth(_linesGrid, "QuantityMismatch", 12);
+            SetCharacterBasedColumnWidth(_linesGrid, "UnitPrice", 12);
+            SetCharacterBasedColumnWidth(_linesGrid, "ConfirmedUnitPrice", 14);
+            SetCharacterBasedColumnWidth(_linesGrid, "PriceMismatch", 12);
+            SetCharacterBasedColumnWidth(_linesGrid, "RequiredDate", 12);
+            SetCharacterBasedColumnWidth(_linesGrid, "ConfirmedShipDate", 14);
+            SetCharacterBasedColumnWidth(_linesGrid, "DeliveryIsLate", 8);
+            SetCharacterBasedColumnWidth(_linesGrid, "LineTotal", 14);
 
             var unconfirmedCount = order.Lines.Count(l => !l.ConfirmedQuantity.HasValue);
             _statusBar.Text = $"{order.SupplierCode}: {order.Status}"

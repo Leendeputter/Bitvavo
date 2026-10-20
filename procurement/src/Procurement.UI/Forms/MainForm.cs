@@ -87,8 +87,8 @@ namespace Procurement.UI.Forms
 
         private void InitializeComponent()
         {
-            Text = $"Componenteninkoop – {_composition.Session.CompanyName} ({_composition.Session.UserName})"
-                 + (_composition.Session.TestMode ? " – TESTMODUS" : string.Empty);
+            Text = $"Component Procurement – {_composition.Session.CompanyName} ({_composition.Session.UserName})"
+                 + (_composition.Session.TestMode ? " – TEST MODE" : string.Empty);
             Width = 1300;
             Height = 860;
             StartPosition = FormStartPosition.CenterScreen;
@@ -97,39 +97,39 @@ namespace Procurement.UI.Forms
             Padding = new Padding(8);
 
             var toolPanel = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 40, FlowDirection = FlowDirection.LeftToRight };
-            _newRequestButton = new Button { Text = "Nieuwe testaanvraag toevoegen", AutoSize = true };
+            _newRequestButton = new Button { Text = "Add New Test Request", AutoSize = true };
             _newRequestButton.Click += async (s, e) => await NewRequestAsync();
             // Elke rij is een MAX-order voor precies 1 artikel — bij tientallen open orders is 1
             // voor 1 klikken onwerkbaar. Sourcing starten verwerkt daarom alle geselecteerde
             // aanvragen (Ctrl/Shift-klik in het grid); Alles sourcen verwerkt de hele lijst zonder
             // eerst te hoeven selecteren.
-            _startSourcingButton = new Button { Text = "Sourcing starten (selectie)", AutoSize = true };
+            _startSourcingButton = new Button { Text = "Start Sourcing (Selection)", AutoSize = true };
             _startSourcingButton.Click += async (s, e) => await SourceRequestsAsync(GetSelectedRequestIds(), confirmIfMoreThan: 1);
-            _sourceAllButton = new Button { Text = "Alles sourcen", AutoSize = true };
+            _sourceAllButton = new Button { Text = "Source All", AutoSize = true };
             _sourceAllButton.Click += async (s, e) => await SourceRequestsAsync(GetAllRequestIds(), confirmIfMoreThan: 1);
             // Losgekoppeld van sourcing (spec-correctie): sourcing/goedkeuring brengt een aanvraag
             // enkel tot ReadyToOrder (een SupplierSelection per regel), het daadwerkelijk plaatsen
             // van de order is een aparte, expliciete stap — zo kan per leverancier gebundeld worden
             // i.p.v. automatisch bij elke match meteen te bestellen.
-            _placeOrdersButton = new Button { Text = "Order plaatsen (selectie)", AutoSize = true };
+            _placeOrdersButton = new Button { Text = "Place Order (Selection)", AutoSize = true };
             _placeOrdersButton.Click += async (s, e) => await PlaceOrdersAsync(GetSelectedRequestIds());
             // Eén knop voor alle nog te bevestigen orders — verwerkt bevestigingen automatisch
             // (lokaal altijd, en in real-mode ook de MAX Confirming/Reference/duedate-velden) en
             // toont enkel wat afwijkt (aantal/prijs/te late levering), niet elke geslaagde
             // bevestiging apart (zie ProcurementEngine.ProcessOrderConfirmationsAsync).
-            _processConfirmationsButton = new Button { Text = "Orderbevestiging verwerken", AutoSize = true };
+            _processConfirmationsButton = new Button { Text = "Process Order Confirmations", AutoSize = true };
             _processConfirmationsButton.Click += async (s, e) => await ProcessOrderConfirmationsAsync();
-            _orderDetailButton = new Button { Text = "Order details", AutoSize = true };
+            _orderDetailButton = new Button { Text = "Order Details", AutoSize = true };
             _orderDetailButton.Click += (s, e) => ShowOrderDetail();
             _ordersButton = new Button { Text = "Orders...", AutoSize = true };
             _ordersButton.Click += (s, e) => ShowOrders();
-            _approvalsButton = new Button { Text = "Goedkeuringen...", AutoSize = true };
+            _approvalsButton = new Button { Text = "Approvals...", AutoSize = true };
             _approvalsButton.Click += async (s, e) => await ShowApprovalsAsync();
-            _supplierMappingButton = new Button { Text = "Supplier mapping...", AutoSize = true };
+            _supplierMappingButton = new Button { Text = "Supplier Mapping...", AutoSize = true };
             _supplierMappingButton.Click += (s, e) => ShowSupplierMapping();
-            _settingsButton = new Button { Text = "Instellingen...", AutoSize = true };
+            _settingsButton = new Button { Text = "Settings...", AutoSize = true };
             _settingsButton.Click += (s, e) => ShowSettings();
-            _auditLogButton = new Button { Text = "Audit-log...", AutoSize = true };
+            _auditLogButton = new Button { Text = "Audit Log...", AutoSize = true };
             _auditLogButton.Click += (s, e) => ShowAuditLog();
 
             toolPanel.Controls.AddRange(new Control[]
@@ -181,7 +181,7 @@ namespace Procurement.UI.Forms
             EnableRowNumberHeaders(_requestsGrid);
             _requestsGrid.SelectionChanged += RequestsGrid_SelectionChanged;
 
-            var offersLabel = new Label { Text = "Offers voor geselecteerde aanvraag (vink \"Select\" aan om een offerte te selecteren/deselecteren):", Dock = DockStyle.Top, Height = 20, Padding = new Padding(4) };
+            var offersLabel = new Label { Text = "Offers for the selected request (tick \"Select\" to select/deselect an offer):", Dock = DockStyle.Top, Height = 20, Padding = new Padding(4) };
 
             _offersGrid = new DataGridView
             {
@@ -209,7 +209,7 @@ namespace Procurement.UI.Forms
             };
             _offersGrid.CellValueChanged += async (s, e) => await OffersGrid_CellValueChangedAsync(e);
 
-            _statusLabel = new Label { Dock = DockStyle.Bottom, Height = 24, Text = "Gereed. Klik op \"Query\" om orders op te halen uit MAX.", Padding = new Padding(4) };
+            _statusLabel = new Label { Dock = DockStyle.Bottom, Height = 24, Text = "Ready. Click \"Query\" to fetch orders from MAX.", Padding = new Padding(4) };
 
             // Volgorde bepaalt de docking-stapeling (laatst toegevoegde Top-control komt bovenaan):
             // toolPanel (buitenste rand), dan filterPanel, dan requestsGrid.
@@ -238,7 +238,7 @@ namespace Procurement.UI.Forms
             layout.Controls.Add(_statusPlannedCheckBox);
             layout.Controls.Add(_statusApprovedCheckBox);
             layout.Controls.Add(_queryButton);
-            return WrapInGroupBox("Orders ophalen uit MAX", layout);
+            return WrapInGroupBox("Fetch Orders from MAX", layout);
         }
 
         private GroupBox BuildDueDateRangeGroup()
@@ -324,7 +324,7 @@ namespace Procurement.UI.Forms
             // uitzondering); dit vakje overstemt die uitzondering juist weer, los van de rest.
             _showTestRequestsCheckBox = new CheckBox
             {
-                Text = "Testaanvragen tonen",
+                Text = "Show Test Requests",
                 AutoSize = true,
                 Checked = false,
                 Margin = new Padding(0, 8, 0, 2)
@@ -332,7 +332,7 @@ namespace Procurement.UI.Forms
             _showTestRequestsCheckBox.CheckedChanged += async (s, e) => await ReloadWithCurrentStatusFilterAsync();
             layout.Controls.Add(_showTestRequestsCheckBox);
 
-            return WrapInGroupBox("Weergeven", layout);
+            return WrapInGroupBox("Display", layout);
         }
 
         private HashSet<PurchaseRequestStatus> GetCheckedRequestStatuses() =>
@@ -606,7 +606,8 @@ namespace Procurement.UI.Forms
                         // Part_Master.RECVEN_01 — confirmed by the user (okt 2026) as "the article's
                         // preferred vendor". Live lookup, not synced/stored on the line itself (see
                         // MaxOrderRepository.GetPreferredVendorIdsByPartIdsAsync's own comment for why).
-                        VendorID = line?.ErpArticleId != null && preferredVendorIdsByPartId.TryGetValue(line.ErpArticleId, out var preferredVendorId)
+                        // Column header shown as "Rec. Vendor" (user request, 20 okt 2026).
+                        RecVendor = line?.ErpArticleId != null && preferredVendorIdsByPartId.TryGetValue(line.ErpArticleId, out var preferredVendorId)
                             ? preferredVendorId
                             : null,
                         // De oorspronkelijke MAX-aanvraag hierboven blijft ongewijzigd zichtbaar (dat
@@ -634,6 +635,7 @@ namespace Procurement.UI.Forms
             SetHeaderText(_requestsGrid, "ManufacturingPart", "Manufacturing Part");
             SetHeaderText(_requestsGrid, "ExtCost", "Ext. Cost");
             SetHeaderText(_requestsGrid, "PoDueDate", "PO DueDate");
+            SetHeaderText(_requestsGrid, "RecVendor", "Rec. Vendor");
             SetHeaderText(_requestsGrid, "SelectedSupplier", "Selected Supplier");
             SetHeaderText(_requestsGrid, "SelectedPrice", "Selected Price");
             SetHeaderText(_requestsGrid, "SelectedQuantity", "Selected Qty");
@@ -746,7 +748,7 @@ namespace Procurement.UI.Forms
             SetCharacterBasedColumnWidth(grid, "PoDueDate", 12);
             SetCharacterBasedColumnWidth(grid, "Customer", 14);
             SetCharacterBasedColumnWidth(grid, "StockID", 14);
-            SetCharacterBasedColumnWidth(grid, "VendorID", 14);
+            SetCharacterBasedColumnWidth(grid, "RecVendor", 10);
             SetCharacterBasedColumnWidth(grid, "Workflow", 16);
             SetCharacterBasedColumnWidth(grid, "Manufacturer", 16);
             SetCharacterBasedColumnWidth(grid, "Packaging", 14);
@@ -879,11 +881,25 @@ namespace Procurement.UI.Forms
             ApplyQuantityColumns(_offersGrid, "OfferedQuantity", "AvailableQuantity");
             ApplyCurrencyColumns(_offersGrid, "UnitPrice", "LandedCost");
             ApplyDateColumns(_offersGrid, "DueDate");
-            // Smal genoeg voor een checkbox + "Select"-tekst, resp. voor "Currency" (de waarden zelf,
-            // bv. "EUR", zijn altijd korter dan de kolomnaam) — anders trekt AutoSizeColumnsMode.Fill
-            // ze even breed als de rest (user request, 20 okt 2026).
+            // Every column except SupplierPartNumber gets an explicit width (user request, 20 okt
+            // 2026: "ik heb liever dat we rechts wat ruimte over houden dan dat alles zo breed wordt
+            // dat het ook niet meer leesbaar is") — without this, AutoSizeColumnsMode.Fill stretched
+            // every one of these short code/numeric/date columns to fill the leftover width.
+            // SupplierPartNumber is the one genuinely variable-length column left in Fill, with a
+            // floor under it so it can't be squeezed unreadable either.
             SetCharacterBasedColumnWidth(_offersGrid, "Select", 8);
+            SetCharacterBasedColumnWidth(_offersGrid, "SupplierCode", 10);
+            SetMinimumWidth(_offersGrid, "SupplierPartNumber", 140);
+            SetCharacterBasedColumnWidth(_offersGrid, "MatchConfidence", 10);
+            SetCharacterBasedColumnWidth(_offersGrid, "OfferedQuantity", 10);
+            SetCharacterBasedColumnWidth(_offersGrid, "UnitPrice", 12);
             SetCharacterBasedColumnWidth(_offersGrid, "Currency", 8);
+            SetCharacterBasedColumnWidth(_offersGrid, "Packaging", 14);
+            SetCharacterBasedColumnWidth(_offersGrid, "Reel", 10);
+            SetCharacterBasedColumnWidth(_offersGrid, "LandedCost", 12);
+            SetCharacterBasedColumnWidth(_offersGrid, "LeadTimeDays", 22);
+            SetCharacterBasedColumnWidth(_offersGrid, "AvailableQuantity", 12);
+            SetCharacterBasedColumnWidth(_offersGrid, "DueDate", 12);
 
             // Enkel "Select" mag bewerkt worden — zie de ReadOnly=false op de grid zelf.
             foreach (DataGridViewColumn column in _offersGrid.Columns)
