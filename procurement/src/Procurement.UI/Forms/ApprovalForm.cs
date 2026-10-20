@@ -41,6 +41,7 @@ namespace Procurement.UI.Forms
                 MultiSelect = false
             };
             EnableDoubleBuffering(_grid);
+            EnableRowNumberHeaders(_grid);
 
             var actionPanel = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 70, FlowDirection = FlowDirection.LeftToRight };
             actionPanel.Controls.Add(new Label { Text = "Commentaar:", AutoSize = true, Padding = new Padding(0, 8, 4, 0) });

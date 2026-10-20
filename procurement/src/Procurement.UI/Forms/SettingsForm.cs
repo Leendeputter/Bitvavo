@@ -68,6 +68,7 @@ namespace Procurement.UI.Forms
                 AllowUserToAddRows = false
             };
             EnableDoubleBuffering(_suppliersGrid);
+            EnableRowNumberHeaders(_suppliersGrid);
             var hint = new Label
             {
                 Dock = DockStyle.Top,
@@ -105,6 +106,7 @@ namespace Procurement.UI.Forms
                 AllowUserToAddRows = true
             };
             EnableDoubleBuffering(_supplierPreferenceGrid);
+            EnableRowNumberHeaders(_supplierPreferenceGrid);
             var saveButton = new Button { Text = "Opslaan", Dock = DockStyle.Bottom, AutoSize = true };
             saveButton.Click += async (s, e) => await SaveSupplierPreferencesAsync();
 
@@ -123,6 +125,7 @@ namespace Procurement.UI.Forms
                 AllowUserToAddRows = true
             };
             EnableDoubleBuffering(_packagingPolicyGrid);
+            EnableRowNumberHeaders(_packagingPolicyGrid);
             var hint = new Label
             {
                 Dock = DockStyle.Top,
@@ -175,6 +178,7 @@ namespace Procurement.UI.Forms
                 AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill
             };
             EnableDoubleBuffering(_capabilitiesGrid);
+            EnableRowNumberHeaders(_capabilitiesGrid);
             page.Controls.Add(_capabilitiesGrid);
             return page;
         }

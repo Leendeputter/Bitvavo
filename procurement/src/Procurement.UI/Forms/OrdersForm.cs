@@ -61,6 +61,7 @@ namespace Procurement.UI.Forms
                 MultiSelect = false
             };
             EnableDoubleBuffering(_ordersGrid);
+            EnableRowNumberHeaders(_ordersGrid);
             _ordersGrid.SelectionChanged += OrdersGrid_SelectionChanged;
 
             var linesLabel = new Label { Text = "Regels van geselecteerde PO:", Dock = DockStyle.Top, Height = 20, Padding = new Padding(4) };
@@ -74,6 +75,7 @@ namespace Procurement.UI.Forms
                 MultiSelect = false
             };
             EnableDoubleBuffering(_linesGrid);
+            EnableRowNumberHeaders(_linesGrid);
 
             _statusBar = new Label { Dock = DockStyle.Bottom, Height = 24, Padding = new Padding(4), BackColor = System.Drawing.SystemColors.ControlLight };
 

@@ -49,6 +49,7 @@ namespace Procurement.UI.Forms
                 MultiSelect = false
             };
             EnableDoubleBuffering(_grid);
+            EnableRowNumberHeaders(_grid);
 
             _verifyButton = new Button { Text = "Markeer als Verified", Dock = DockStyle.Bottom, AutoSize = true };
             _verifyButton.Click += async (s, e) => await VerifySelectedAsync();

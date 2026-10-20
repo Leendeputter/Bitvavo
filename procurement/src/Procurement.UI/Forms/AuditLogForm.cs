@@ -74,6 +74,7 @@ namespace Procurement.UI.Forms
                 MultiSelect = false
             };
             EnableDoubleBuffering(_grid);
+            EnableRowNumberHeaders(_grid);
             // Error/RequestPayload/ResponsePayload routinely hold a full HTTP error body (e.g. a
             // DigiKey 403's JSON) that the grid's own column width truncates — dubbelklik geeft de
             // volledige, niet-afgekapte tekst in een los venster i.p.v. de kolom handmatig te moeten

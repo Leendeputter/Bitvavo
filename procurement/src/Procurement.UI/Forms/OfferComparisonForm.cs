@@ -52,6 +52,7 @@ namespace Procurement.UI.Forms
                 MultiSelect = false
             };
             EnableDoubleBuffering(_offersGrid);
+            EnableRowNumberHeaders(_offersGrid);
 
             var overridePanel = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 60, FlowDirection = FlowDirection.LeftToRight };
             overridePanel.Controls.Add(new Label { Text = "Reden voor handmatige keuze (verplicht):", AutoSize = true, Padding = new Padding(0, 8, 4, 0) });

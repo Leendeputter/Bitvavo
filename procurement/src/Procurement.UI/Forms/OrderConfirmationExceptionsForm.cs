@@ -56,6 +56,7 @@ namespace Procurement.UI.Forms
                 MultiSelect = false
             };
             EnableDoubleBuffering(_grid);
+            EnableRowNumberHeaders(_grid);
 
             var closeButton = new Button { Text = "Sluiten", AutoSize = true, Dock = DockStyle.Bottom };
             closeButton.Click += (s, e) => Close();
