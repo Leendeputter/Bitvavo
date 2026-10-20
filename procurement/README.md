@@ -918,3 +918,17 @@ raken dat mock-modus zelf nooit aanraakt:
   "Orderbevestiging verwerken"-vensters naast elkaar is het niet altijd logisch waar je welke
   informatie vindt. Nog geen concreet plan voor — gewoon vastgelegd als iets om bij een volgende
   sessie samen te herbekijken, geen losse code-wijziging.
+- **Opnieuw testen zodra er niet meer tegen de DigiKey-sandbox getest wordt (user request, 20 okt
+  2026 — expliciet vastleggen voor go-live)**: het `ConfirmedQuantity` niet gevuld krijgen bij
+  "Orderbevestiging verwerken" is zo goed als zeker een sandbox-testdata-beperking, geen bug in deze
+  app. Order Management v1's sandbox geeft altijd hetzelfde vaste testartikel + aantal terug
+  (`296-1005-5-ND`, 1000 stuks), los van de werkelijk opgevraagde order — de matching in
+  `PurchaseOrderRepository.ApplyOrderConfirmationAsync` (exacte `SupplierPartNumber`-match) vindt dan
+  terecht niets. OrderStatus v4's sandbox bleek het nog bonter te maken: die gaf zelfs een 404 terug
+  voor een echt bestaande sandboxorder (zie "OrderStatus v4 opnieuw geprobeerd..." hierboven) — dat
+  endpoint lijkt zelf geplaatste testorders daar helemaal niet te kennen. Beide bevindingen zijn
+  specifiek aan DigiKey's **sandbox**-omgevingen toe te schrijven, niet aan iets in deze code. Zodra
+  er tegen een echte (niet-sandbox) DigiKey-omgeving getest kan worden: dezelfde flow
+  (order plaatsen → "Orderbevestiging verwerken") opnieuw doorlopen en controleren of
+  `ConfirmedQuantity`/`ConfirmedUnitPrice` dan wél correct gevuld worden, en of OrderStatus v4 dan wél
+  bruikbaar is (rijkere data dan Order Management v1 — zie die methode's eigen comment).
