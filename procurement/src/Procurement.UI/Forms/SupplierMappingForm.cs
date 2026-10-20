@@ -28,7 +28,9 @@ namespace Procurement.UI.Forms
             Text = "Supplier Mapping";
             Width = 900;
             Height = 550;
-            StartPosition = FormStartPosition.CenterParent;
+            // CenterScreen, not CenterParent — shown owner-less via a plain Show() (independent
+            // top-level window, user request, 20 okt 2026), so there's no Owner to center against.
+            StartPosition = FormStartPosition.CenterScreen;
 
             var topPanel = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 40, FlowDirection = FlowDirection.LeftToRight };
             topPanel.Controls.Add(new Label { Text = "Filter by match confidence:", AutoSize = true, Padding = new Padding(0, 8, 4, 0) });

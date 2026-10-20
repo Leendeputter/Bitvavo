@@ -29,7 +29,9 @@ namespace Procurement.UI.Forms
             Text = "Approvals";
             Width = 1000;
             Height = 550;
-            StartPosition = FormStartPosition.CenterParent;
+            // CenterScreen, not CenterParent — shown owner-less via a plain Show() (independent
+            // top-level window, user request, 20 okt 2026), so there's no Owner to center against.
+            StartPosition = FormStartPosition.CenterScreen;
 
             _grid = new DataGridView
             {

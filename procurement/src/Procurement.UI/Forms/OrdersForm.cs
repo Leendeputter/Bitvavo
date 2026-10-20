@@ -45,7 +45,10 @@ namespace Procurement.UI.Forms
             Text = "Orders";
             Width = 1150;
             Height = 650;
-            StartPosition = FormStartPosition.CenterParent;
+            // CenterScreen, not CenterParent — this window has no Owner since MainForm's
+            // ShowOrders() uses a plain Show() (independent top-level window, user request, 20 okt
+            // 2026), and CenterParent with no Owner set has nothing to center against.
+            StartPosition = FormStartPosition.CenterScreen;
 
             var topPanel = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 36, FlowDirection = FlowDirection.LeftToRight };
             var refreshButton = new Button { Text = "Refresh", AutoSize = true, Margin = new Padding(4) };

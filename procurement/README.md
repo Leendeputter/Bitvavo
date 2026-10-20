@@ -980,17 +980,32 @@ raken dat mock-modus zelf nooit aanraakt:
   2. **Menubalk i.p.v. losse knoppen** (zelfde dag, user feedback: "ik heb nu bovenin mijn form een
      aantal losse knoppen staan, kunnen we hier gewoon een menubalk van maken"): een `MenuStrip` met
      twee hoofdmenu's vervangt de Order Details/Orders/Approvals/Supplier Mapping/Settings/Audit
-     Log-knoppen. **Options**: Supplier Mapping, Settings, Audit Log (configuratie/beheer). **Activity**:
-     Purchase Requests (activeert dit venster zelf — bedoeld om terug te schakelen als het
-     Orders/Approvals-venster ervoor stond), Purchase Orders (opent "Orders..."), en Approvals — bewust
-     ook onder Activity gezet (niet expliciet door de gebruiker genoemd, maar dezelfde categorie:
-     terugkerend werk om te checken, geen instelling). De vijf primaire actieknoppen (Add New Test
-     Request/Start Sourcing/Source All/Place Order/Process Order Confirmations) blijven gewoon knoppen
-     — frequente acties op dit scherm's eigen data, geen navigatie. **Order Details is volledig
-     verwijderd** (knop én `OrderDetailForm` zelf), niet verplaatst naar het menu: die knop werkte
-     alleen vanaf een geselecteerde requests-grid-rij, en sinds punt 1 hierboven kan een Ordered-rij
-     daar niet meer verschijnen — de knop was dus al onbereikbaar geworden, precies de twijfel die de
-     gebruiker er zelf al bij had.
+     Log-knoppen, **Activity** eerst, dan **Options** (user request, zelfde dag: aanvankelijk
+     andersom gebouwd, direct omgewisseld). **Activity**: Purchase Requests (activeert dit venster
+     zelf — bedoeld om terug te schakelen als het Orders/Approvals-venster ervoor stond), Purchase
+     Orders (opent "Orders..."), en Approvals — bewust ook onder Activity gezet (niet expliciet door
+     de gebruiker genoemd, maar dezelfde categorie: terugkerend werk om te checken, geen instelling).
+     **Options**: Supplier Mapping, Settings, Audit Log (configuratie/beheer). De vijf primaire
+     actieknoppen (Add New Test Request/Start Sourcing/Source All/Place Order/Process Order
+     Confirmations) blijven gewoon knoppen — frequente acties op dit scherm's eigen data, geen
+     navigatie. **Order Details is volledig verwijderd** (knop én `OrderDetailForm` zelf), niet
+     verplaatst naar het menu: die knop werkte alleen vanaf een geselecteerde requests-grid-rij, en
+     sinds punt 1 hierboven kan een Ordered-rij daar niet meer verschijnen — de knop was dus al
+     onbereikbaar geworden, precies de twijfel die de gebruiker er zelf al bij had.
+  3. **Elk menu-item een onafhankelijk venster, geen kind van Purchase Requests** (zelfde dag, user
+     feedback: "Alle windows worden nu weergegeven als childs van Purchase requests. Ik zou ze graag
+     allemaal als afzonderlijke windows behandelen, waarbij Component Procurement de container is"):
+     `OrdersForm`/`ApprovalForm`/`SupplierMappingForm`/`SettingsForm`/`AuditLogForm` openden allemaal
+     via `ShowDialog(this)` — modaal, en met `MainForm` als Owner (dus visueel een kind-venster
+     ervan). Nu gewoon `Show()`, zonder Owner: een eigen, onafhankelijk toplevel-venster met een
+     eigen taakbalk-item, tegelijk bruikbaar met `MainForm` en met elkaar. `StartPosition` voor deze
+     vijf schermen staat daarom ook op `CenterScreen` i.p.v. `CenterParent` (die laatste doet toch
+     niets zonder Owner). Omdat `ShowDialog` blokkeert tot het venster sluit en `Show()` meteen
+     teruggeeft, kon het oude `using`-blok (dat bij het verlaten van de `using` meteen `Dispose()`
+     aanriep) niet blijven staan — dispose gebeurt nu op het venster's eigen `FormClosed`-event, en
+     `ApprovalForm`'s "ververs de aanvragenlijst na het sluiten"-logica (een goedkeuringsbeslissing
+     kan een Workflow-status veranderen) verhuisde om dezelfde reden van direct-na-`ShowDialog` naar
+     diezelfde `FormClosed`-handler.
 - **Alle UI-labels omgezet naar Engels, kolombreedtes app-breed nagelopen** (user feedback, 20 okt
   2026 — "het is nu een beetje een ratjetoe"): elke Button/Label/CheckBox/GroupBox-titel/
   kolomkop/Form-titel in `Procurement.UI/Forms/*.cs` die nog Nederlands was, is omgezet naar Engels

@@ -130,19 +130,21 @@ namespace Procurement.UI.Forms
             // voor in dit grid" elsewhere in this file/README), so it had already become unreachable;
             // "Purchase Orders" below is the one real way to look at placed orders now.
             _menuStrip = new MenuStrip { Dock = DockStyle.Top };
-            var optionsMenu = new ToolStripMenuItem("Options");
-            optionsMenu.DropDownItems.Add("Supplier Mapping...", null, (s, e) => ShowSupplierMapping());
-            optionsMenu.DropDownItems.Add("Settings...", null, (s, e) => ShowSettings());
-            optionsMenu.DropDownItems.Add("Audit Log...", null, (s, e) => ShowAuditLog());
 
             // Approvals grouped under Activity too, not just the two the user named explicitly —
             // same category (recurring work to check on), not configuration like the Options items.
             var activityMenu = new ToolStripMenuItem("Activity");
             activityMenu.DropDownItems.Add("Purchase Requests", null, (s, e) => Activate());
             activityMenu.DropDownItems.Add("Purchase Orders...", null, (s, e) => ShowOrders());
-            activityMenu.DropDownItems.Add("Approvals...", null, async (s, e) => await ShowApprovalsAsync());
+            activityMenu.DropDownItems.Add("Approvals...", null, (s, e) => ShowApprovals());
 
-            _menuStrip.Items.AddRange(new ToolStripItem[] { optionsMenu, activityMenu });
+            var optionsMenu = new ToolStripMenuItem("Options");
+            optionsMenu.DropDownItems.Add("Supplier Mapping...", null, (s, e) => ShowSupplierMapping());
+            optionsMenu.DropDownItems.Add("Settings...", null, (s, e) => ShowSettings());
+            optionsMenu.DropDownItems.Add("Audit Log...", null, (s, e) => ShowAuditLog());
+
+            // Activity before Options (user request, 20 okt 2026 — swapped from the initial order).
+            _menuStrip.Items.AddRange(new ToolStripItem[] { activityMenu, optionsMenu });
             MainMenuStrip = _menuStrip;
 
             // Apart van de actieknoppen hierboven: het ophalen/filteren van MAX-orders krijgt een
@@ -1213,45 +1215,55 @@ namespace Procurement.UI.Forms
             }
         }
 
+        /// <summary>
+        /// Every menu item below used to open its screen with ShowDialog(this) — modal, and owned by
+        /// (shown as a child of) this window. User feedback (20 okt 2026): "Alle windows worden nu
+        /// weergegeven als childs van Purchase requests. Ik zou ze graag allemaal als afzonderlijke
+        /// windows behandelen, waarbij Component Procurement de container is" — so these are now
+        /// plain Show() calls with no owner at all: independent top-level windows (their own taskbar
+        /// entry, usable at the same time as this one and each other), not modal children of
+        /// MainForm specifically. The `using` block each of these used only worked because
+        /// ShowDialog blocks until the dialog closes; a non-modal Show() returns immediately, so
+        /// disposal now happens on the form's own FormClosed event instead.
+        /// </summary>
         private void ShowOrders()
         {
-            using (var form = new OrdersForm(_composition.PurchaseOrderRepository, _composition.PurchaseRequestRepository))
-            {
-                form.ShowDialog(this);
-            }
+            var form = new OrdersForm(_composition.PurchaseOrderRepository, _composition.PurchaseRequestRepository);
+            form.FormClosed += (s, e) => form.Dispose();
+            form.Show();
         }
 
-        private async System.Threading.Tasks.Task ShowApprovalsAsync()
+        /// <summary>Only one of these screens whose closing used to trigger a refresh here (a manual approval decision can change a request's Workflow status) — that refresh now happens off FormClosed instead of right after ShowDialog returns, since Show() no longer blocks.</summary>
+        private void ShowApprovals()
         {
-            using (var form = new ApprovalForm(_composition.Engine))
+            var form = new ApprovalForm(_composition.Engine);
+            form.FormClosed += async (s, e) =>
             {
-                form.ShowDialog(this);
-            }
-            await LoadLocalRequestsAsync();
+                form.Dispose();
+                await LoadLocalRequestsAsync();
+            };
+            form.Show();
         }
 
         private void ShowSupplierMapping()
         {
-            using (var form = new SupplierMappingForm(_composition.SupplierProductMappingRepository))
-            {
-                form.ShowDialog(this);
-            }
+            var form = new SupplierMappingForm(_composition.SupplierProductMappingRepository);
+            form.FormClosed += (s, e) => form.Dispose();
+            form.Show();
         }
 
         private void ShowSettings()
         {
-            using (var form = new SettingsForm(_composition.PolicyRepository, _composition.SupplierRepository))
-            {
-                form.ShowDialog(this);
-            }
+            var form = new SettingsForm(_composition.PolicyRepository, _composition.SupplierRepository);
+            form.FormClosed += (s, e) => form.Dispose();
+            form.Show();
         }
 
         private void ShowAuditLog()
         {
-            using (var form = new AuditLogForm(_composition.ProcurementEventRepository))
-            {
-                form.ShowDialog(this);
-            }
+            var form = new AuditLogForm(_composition.ProcurementEventRepository);
+            form.FormClosed += (s, e) => form.Dispose();
+            form.Show();
         }
 
         private void SetStatus(string text) => _statusLabel.Text = text;

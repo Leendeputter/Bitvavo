@@ -46,7 +46,11 @@ namespace Procurement.UI.Forms
             Text = "Settings";
             Width = 900;
             Height = 600;
-            StartPosition = FormStartPosition.CenterParent;
+            // CenterScreen, not CenterParent — shown owner-less via a plain Show() (independent
+            // top-level window, user request, 20 okt 2026), so there's no Owner to center against.
+            // (Inner dialogs opened from within this form — credential/contact editors, etc. — stay
+            // CenterParent, since those are genuinely modal to this window, not to MainForm.)
+            StartPosition = FormStartPosition.CenterScreen;
 
             var tabs = new TabControl { Dock = DockStyle.Fill };
             tabs.TabPages.Add(BuildSuppliersTab());

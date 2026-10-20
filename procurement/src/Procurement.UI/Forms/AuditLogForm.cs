@@ -32,7 +32,11 @@ namespace Procurement.UI.Forms
             Text = "Audit Log";
             Width = 1200;
             Height = 650;
-            StartPosition = FormStartPosition.CenterParent;
+            // CenterScreen, not CenterParent — shown owner-less via a plain Show() (independent
+            // top-level window, user request, 20 okt 2026), so there's no Owner to center against.
+            // (The inner detail dialog opened from within this form stays CenterParent, since that
+            // one is genuinely modal to this window, not to MainForm.)
+            StartPosition = FormStartPosition.CenterScreen;
 
             var filterPanel = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 70, FlowDirection = FlowDirection.LeftToRight };
 
