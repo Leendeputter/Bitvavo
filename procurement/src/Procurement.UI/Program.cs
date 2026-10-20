@@ -146,7 +146,11 @@ namespace Procurement.UI
 
             var composition = new CompositionRoot();
 
-            Application.Run(new MainForm(composition));
+            // ShellForm (just a menu bar) is the application root now, not MainForm itself — user
+            // request, 20 okt 2026: MainForm being the literal Application.Run() form made it
+            // uncloseable/unminimizable as a peer window, and meant it opened automatically instead
+            // of only via the menu. See ShellForm's own class comment.
+            Application.Run(new ShellForm(composition));
         }
 
         // Every Procurement_-prefixed table this app currently creates — dropped ahead of recreating

@@ -59,7 +59,6 @@ namespace Procurement.UI.Forms
         private Button _sourceAllButton;
         private Button _placeOrdersButton;
         private Button _processConfirmationsButton;
-        private MenuStrip _menuStrip;
         private Label _statusLabel;
 
         // Every action button shares this one "an operation is in flight" gate (SetBusy) instead of
@@ -82,8 +81,10 @@ namespace Procurement.UI.Forms
 
         private void InitializeComponent()
         {
-            Text = $"Component Procurement – {_composition.Session.CompanyName} ({_composition.Session.UserName})"
-                 + (_composition.Session.TestMode ? " – TEST MODE" : string.Empty);
+            // "Component Procurement" (with company/user) is ShellForm's title now — this window is
+            // just one independent screen among several (user request, 20 okt 2026), so it gets a
+            // plain screen name instead, same style as Orders/Approvals/Settings/etc.
+            Text = "Purchase Requests" + (_composition.Session.TestMode ? " – TEST MODE" : string.Empty);
             Width = 1300;
             Height = 860;
             StartPosition = FormStartPosition.CenterScreen;
@@ -120,32 +121,9 @@ namespace Procurement.UI.Forms
                 _newRequestButton, _startSourcingButton, _sourceAllButton, _placeOrdersButton, _processConfirmationsButton
             });
 
-            // Menu bar (user request, 20 okt 2026: "ik heb nu bovenin mijn form een aantal losse
-            // knoppen staan, kunnen we hier gewoon een menubalk van maken") — replaces the former
-            // Order Details/Orders/Approvals/Supplier Mapping/Settings/Audit Log buttons. The five
-            // buttons above stay as direct buttons (frequent, primary actions on this screen's own
-            // data); only navigation to another screen moved into the menu. "Order Details" itself is
-            // not in the menu at all — it only ever showed a PO for the selected requests-grid row,
-            // but an Ordered row can no longer appear in that grid at all (see "Ordered komt niet meer
-            // voor in dit grid" elsewhere in this file/README), so it had already become unreachable;
-            // "Purchase Orders" below is the one real way to look at placed orders now.
-            _menuStrip = new MenuStrip { Dock = DockStyle.Top };
-
-            // Approvals grouped under Activity too, not just the two the user named explicitly —
-            // same category (recurring work to check on), not configuration like the Options items.
-            var activityMenu = new ToolStripMenuItem("Activity");
-            activityMenu.DropDownItems.Add("Purchase Requests", null, (s, e) => Activate());
-            activityMenu.DropDownItems.Add("Purchase Orders...", null, (s, e) => ShowOrders());
-            activityMenu.DropDownItems.Add("Approvals...", null, (s, e) => ShowApprovals());
-
-            var optionsMenu = new ToolStripMenuItem("Options");
-            optionsMenu.DropDownItems.Add("Supplier Mapping...", null, (s, e) => ShowSupplierMapping());
-            optionsMenu.DropDownItems.Add("Settings...", null, (s, e) => ShowSettings());
-            optionsMenu.DropDownItems.Add("Audit Log...", null, (s, e) => ShowAuditLog());
-
-            // Activity before Options (user request, 20 okt 2026 — swapped from the initial order).
-            _menuStrip.Items.AddRange(new ToolStripItem[] { activityMenu, optionsMenu });
-            MainMenuStrip = _menuStrip;
+            // No menu bar here anymore (user request, 20 okt 2026) — Orders/Approvals/Supplier
+            // Mapping/Settings/Audit Log moved to ShellForm, the actual Application.Run() root, once
+            // this window stopped being that root itself. See ShellForm's own class comment for why.
 
             // Apart van de actieknoppen hierboven: het ophalen/filteren van MAX-orders krijgt een
             // eigen rij met groepsvakken (Query + status-filter, Due Date Range, en de generieke
@@ -227,7 +205,6 @@ namespace Procurement.UI.Forms
             Controls.Add(_requestsGrid);
             Controls.Add(filterPanel);
             Controls.Add(toolPanel);
-            Controls.Add(_menuStrip);
             Controls.Add(_statusLabel);
         }
 
@@ -1216,55 +1193,14 @@ namespace Procurement.UI.Forms
         }
 
         /// <summary>
-        /// Every menu item below used to open its screen with ShowDialog(this) — modal, and owned by
-        /// (shown as a child of) this window. User feedback (20 okt 2026): "Alle windows worden nu
-        /// weergegeven als childs van Purchase requests. Ik zou ze graag allemaal als afzonderlijke
-        /// windows behandelen, waarbij Component Procurement de container is" — so these are now
-        /// plain Show() calls with no owner at all: independent top-level windows (their own taskbar
-        /// entry, usable at the same time as this one and each other), not modal children of
-        /// MainForm specifically. The `using` block each of these used only worked because
-        /// ShowDialog blocks until the dialog closes; a non-modal Show() returns immediately, so
-        /// disposal now happens on the form's own FormClosed event instead.
+        /// Called by ShellForm right after its Approvals window closes — a manual approval decision
+        /// can move a request's Workflow status out of WaitingApproval, which used to be refreshed
+        /// here directly when this window owned the "Approvals..." button/menu item itself. Now that
+        /// Orders/Approvals/Supplier Mapping/Settings/Audit Log live on ShellForm instead (user
+        /// request, 20 okt 2026 — see ShellForm's own class comment), this is only reachable, and
+        /// only meaningful, while this window happens to be open at the same time.
         /// </summary>
-        private void ShowOrders()
-        {
-            var form = new OrdersForm(_composition.PurchaseOrderRepository, _composition.PurchaseRequestRepository);
-            form.FormClosed += (s, e) => form.Dispose();
-            form.Show();
-        }
-
-        /// <summary>Only one of these screens whose closing used to trigger a refresh here (a manual approval decision can change a request's Workflow status) — that refresh now happens off FormClosed instead of right after ShowDialog returns, since Show() no longer blocks.</summary>
-        private void ShowApprovals()
-        {
-            var form = new ApprovalForm(_composition.Engine);
-            form.FormClosed += async (s, e) =>
-            {
-                form.Dispose();
-                await LoadLocalRequestsAsync();
-            };
-            form.Show();
-        }
-
-        private void ShowSupplierMapping()
-        {
-            var form = new SupplierMappingForm(_composition.SupplierProductMappingRepository);
-            form.FormClosed += (s, e) => form.Dispose();
-            form.Show();
-        }
-
-        private void ShowSettings()
-        {
-            var form = new SettingsForm(_composition.PolicyRepository, _composition.SupplierRepository);
-            form.FormClosed += (s, e) => form.Dispose();
-            form.Show();
-        }
-
-        private void ShowAuditLog()
-        {
-            var form = new AuditLogForm(_composition.ProcurementEventRepository);
-            form.FormClosed += (s, e) => form.Dispose();
-            form.Show();
-        }
+        public async System.Threading.Tasks.Task RefreshLocalRequestsAsync() => await LoadLocalRequestsAsync();
 
         private void SetStatus(string text) => _statusLabel.Text = text;
 
@@ -1297,11 +1233,6 @@ namespace Procurement.UI.Forms
             _sourceAllButton.Enabled = enabled;
             _placeOrdersButton.Enabled = enabled;
             _processConfirmationsButton.Enabled = enabled;
-            // One switch for every former Order Details/Orders/Approvals/Supplier Mapping/Settings/
-            // Audit Log button, now menu items (20 okt 2026) — disabling the whole menu bar during a
-            // busy operation is simpler than toggling each ToolStripMenuItem individually and has the
-            // same effect.
-            _menuStrip.Enabled = enabled;
             // Not strictly a race on shared MAX SqlConnections like the buttons above (their
             // CheckedChanged handler already no-ops via the same _isBusy check) — disabled anyway so
             // a toggle during a Query can't silently fail to visually match the grid until the next

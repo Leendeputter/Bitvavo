@@ -76,11 +76,26 @@ namespace Procurement.UI.Support
         /// overflow, which is what actually happened to Desc1/Reference as more fixed columns were
         /// added over time.
         /// </summary>
+        /// <summary>
+        /// DataGridViewColumn.MinimumWidth's setter can throw a NullReferenceException from deep
+        /// inside WinForms itself (DataGridViewBand.set_Thickness, via set_MinimumThickness) — a
+        /// known framework quirk, confirmed hit here (20 okt 2026) opening SettingsForm: a column
+        /// still in Fill auto-size mode, on a grid sitting on a TabPage that hasn't been selected yet
+        /// (so its handle isn't created), triggers an internal Fill-column recalculation that
+        /// dereferences something not yet initialized. Temporarily dropping the column out of Fill
+        /// mode for the assignment sidesteps that exact code path; restoring the original mode right
+        /// after keeps the usual "Fill, but never below this width" behavior intact once the tab
+        /// actually becomes visible.
+        /// </summary>
         public static void SetMinimumWidth(DataGridView grid, string columnName, int minimumWidth)
         {
             var column = grid.Columns[columnName];
             if (column == null) return;
+
+            var originalMode = column.AutoSizeMode;
+            column.AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
             column.MinimumWidth = minimumWidth;
+            column.AutoSizeMode = originalMode;
         }
 
         /// <summary>Sizes to N 'n'-characters instead of a guessed pixel width — DataGridView doesn't drop overflow, it ellipsizes ("..."), so a too-narrow guess reads as a trimming bug that isn't one.</summary>

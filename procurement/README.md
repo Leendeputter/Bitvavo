@@ -1006,6 +1006,23 @@ raken dat mock-modus zelf nooit aanraakt:
      `ApprovalForm`'s "ververs de aanvragenlijst na het sluiten"-logica (een goedkeuringsbeslissing
      kan een Workflow-status veranderen) verhuisde om dezelfde reden van direct-na-`ShowDialog` naar
      diezelfde `FormClosed`-handler.
+  4. **`ShellForm` (nieuw) is nu de echte Application.Run()-root, niet langer `MainForm`** (zelfde
+     dag, user feedback: "De Purchase Requests ziet er nog steeds uit als een hoofdform. Ik kan dat
+     niet afsluiten of minimaliseren. En ik wil het bij opstarten gewoon zelf kunnen openen via menu -
+     Purchase Requests. Nu opent het default."). Beide klachten kwamen uit dezelfde oorzaak: `MainForm`
+     was `Application.Run()`'s eigen venster, dus letterlijk de applicatie zelf — het sluiten ervan
+     sloot de hele app i.p.v. alleen dat ene scherm, en het werd dus ook altijd automatisch getoond bij
+     opstarten, los van punt 3 hierboven (die alleen de ándere vijf schermen al onafhankelijk had
+     gemaakt). `ShellForm` is nu een kaal venster met enkel de menubalk (Activity/Options, verplaatst
+     vanuit `MainForm`) en wordt als enige aan `Application.Run()` gegeven (`Program.cs`); `MainForm`
+     zelf opent voortaan ook via een kale `Show()` (net als de andere vijf), vanuit "Activity >
+     Purchase Requests" — niets opent nog automatisch bij opstarten. Anders dan de andere vijf schermen
+     houdt `ShellForm` wél één referentie bij naar een al-open `MainForm`-instantie: een tweede klik op
+     "Purchase Requests" activeert het bestaande venster (en herstelt het uit geminimaliseerd) in
+     plaats van een verwarrende tweede kopie met zijn eigen Query/selectie-status te openen — de andere
+     vijf schermen hebben die bescherming bewust niet (minder impactvol, geen reden om dat erbij te
+     bouwen). `ApprovalForm`'s "ververs Purchase Requests na het sluiten"-logica (zie punt 3) verhuisde
+     mee naar `ShellForm`, en checkt nu expliciet of `MainForm` op dat moment wel open is.
 - **Alle UI-labels omgezet naar Engels, kolombreedtes app-breed nagelopen** (user feedback, 20 okt
   2026 — "het is nu een beetje een ratjetoe"): elke Button/Label/CheckBox/GroupBox-titel/
   kolomkop/Form-titel in `Procurement.UI/Forms/*.cs` die nog Nederlands was, is omgezet naar Engels
@@ -1024,6 +1041,17 @@ raken dat mock-modus zelf nooit aanraakt:
   rest krijgt een vaste, op de inhoud afgestemde breedte. Resultaat: lege ruimte rechts in plaats van
   overal uitgerokken, onleesbare kolommen (user request, 20 okt 2026: "ik heb liever dat we rechts
   wat ruimte over houden").
+- **`GridFormatting.SetMinimumWidth` kon een NullReferenceException gooien** (bug gevonden door de
+  gebruiker, 20 okt 2026, direct bij het openen van Settings via de menubalk) — een bevestigde,
+  bekende WinForms-eigenaardigheid diep in het framework zelf
+  (`DataGridViewBand.set_Thickness`/`set_MinimumThickness`): `MinimumWidth` instellen op een kolom die
+  nog in Fill-modus staat, op een grid dat op een nog-niet-geselecteerd TabPage staat (dus zonder
+  gecreëerd window handle — `SettingsForm`'s vier tabs worden alle vier meteen bij het laden gevuld,
+  niet pas bij het eerste keer openen van elk tabblad), triggert intern een Fill-kolomherberekening die
+  iets nog-niet-geïnitialiseerds aanspreekt. Fix: de kolom tijdelijk uit Fill-modus halen vlak vóór
+  `MinimumWidth` gezet wordt, en meteen daarna terugzetten — omzeilt precies dat interne code-pad,
+  zonder het eindresultaat (Fill, met een ondergrens) te veranderen zodra het tabblad wél zichtbaar
+  wordt.
 - **Opnieuw testen zodra er niet meer tegen de DigiKey-sandbox getest wordt (user request, 20 okt
   2026 — expliciet vastleggen voor go-live)**: het `ConfirmedQuantity` niet gevuld krijgen bij
   "Orderbevestiging verwerken" is zo goed als zeker een sandbox-testdata-beperking, geen bug in deze
