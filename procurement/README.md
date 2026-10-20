@@ -268,18 +268,25 @@ van de regel nog onbekend is. Geen eigen opslag van deze waarde — altijd live 
 nooit in de lokale database gecached.
 
 **Statusfilter ("Weergeven")**: een aparte groep checkboxen (los van de MAX-Query-filters ernaast),
-één per `PurchaseRequest.Status`-waarde, bepaalt welke Workflow-statussen in het grid getoond worden.
-Standaard alles behalve Ordered aangevinkt — een eenmaal daadwerkelijk bestelde aanvraag blijft zo uit
-de normale werk-weergave, maar is alsnog op te vragen door het vakje aan te zetten (bv. om via "Order
-details" terug te kijken). Dit raakt nooit MAX aan: aan- of uitvinken filtert enkel lokaal al
+één per `PurchaseRequest.Status`-waarde **behalve Ordered**, bepaalt welke Workflow-statussen in het
+grid getoond worden. Dit raakt nooit MAX aan: aan- of uitvinken filtert enkel lokaal al
 gesynchroniseerde aanvragen opnieuw (`PurchaseRequestRepository.GetAllAsync()`, client-side gefilterd),
 ook na een "Query"-klik. Sourcing starten/Alles sourcen slaat Ordered-aanvragen expliciet over (zou
 anders een al geplaatste order stilletjes terugzetten naar ReadyToOrder — elke regel heeft al een
 SupplierSelection zonder openstaande exception/goedkeuring, dus de sourcing-uitkomst zou opnieuw
 ReadyToOrder worden); Order plaatsen was dat al veilig via de bestaande `HasOrderForLineAsync`-check in
-`ProcurementEngine.PlaceOrdersAsync`. Een Ordered-rij krijgt bovendien een lichtgroene achtergrond
-(`MainForm.HighlightOrderedRows`), zodat een al geplaatste order ook zonder de checkbox-filter of de
-Workflow-tekst te lezen meteen opvalt.
+`ProcurementEngine.PlaceOrdersAsync`.
+
+**Ordered komt niet meer voor in dit grid, punt** (user feedback, 20 okt 2026 — "dit scherm moet
+alleen PR's en PL's tonen, de daadwerkelijke orders wil ik hier helemaal niet meer terugzien"): Ordered
+had hiervoor nog wel een checkbox (standaard uit, maar alsnog aan te vinken om een al bestelde
+aanvraag terug op te zoeken, met een lichtgroene rij-highlight erbovenop). Die checkbox en highlight
+(`MainForm.HighlightOrderedRows`) zijn beide verwijderd — `BuildRequestStatusFilterGroup` slaat
+`PurchaseRequestStatus.Ordered` nu expliciet over bij het opbouwen van de checkboxgroep, dus een
+Ordered-aanvraag kan via dit scherm helemaal niet meer getoond worden, ook niet op aanvraag. Het
+"Orders..."-scherm hieronder is en blijft de enige plek om geplaatste orders te bekijken — die toont
+bovendien de actuele PO-data (bevestigde hoeveelheid/prijs/leverdatum), niet de bevroren PR-snapshot
+van het moment van bestellen die dit grid anders zou laten zien.
 
 **"Orders"-scherm (los van de PR-grid, spec-toevoeging sep 2026)**: een `PurchaseOrder` is geen
 PR-achtig ding — één PO kan regels van meerdere aanvragen bundelen (gegroepeerd per leverancier, niet
@@ -323,10 +330,12 @@ status-/Due Date-/Select By-filter (`MaxErpConnector.ReconcileAgainstMaxAsync`,
 de lokale aanvraag wordt verwijderd, inclusief alle al opgebouwde `SupplierOffer`/`SupplierSelection`/
 `ApprovalRequest`-rijen voor die regel (dus ook een aanvraag die al op WaitingApproval staat) —
 gelogd in het audit-log vóór het verwijderen, want de rij zelf is er straks niet meer om dat later uit
-te leggen. Eén uitzondering: status **"1 - Planned"** krijgt van MAX zelf elke nacht (de MRP-run) een
-nieuw ordernummer, ook zonder dat er inhoudelijk iets veranderd is — "niet meer gevonden onder het oude
-nummer" betekent voor die status dus niets, en wordt bewust nooit als verwijderd behandeld. Als extra
-vangnet checkt `MaxPurchaseOrderRepository.CreatePurchaseOrderAsync` vlak vóór elke `AddPODetail`-call
+te leggen. Status **"1 - Planned"** had hier lange tijd een uitzondering: de aanname was dat MAX zelf
+elke nacht (de MRP-run) alleen een nieuw ordernummer aan zo'n order toekent, zonder hem echt te
+verwijderen — "niet meer gevonden onder het oude nummer" zou dan niets betekenen. De gebruiker
+corrigeerde dit (20 okt 2026): de nachtelijke run verwijdert Status 1-orders daadwerkelijk, dus een
+verdwenen Status 1-order wordt voortaan hetzelfde behandeld als Status 2 — ook lokaal verwijderd.
+Als extra vangnet checkt `MaxPurchaseOrderRepository.CreatePurchaseOrderAsync` vlak vóór elke `AddPODetail`-call
 nogmaals of de PR nog bestaat (er kan tijd zitten tussen de laatste Query en het klikken op "Order
 plaatsen") — is hij inmiddels weg, dan wordt er geen PO aangemaakt en breekt die regel af met een
 duidelijke foutmelding; de daadwerkelijke lokale opruiming gebeurt pas bij de eerstvolgende Query.

@@ -38,9 +38,9 @@ namespace Procurement.UI.Forms
         // "Weergeven" group — which of this prototype's own Workflow statuses to show in the grid.
         // Purely a local display filter (never touches MAX): read by both LoadLocalRequestsAsync and
         // RefreshRequestsAsync so toggling one behaves the same regardless of how the grid was last
-        // populated. Ordered defaults unchecked so a completed request doesn't clutter the normal
-        // working view, but stays reachable on demand (spec request: "wil hem nog wel ergens op
-        // kunnen vragen") — Order details still works on it once shown, same as any other row.
+        // populated. Ordered has no checkbox here at all (user request, 20 okt 2026: the requests/
+        // lines grids are for PRs/PLs only — an actually-placed order belongs in the dedicated
+        // "Orders..." window, not toggled back into this one) — see BuildRequestStatusFilterGroup.
         private readonly Dictionary<PurchaseRequestStatus, CheckBox> _requestStatusCheckBoxes = new Dictionary<PurchaseRequestStatus, CheckBox>();
 
         private Button _newRequestButton;
@@ -287,9 +287,15 @@ namespace Procurement.UI.Forms
 
             foreach (PurchaseRequestStatus status in Enum.GetValues(typeof(PurchaseRequestStatus)))
             {
+                // Ordered gets no checkbox at all (user request, 20 okt 2026) — this grid is for
+                // PRs/PLs only, an actually-placed order belongs in the dedicated "Orders..." window.
+                // Previously Ordered had a checkbox here too (unchecked by default, reachable on
+                // demand); now it can never appear in this grid, full stop.
+                if (status == PurchaseRequestStatus.Ordered) continue;
+
                 // Checked is set before CheckedChanged is wired up, on purpose — otherwise building
-                // these six checkboxes here would itself fire six local DB reloads while the form is
-                // still being constructed, before Load ever runs (the constructor's whole point is
+                // these five checkboxes here would itself fire five local DB reloads while the form
+                // is still being constructed, before Load ever runs (the constructor's whole point is
                 // that nothing loads until the user clicks something).
                 var checkBox = new CheckBox { Text = status.ToString(), AutoSize = true, Checked = defaultChecked.Contains(status), Margin = new Padding(0, 0, 0, 2) };
                 _requestStatusCheckBoxes[status] = checkBox;
@@ -458,10 +464,11 @@ namespace Procurement.UI.Forms
             ApplyFiltersToErpConnector();
             var requests = await _composition.Engine.GetOpenPurchaseRequestsAsync();
             // Dezelfde "Weergeven"-statusfilter als LoadLocalRequestsAsync, voor consistent gedrag
-            // ongeacht hoe het grid gevuld werd. Ordered zal hier nooit iets opleveren, ook niet met
-            // dat vakje aangevinkt: GetOpenPurchaseRequestsAsync synchroniseert MAX-orders en geeft
-            // enkel nog-openstaande aanvragen terug (Query = "wat moet er nog gesourced worden"),
-            // Ordered-aanvragen los bekijken kan via de checkbox zonder eerst op Query te klikken.
+            // ongeacht hoe het grid gevuld werd. Ordered zou hier toch nooit iets opleveren, ook los
+            // van het ontbreken van een checkbox ervoor (zie BuildRequestStatusFilterGroup):
+            // GetOpenPurchaseRequestsAsync synchroniseert MAX-orders en geeft enkel nog-openstaande
+            // aanvragen terug (Query = "wat moet er nog gesourced worden") — een al bestelde aanvraag
+            // bekijk je voortaan via het aparte "Orders..."-scherm.
             var statuses = GetCheckedRequestStatuses();
             var filteredRequests = requests.Where(r => statuses.Contains(r.Status)).ToList();
             await PopulateRequestsGrid(filteredRequests);
@@ -601,24 +608,6 @@ namespace Procurement.UI.Forms
             ApplyFrozenColumns(_requestsGrid,
                 "Order", "Workflow", "PartID", "Desc1", "Quantity", "Cost", "DueDate", "PoDueDate",
                 "SelectedSupplier", "SelectedPrice", "SelectedQuantity", "SelectedDueDate");
-            HighlightOrderedRows(_requestsGrid);
-        }
-
-        // Light green background for Workflow=Ordered, so an already-placed order is visible at a
-        // glance instead of needing "Order details" (or reading the Workflow text) per row — user
-        // request, sep 2026. Rows are recreated fresh on every DataSource assignment, so there's
-        // nothing to reset for the non-Ordered ones.
-        private static readonly System.Drawing.Color OrderedRowColor = System.Drawing.Color.FromArgb(222, 245, 222);
-
-        private static void HighlightOrderedRows(DataGridView grid)
-        {
-            if (grid.Columns["Workflow"] == null) return;
-            foreach (DataGridViewRow row in grid.Rows)
-            {
-                if (row.IsNewRow) continue;
-                if (row.Cells["Workflow"].Value as string == nameof(PurchaseRequestStatus.Ordered))
-                    row.DefaultCellStyle.BackColor = OrderedRowColor;
-            }
         }
 
         /// <summary>

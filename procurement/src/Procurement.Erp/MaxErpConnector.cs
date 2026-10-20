@@ -223,13 +223,14 @@ namespace Procurement.Erp
         /// exactly the WaitingApproval case this was asked for), logged to the audit trail first since
         /// the row itself won't be around afterward to explain why it's gone.
         ///
-        /// One deliberate exception: MAX Order_Master.STATUS_10 "1" (Planned) orders are reassigned a
-        /// new ORDNUM_10 by the nightly MRP run as a matter of course, not only when something actually
-        /// changed — so "missing under its old number" is meaningless for those and must never trigger
-        /// a delete (explicit, unprompted false positives would be worse than occasionally missing a
-        /// genuine deletion of a still-Planned request). Only requests MAX itself has already moved
-        /// past that daily churn (status "2"/Approved, or a request predating STATUS_10 tracking) are
-        /// treated as reliably deletable when MAX no longer has them.
+        /// Used to special-case MAX Order_Master.STATUS_10 "1" (Planned) orders — never delete those
+        /// when missing, on the assumption that the nightly MRP run only renumbers them (new
+        /// ORDNUM_10), never deletes them outright, so "missing under the old number" would prove
+        /// nothing. The user corrected this (20 okt 2026): the nightly run genuinely deletes Status
+        /// 1 orders, so a stale local copy must be cleaned up here exactly like any other — this
+        /// exception is gone. GetByOrderNumbersAsync already queries MAX directly by order number,
+        /// independent of the current Query's own status/Due Date/Select By filter, so "missing" here
+        /// already means "MAX genuinely no longer has this order," not "fell outside today's filter."
         /// </summary>
         private async Task ReconcileAgainstMaxAsync()
         {
@@ -254,9 +255,6 @@ namespace Procurement.Erp
                     }
                     continue;
                 }
-
-                if (request.MaxOrderStatus == "1")
-                    continue; // Planned — renumbered nightly by MRP, "missing" proves nothing.
 
                 await _auditLogger.LogAsync("PurchaseRequest", request.Id.ToString(), "PURCHASE_REQUEST_DELETED_IN_MAX", "Success",
                     responsePayload: $"ErpRequestNumber={request.ErpRequestNumber}; WorkflowStatus={request.Status}; " +
