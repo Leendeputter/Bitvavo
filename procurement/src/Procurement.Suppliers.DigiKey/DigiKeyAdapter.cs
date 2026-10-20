@@ -39,12 +39,16 @@ namespace Procurement.Suppliers.DigiKey
             // Ordering: real-mode implemented against DigiKey's confirmed Ordering v3 spec
             // (CreateRealOrderAsync below) and confirmed working against the real sandbox (19 okt
             // 2026: SalesOrderId 12345, via the standalone Procurement.Tools.DigiKeyOrderTester).
-            // OrderStatus: GetOrderStatusAsync actually calls Order Management v1 (3-legged, same
-            // token as Ordering) rather than the also-implemented OrderStatus v4 — the latter 403s
-            // against the sandbox ("not authorized") despite showing Enabled in DigiKey's portal,
-            // the same portal/backend-desync symptom seen earlier for Product Information V4 (fixed
-            // there after contacting DigiKey support). See GetOrderStatusViaOrderStatusApiAsync's
-            // comment for the trade-off (less data, but confirmed reachable today).
+            // OrderStatus: GetOrderStatusAsync calls OrderStatus v4 again (switched back 20 okt 2026)
+            // — it previously 403'd ("not authorized") against the sandbox despite showing Enabled in
+            // DigiKey's portal, which DigiKey support confirmed (20 okt 2026) was their known, no-ETA
+            // Sandbox 2-legged OAuth2 bug, not anything wrong on this end; OrderStatus v4's spec
+            // allows either 2- or 3-legged, and it goes through the same ISupplierHttpClient.GetAsync
+            // as Product Information, which DigiKeyOptions.UseThreeLeggedForProductInformation now
+            // routes via 3-legged — so this should no longer hit that bug. Not yet confirmed against
+            // the real sandbox. Falls back to GetOrderStatusViaOrderManagementApiAsync (kept, not
+            // deleted) if this turns out to still be broken — see that method's own comment for the
+            // trade-off (less data, but was confirmed reachable before this switch).
             Ordering = CapabilityStatus.Supported,
             OrderStatus = CapabilityStatus.Supported,
             Shipment = CapabilityStatus.ManualProcess,
@@ -461,7 +465,7 @@ namespace Procurement.Suppliers.DigiKey
                 };
             }
 
-            return await GetOrderStatusViaOrderManagementApiAsync(supplierOrderNumber).ConfigureAwait(false);
+            return await GetOrderStatusViaOrderStatusApiAsync(supplierOrderNumber).ConfigureAwait(false);
         }
 
         private static int ParseSingleSalesOrderId(string supplierOrderNumber)
@@ -482,13 +486,18 @@ namespace Procurement.Suppliers.DigiKey
         /// <summary>
         /// GET /OrderManagement/v1/SalesOrders/{salesOrderId} against DigiKey's confirmed Order
         /// Management v1 Swagger spec (supplied directly by the user, same batch as OrderStatus v4 —
-        /// see DigiKeyDtos.cs). This is the *active* real-mode implementation (see Capabilities'
-        /// comment for why, not OrderStatus v4 below) — it uses oauth2AccessCodeSecurity, the same
-        /// 3-legged token Ordering already proved works, via IDigiKeyOrderingHttpClient.GetOrderAsync.
-        /// Trade-off versus OrderStatus v4: SalesOrderDetailView has no price field at all (so
-        /// ConfirmedUnitPrice/price-deviation detection is simply unavailable via this path) and no
-        /// order-status enum (PurchaseOrderStatus is inferred from the quantity fields instead of a
-        /// real status code DigiKey assigns).
+        /// see DigiKeyDtos.cs). This was the active real-mode implementation from 19 to 20 okt 2026,
+        /// while OrderStatus v4 403'd — GetOrderStatusAsync now calls OrderStatus v4 again instead
+        /// (see Capabilities' comment for why), so this is kept as the fallback rather than deleted.
+        /// It uses oauth2AccessCodeSecurity, the same 3-legged token Ordering already proved works,
+        /// via IDigiKeyOrderingHttpClient.GetOrderAsync. Trade-off versus OrderStatus v4:
+        /// SalesOrderDetailView has no price field at all (so ConfirmedUnitPrice/price-deviation
+        /// detection is simply unavailable via this path) and no order-status enum (PurchaseOrderStatus
+        /// is inferred from the quantity fields instead of a real status code DigiKey assigns). Also
+        /// confirmed (19 okt 2026) to return fixed/canned sandbox test data regardless of which real
+        /// SalesOrderId is queried — ConfirmedQuantity silently stays unset on the local PO line
+        /// whenever that canned DigiKeyPartNumber doesn't match a real order's own SupplierPartNumber
+        /// (PurchaseOrderRepository.ApplyOrderConfirmationAsync matches by exact string equality).
         /// </summary>
         private async Task<Core.Models.SupplierOrderStatus> GetOrderStatusViaOrderManagementApiAsync(string supplierOrderNumber)
         {
@@ -555,12 +564,17 @@ namespace Procurement.Suppliers.DigiKey
         /// as of DigiKeyOptions.UseThreeLeggedForProductInformation (okt 2026) means this now goes
         /// through the 3-legged Ordering token too, not the 2-legged client-credentials one.
         ///
-        /// Currently unused (see Capabilities' comment and GetOrderStatusViaOrderManagementApiAsync
-        /// above) — this 403s against the sandbox despite showing Enabled in DigiKey's portal. Kept
-        /// rather than deleted: it's already correct against the confirmed spec and gives richer data
-        /// (an explicit status code, price) than the Order Management path currently in use, so swap
-        /// GetOrderStatusAsync's call back to this once DigiKey resolves the 403 instead of
-        /// rewriting it from scratch.
+        /// Active again as of 20 okt 2026 (GetOrderStatusAsync's call switched back to this). It had
+        /// previously 403'd against the sandbox ("not authorized") despite showing Enabled in
+        /// DigiKey's portal — DigiKey support confirmed (20 okt 2026) this was their known, no-ETA
+        /// Sandbox 2-legged OAuth2 bug, and that 3-legged works fine there, which is exactly what this
+        /// now goes through via the flag above. Not yet confirmed fixed against the real sandbox — if
+        /// it still 403s, swap GetOrderStatusAsync's call back to GetOrderStatusViaOrderManagementApiAsync
+        /// (kept for exactly this). Gives richer data than that fallback (an explicit status code,
+        /// price), but note DigiKeySalesOrderDto's own test-order-matching behavior against the
+        /// sandbox hasn't been separately confirmed — Order Management v1 was found to return
+        /// fixed/canned data unrelated to the real order queried (see that method's comment); whether
+        /// OrderStatus v4 does the same is unconfirmed.
         /// </summary>
         private async Task<Core.Models.SupplierOrderStatus> GetOrderStatusViaOrderStatusApiAsync(string supplierOrderNumber)
         {

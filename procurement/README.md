@@ -61,22 +61,28 @@ hieronder voor de precieze reden). Nog niet daadwerkelijk via de UI uitgevoerd/g
 dat is de eerstvolgende concrete stap. Let op: dezelfde vlag zet ook "Orderbevestiging verwerken"'s
 echte MAX-schrijfkant aan.
 
-**Openstaande actie: terugschakelen naar OrderStatus v4** — de verwachting (gebaseerd op het eerdere,
-identieke 403-patroon bij Product Information V4, dat DigiKey destijds na een paar dagen zelf oploste)
-is dat dit portal/backend-desyncprobleem ook voor OrderStatus v4 vanzelf verdwijnt. Bewust gekozen om
-nu niet op die fix te wachten en gewoon met Order Management v1 door te testen (zie hierboven) — maar
-**dit moet later alsnog opnieuw geprobeerd worden**:
-1. Over een paar dagen `Procurement.Tools.DigiKeyOrderTester status <SalesOrderId>` nogmaals proberen
-   terwijl `DigiKeyAdapter.GetOrderStatusAsync` nog via Order Management v1 loopt, maar dan losstaand
-   even rechtstreeks `GetOrderStatusViaOrderStatusApiAsync` aanroepen (of tijdelijk de regel in
-   `GetOrderStatusAsync` terugzetten) om te checken of de 403 bij OrderStatus v4 weg is.
-2. Zodra dat werkt: `GetOrderStatusAsync`'s enige aanroep terugzetten van
-   `GetOrderStatusViaOrderManagementApiAsync` naar `GetOrderStatusViaOrderStatusApiAsync` (beide
-   methodes staan al klaar in `DigiKeyAdapter.cs` — dit is een wijziging van één regel, geen
-   herbouw) — dat geeft dan weer de rijkere data terug (prijs per regel, een echte DigiKey-statuscode
-   i.p.v. de afgeleide benadering).
-3. Nogmaals testen met het tooltje om te bevestigen dat de rijkere respons ook echt goed wordt
-   gemapt, en deze Status-sectie bijwerken.
+**Teruggeschakeld naar OrderStatus v4** (20 okt 2026): `GetOrderStatusAsync`'s aanroep staat weer op
+`GetOrderStatusViaOrderStatusApiAsync` (was `GetOrderStatusViaOrderManagementApiAsync`, nu behouden als
+fallback) — een wijziging van één regel, zoals hierboven al aangekondigd. Aanleiding: DigiKey support
+bevestigde (zie de sectie "DigiKey support bevestigt de oorzaak van de 403's" verderop) dat de eerdere
+403 een bekende, no-ETA bug was in hun Sandbox's **2-legged** OAuth2-flow — en OrderStatus v4's spec
+staat zowel 2- als 3-legged toe. Omdat deze aanroep via dezelfde `ISupplierHttpClient.GetAsync` loopt
+als Product Information, en die nu (`DigiKeyOptions.UseThreeLeggedForProductInformation`) al naar
+3-legged is omgezet, zou de 403 hiermee ook voor OrderStatus v4 verdwenen moeten zijn. **Nog niet
+bevestigd tegen de echte sandbox** — eerstvolgende concrete stap:
+1. `Procurement.Tools.DigiKeyOrderTester status <SalesOrderId>` opnieuw proberen en checken dat de
+   403 inderdaad weg is.
+2. Bevestigen dat de rijkere respons goed gemapt wordt: een echte DigiKey-statuscode
+   (`MapSalesOrderStatus`) en `ConfirmedUnitPrice`/`ConfirmedAt`, die bij Order Management v1 altijd
+   leeg bleven.
+3. Let op: Order Management v1 bleek bij de eerdere test vaste/canned sandboxtestdata terug te geven,
+   los van de echt opgevraagde order (`296-1005-5-ND`, 1000 stuks, ongeacht welke order je opvroeg) —
+   waardoor `ConfirmedQuantity` stilletjes leeg bleef (de matching in
+   `PurchaseOrderRepository.ApplyOrderConfirmationAsync` is een exacte `SupplierPartNumber`-match). Of
+   OrderStatus v4 dezelfde canned-data-eigenaardigheid heeft, is nog niet apart bevestigd — dat is iets
+   anders dan de 2-legged/3-legged-oorzaak en wordt dus niet automatisch opgelost door deze wijziging.
+4. Mocht OrderStatus v4 toch nog 403'en: `GetOrderStatusAsync`'s aanroep terugzetten naar
+   `GetOrderStatusViaOrderManagementApiAsync` (nog steeds aanwezig, niet verwijderd).
 
 **DigiKey support bevestigt de oorzaak van de 403's (20 okt 2026)**: een bekende, no-ETA bug in hun
 Sandbox-omgeving specifiek voor de **2-legged** OAuth2-flow ("client credentials not authorized").
