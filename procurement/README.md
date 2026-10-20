@@ -61,28 +61,29 @@ hieronder voor de precieze reden). Nog niet daadwerkelijk via de UI uitgevoerd/g
 dat is de eerstvolgende concrete stap. Let op: dezelfde vlag zet ook "Orderbevestiging verwerken"'s
 echte MAX-schrijfkant aan.
 
-**Teruggeschakeld naar OrderStatus v4** (20 okt 2026): `GetOrderStatusAsync`'s aanroep staat weer op
-`GetOrderStatusViaOrderStatusApiAsync` (was `GetOrderStatusViaOrderManagementApiAsync`, nu behouden als
-fallback) — een wijziging van één regel, zoals hierboven al aangekondigd. Aanleiding: DigiKey support
-bevestigde (zie de sectie "DigiKey support bevestigt de oorzaak van de 403's" verderop) dat de eerdere
-403 een bekende, no-ETA bug was in hun Sandbox's **2-legged** OAuth2-flow — en OrderStatus v4's spec
-staat zowel 2- als 3-legged toe. Omdat deze aanroep via dezelfde `ISupplierHttpClient.GetAsync` loopt
-als Product Information, en die nu (`DigiKeyOptions.UseThreeLeggedForProductInformation`) al naar
-3-legged is omgezet, zou de 403 hiermee ook voor OrderStatus v4 verdwenen moeten zijn. **Nog niet
-bevestigd tegen de echte sandbox** — eerstvolgende concrete stap:
-1. `Procurement.Tools.DigiKeyOrderTester status <SalesOrderId>` opnieuw proberen en checken dat de
-   403 inderdaad weg is.
-2. Bevestigen dat de rijkere respons goed gemapt wordt: een echte DigiKey-statuscode
-   (`MapSalesOrderStatus`) en `ConfirmedUnitPrice`/`ConfirmedAt`, die bij Order Management v1 altijd
-   leeg bleven.
-3. Let op: Order Management v1 bleek bij de eerdere test vaste/canned sandboxtestdata terug te geven,
-   los van de echt opgevraagde order (`296-1005-5-ND`, 1000 stuks, ongeacht welke order je opvroeg) —
-   waardoor `ConfirmedQuantity` stilletjes leeg bleef (de matching in
-   `PurchaseOrderRepository.ApplyOrderConfirmationAsync` is een exacte `SupplierPartNumber`-match). Of
-   OrderStatus v4 dezelfde canned-data-eigenaardigheid heeft, is nog niet apart bevestigd — dat is iets
-   anders dan de 2-legged/3-legged-oorzaak en wordt dus niet automatisch opgelost door deze wijziging.
-4. Mocht OrderStatus v4 toch nog 403'en: `GetOrderStatusAsync`'s aanroep terugzetten naar
-   `GetOrderStatusViaOrderManagementApiAsync` (nog steeds aanwezig, niet verwijderd).
+**OrderStatus v4 opnieuw geprobeerd en weer teruggedraaid, zelfde dag (20 okt 2026)**: na DigiKey's
+bevestiging dat de eerdere 403 hun bekende, no-ETA Sandbox 2-legged-bug was (zie verderop), leek het
+voor de hand liggend dat 3-legged (via `DigiKeyOptions.UseThreeLeggedForProductInformation`, die
+`ISupplierHttpClient.GetAsync` deelt met Product Information) die 403 ook voor OrderStatus v4 zou
+oplossen. `GetOrderStatusAsync`'s aanroep is daarom tijdelijk omgezet naar
+`GetOrderStatusViaOrderStatusApiAsync` en getest met `Procurement.Tools.DigiKeyOrderTester status 12345`
+(dezelfde SalesOrderId die Order Management v1 al succesvol teruggaf). Resultaat: de 403 was inderdaad
+weg (3-legged werkt, DigiKey's uitleg klopt) — maar het endpoint gaf in plaats daarvan een gewone
+**404 "resource not found"** voor die echte, bestaande order. Dat is dus geen auth-probleem meer, maar
+een kennelijk permanent verschil tussen DigiKey's twee sandbox-implementaties: Order Management v1's
+sandbox geeft blijkbaar altijd wél iets terug (canned testdata, los van de werkelijke order), terwijl
+OrderStatus v4's sandbox zelf geplaatste testorders kennelijk helemaal niet kent. Geen codefout, geen
+oplosbaar auth-probleem — `GetOrderStatusAsync` is dezelfde dag teruggezet naar
+`GetOrderStatusViaOrderManagementApiAsync`. `GetOrderStatusViaOrderStatusApiAsync` blijft staan (niet
+verwijderd) mocht DigiKey's sandbox dit ooit anders doen.
+
+Dit lost het eerder gemelde "ConfirmedQuantity niet gevuld"-probleem dus niet op — dat blijft een
+apart, nog openstaand punt: Order Management v1's sandbox geeft vaste/canned testdata terug
+(`296-1005-5-ND`, 1000 stuks, ongeacht welke order je opvraagt) die niet overeenkomt met een echt
+geplaatste order, waardoor de exacte `SupplierPartNumber`-match in
+`PurchaseOrderRepository.ApplyOrderConfirmationAsync` niets vindt en `ConfirmedQuantity` stilletjes
+leeg blijft. Dit is een DigiKey-sandbox-testdata-beperking, geen bug in deze app — pas opnieuw te
+beoordelen zodra er tegen een echte (niet-sandbox) omgeving getest kan worden.
 
 **DigiKey support bevestigt de oorzaak van de 403's (20 okt 2026)**: een bekende, no-ETA bug in hun
 Sandbox-omgeving specifiek voor de **2-legged** OAuth2-flow ("client credentials not authorized").
@@ -98,12 +99,12 @@ zorgvuldig gescheiden houden van de sandbox-bestelflow) eerst geprobeerd of de *
 RefreshToken ook Product Information V4 autoriseert. `DigiKeyHttpClientWrapper.AttachSearchHeadersAsync`
 kiest op basis van deze vlag tussen het normale 2-legged client-credentials-token en het 3-legged
 Ordering-token — verder geen enkele aanroep in `DigiKeyAdapter` hoeft te wijzigen, dezelfde
-`GetAsync`/`PostAsync` als altijd. Nog niet getest tegen de echte sandbox. Als dit werkt: geen
-Production-app nodig. Als DigiKey's token-endpoint Product Information-scopes niet onder de
-Ordering-consent toestaat: vlag terugzetten op `false` (geen andere codewijziging) en alsnog de
-Production-route uitwerken. Bijkomend effect, waarschijnlijk gewenst: de dormant
-`GetOrderStatusViaOrderStatusApiAsync` (punt 1-3 hierboven) loopt met deze vlag óók al via 3-legged,
-dus die testronde toetst tegelijk of dat pad nu werkt.
+`GetAsync`/`PostAsync` als altijd. Nog niet apart getest voor Product Information zelf (wel al indirect
+bevestigd bruikbaar: de 403 verdween voor OrderStatus v4 toen die hierdoor via 3-legged ging liep, zie
+hierboven — dus de bestaande RefreshToken autoriseert in elk geval iets buiten Ordering zelf om). Als
+dit voor Product Information ook werkt: geen Production-app nodig. Als DigiKey's token-endpoint Product
+Information-scopes niet onder de Ordering-consent toestaat: vlag terugzetten op `false` (geen andere
+codewijziging) en alsnog de Production-route uitwerken.
 
 Eén trade-off om in gedachten te houden zolang deze vlag aan staat: Product Information's
 beschikbaarheid hangt dan af van dezelfde RefreshToken/consent als Ordering — nu zijn dat twee
