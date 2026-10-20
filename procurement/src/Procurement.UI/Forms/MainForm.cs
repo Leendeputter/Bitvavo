@@ -813,21 +813,21 @@ namespace Procurement.UI.Forms
             var offers = await _composition.Engine.GetOffersForLineAsync(line.Id);
             var selection = await _composition.Engine.GetSelectionForLineAsync(line.Id);
 
-            _offersGrid.DataSource = offers.Select(o => new
+            _offersGrid.DataSource = offers.Select(o => new OfferGridRow
             {
-                o.Id,
+                Id = o.Id,
                 Kiezen = selection != null && selection.SelectedOfferId == o.Id,
-                o.SupplierCode,
-                o.SupplierPartNumber,
+                SupplierCode = o.SupplierCode,
+                SupplierPartNumber = o.SupplierPartNumber,
                 MatchConfidence = o.MatchConfidence.ToString(),
-                o.OfferedQuantity,
-                o.UnitPrice,
-                o.Currency,
+                OfferedQuantity = o.OfferedQuantity,
+                UnitPrice = o.UnitPrice,
+                Currency = o.Currency,
                 Packaging = o.PackagingType.ToString(),
                 Reel = o.ReelType?.ToString() ?? "-",
-                o.LandedCost,
-                o.LeadTimeDays,
-                o.AvailableQuantity,
+                LandedCost = o.LandedCost,
+                LeadTimeDays = o.LeadTimeDays,
+                AvailableQuantity = o.AvailableQuantity,
                 LevertDatum = o.EstimatedDeliveryDate
             }).ToList();
 
@@ -848,6 +848,34 @@ namespace Procurement.UI.Forms
             // Enkel "Kiezen" mag bewerkt worden — zie de ReadOnly=false op de grid zelf.
             foreach (DataGridViewColumn column in _offersGrid.Columns)
                 column.ReadOnly = column.Name != "Kiezen";
+        }
+
+        /// <summary>
+        /// Een gewone klasse i.p.v. een anoniem type (zoals elk ander grid in dit scherm wél
+        /// gebruikt) — nodig omdat een anoniem type alleen getters heeft, en DataGridView een
+        /// "ReadOnly moet True zijn voor een kolom gekoppeld aan een alleen-lezen veld"-foutmelding
+        /// geeft zodra de grid zelf niet grid-breed ReadOnly staat (wat hier moet, voor "Kiezen") maar
+        /// de gebonden eigenschap geen setter heeft — ontdekt pas bij het echt selecteren van een rij
+        /// in de praktijk, niet bij het bouwen. "Kiezen" heeft hierdoor een echte setter, net als elke
+        /// andere eigenschap hier (ook al wordt alleen "Kiezen" zelf echt bewerkt — zie de ReadOnly-lus
+        /// hierboven).
+        /// </summary>
+        private class OfferGridRow
+        {
+            public int Id { get; set; }
+            public bool Kiezen { get; set; }
+            public string SupplierCode { get; set; }
+            public string SupplierPartNumber { get; set; }
+            public string MatchConfidence { get; set; }
+            public int OfferedQuantity { get; set; }
+            public decimal UnitPrice { get; set; }
+            public string Currency { get; set; }
+            public string Packaging { get; set; }
+            public string Reel { get; set; }
+            public decimal LandedCost { get; set; }
+            public int LeadTimeDays { get; set; }
+            public int AvailableQuantity { get; set; }
+            public DateTime LevertDatum { get; set; }
         }
 
         /// <summary>
