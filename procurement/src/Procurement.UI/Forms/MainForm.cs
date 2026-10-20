@@ -562,6 +562,8 @@ namespace Procurement.UI.Forms
             // ook altijd precies één regel.
             var selectionsByLineId = await GetSelectionsByLineIdAsync(requests.Select(r => r.Lines.FirstOrDefault()?.Id));
             var poDueDatesByKey = await GetPoDueDatesByKeyAsync(requests.Select(r => r.Lines.FirstOrDefault()));
+            var preferredVendorIdsByPartId = await _composition.MaxOrderRepository.GetPreferredVendorIdsByPartIdsAsync(
+                requests.Select(r => r.Lines.FirstOrDefault()?.ErpArticleId).Where(p => !string.IsNullOrEmpty(p)).ToList());
 
             var rows = requests
                 .Select(r =>
@@ -601,6 +603,12 @@ namespace Procurement.UI.Forms
                         ManufacturingPart = line?.ManufacturerPartNumber,
                         Customer = line?.Customer,
                         StockID = line?.StockId,
+                        // Part_Master.RECVEN_01 — confirmed by the user (okt 2026) as "the article's
+                        // preferred vendor". Live lookup, not synced/stored on the line itself (see
+                        // MaxOrderRepository.GetPreferredVendorIdsByPartIdsAsync's own comment for why).
+                        VendorID = line?.ErpArticleId != null && preferredVendorIdsByPartId.TryGetValue(line.ErpArticleId, out var preferredVendorId)
+                            ? preferredVendorId
+                            : null,
                         // De oorspronkelijke MAX-aanvraag hierboven blijft ongewijzigd zichtbaar (dat
                         // is wat er gevraagd is) — deze vier tonen apart wat er daadwerkelijk gekozen
                         // is bij sourcing, leeg zolang er nog geen (automatische of handmatige)
@@ -738,6 +746,7 @@ namespace Procurement.UI.Forms
             SetCharacterBasedColumnWidth(grid, "PoDueDate", 12);
             SetCharacterBasedColumnWidth(grid, "Customer", 14);
             SetCharacterBasedColumnWidth(grid, "StockID", 14);
+            SetCharacterBasedColumnWidth(grid, "VendorID", 14);
             SetCharacterBasedColumnWidth(grid, "Workflow", 16);
             SetCharacterBasedColumnWidth(grid, "Manufacturer", 16);
             SetCharacterBasedColumnWidth(grid, "Packaging", 14);

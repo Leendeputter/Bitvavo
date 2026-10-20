@@ -196,6 +196,62 @@ WHERE dbo.Order_Master.ORDNUM_10 IN ({string.Join(",", paramNames)})";
             }
         }
 
+        // Same SQL Server 2100-parameter-per-command ceiling as the other batched lookups above —
+        // 1 parameter per PartId here, same headroom as GetByOrderNumbersAsync.
+        private const int GetPreferredVendorIdsBatchSize = 2000;
+
+        /// <summary>
+        /// Part_Master.RECVEN_01 — the article's preferred/preferential vendor ID, confirmed by the
+        /// user (okt 2026) for display in MainForm's requests grid ("Vendor ID van de
+        /// voorkeursleverancier"). Deliberately a live, batched lookup rather than a new stored column
+        /// on PurchaseRequestLine, the same choice already made for PO DueDate (MaxOrderRepository.
+        /// CalculatePoDueDatesAsync) — a new EF-mapped column triggers the schema-regen script, which
+        /// also wipes Supplier credentials (see README's "Les uit deze sessie" note), so this avoids
+        /// that risk entirely for what's purely a display convenience.
+        /// </summary>
+        public async Task<IReadOnlyDictionary<string, string>> GetPreferredVendorIdsByPartIdsAsync(IReadOnlyCollection<string> partIds)
+        {
+            var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (partIds == null || partIds.Count == 0) return result;
+
+            var distinct = partIds.Where(p => !string.IsNullOrEmpty(p)).Distinct().ToList();
+            for (var offset = 0; offset < distinct.Count; offset += GetPreferredVendorIdsBatchSize)
+            {
+                var batch = distinct.Skip(offset).Take(GetPreferredVendorIdsBatchSize).ToList();
+                await GetPreferredVendorIdsBatchAsync(batch, result);
+            }
+
+            return result;
+        }
+
+        private async Task GetPreferredVendorIdsBatchAsync(IReadOnlyList<string> batch, Dictionary<string, string> result)
+        {
+            var paramNames = batch.Select((_, i) => $"@p{i}").ToList();
+
+            var sql = $@"
+SELECT PRTNUM_01 AS PartID, RECVEN_01 AS PreferredVendorId
+FROM dbo.Part_Master
+WHERE PRTNUM_01 IN ({string.Join(",", paramNames)})";
+
+            using (var conn = new SqlConnection(_session.AdminConnectionString))
+            using (var cmd = new SqlCommand(sql, conn))
+            {
+                for (var i = 0; i < batch.Count; i++)
+                    cmd.Parameters.AddWithValue(paramNames[i], batch[i]);
+
+                await conn.OpenAsync();
+                using (var reader = await cmd.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        var partId = CleanCodeField(reader["PartID"]);
+                        if (string.IsNullOrEmpty(partId)) continue;
+                        result[partId] = CleanCodeField(reader["PreferredVendorId"]);
+                    }
+                }
+            }
+        }
+
         /// <summary>
         /// Part_Master-only lookup (no Order_Master join — there's no order yet), used by two
         /// unrelated callers: "Nieuwe testaanvraag toevoegen" (Desc1/Desc2/PartType/Customer, the

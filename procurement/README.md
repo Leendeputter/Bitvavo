@@ -239,7 +239,13 @@ om te zien of een filter al op MAX/SQL-niveau iets doet.
 Quantity, Cost, Cnv, DueDate, Reference, Manufacturing Part, Customer, StockID zijn 1-op-1 de velden
 uit de Order_Master/Part_Master-query (`FRMPLN_10`, `REVLEV_10`, `COST_10`, `CSTCNV_10`, `STK_10`,
 `COMCDE_01`, ...), op **Workflow** na. Deze velden zijn puur informatief en worden meegesynchroniseerd
-naar `PurchaseRequestLine` (niet gebruikt door de sourcing/matching-logica). `Status` toont hier het
+naar `PurchaseRequestLine` (niet gebruikt door de sourcing/matching-logica). Direct na StockID staat
+**VendorID** — `Part_Master.RECVEN_01`, de voorkeursleverancier van het artikel, bevestigd door de
+gebruiker (okt 2026). Anders dan de velden ervoor is dit géén nieuwe kolom op `PurchaseRequestLine`:
+een nieuwe EF-kolom triggert de schema-regen die ook Supplier-credentials wist (zie "Les uit deze
+sessie" verderop), dus net als bij PO DueDate hierboven wordt dit live en gebatcht opgehaald
+(`MaxOrderRepository.GetPreferredVendorIdsByPartIdsAsync`, per PartID) in plaats van lokaal
+opgeslagen. `Status` toont hier het
 ruwe `Order_Master.STATUS_10` (`PurchaseRequest.MaxOrderStatus`). **Workflow**, met dit prototype's
 eigen voortgangsstatus (`PurchaseRequest.Status`: Pending, Sourcing, WaitingApproval, ReadyToOrder,
 Ordered, Exception), staat bewust vooraan naast Order — een heel ander veld dan de MAX-`Status`-kolom
