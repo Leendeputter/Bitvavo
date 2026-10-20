@@ -346,9 +346,12 @@ regel, niet per hele PO in één keer) en hergebruikt `OrderConfirmationExceptio
 `QuantityMismatch`/`PriceMismatch`/`DeliveryIsLate`-logica om af te lezen of het bevestigde aantal/
 prijs/leverdatum afwijkt van wat besteld/gevraagd was — als drieledige (leeg/aan/uit) checkbox zolang
 een regel nog niet bevestigd is, plus een lichtoranje rij-highlight bij een afwijking, zodat je dat
-niet per regel hoeft na te rekenen. Dit komt naast, niet in
-plaats van, `OrderDetailForm` ("Order details"), dat gericht blijft op de PO's die bij één specifieke
-geselecteerde aanvraag horen.
+niet per regel hoeft na te rekenen. Dit kwam destijds naast `OrderDetailForm` ("Order Details"), dat
+gericht bleef op de PO('s) bij één specifieke geselecteerde aanvraag — die knop/dat scherm is
+inmiddels verwijderd (zie "Menubalk i.p.v. losse knoppen" verderop): hij werkte alleen vanaf een
+geselecteerde rij in het requests-grid, en een Ordered-rij kan daar sinds de "Ordered komt niet meer
+voor in dit grid"-wijziging helemaal niet meer verschijnen, dus de knop was al onbereikbaar geworden.
+Dit "Orders..."-scherm is sindsdien de enige plek om een geplaatste order te bekijken.
 
 **`PurchaseOrder.CompanyId` (sep 2026)**: `PurchaseOrder` had tot nu toe geen company-scoping,
 in tegenstelling tot `PurchaseRequest` — elke `PurchaseOrderRepository`-methode retourneerde orders
@@ -969,12 +972,25 @@ raken dat mock-modus zelf nooit aanraakt:
 - **Schermstructuur/navigatie is niet optimaal** (gebruiker, okt 2026, na het testen van de volledige
   MAX-PO-flow): met de losse "Orders..."-, "Order details"-, requests-grid- en
   "Orderbevestiging verwerken"-vensters naast elkaar is het niet altijd logisch waar je welke
-  informatie vindt. Eén concreet stuk hiervan is inmiddels opgelost (20 okt 2026): het hoofdscherm
-  laat Ordered-aanvragen niet meer zien (enkel nog via het "Orders..."-scherm) en toont onderaan
-  rechtstreeks de offers van de geselecteerde aanvraag met een "Select"-checkbox, in plaats van het
-  oude, vrijwel-letterlijk-dubbele "regels"-grid plus een apart "Offers bekijken"-scherm — zie
-  "Onderste grid vervangen door offers" hierboven. De rest (Order details/Orderbevestiging verwerken
-  als losse vensters) staat nog open, verder geen concreet plan voor.
+  informatie vindt. Twee concrete stukken hiervan zijn inmiddels opgelost:
+  1. (20 okt 2026) Het hoofdscherm laat Ordered-aanvragen niet meer zien (enkel nog via het
+     "Orders..."-scherm) en toont onderaan rechtstreeks de offers van de geselecteerde aanvraag met
+     een "Select"-checkbox, in plaats van het oude, vrijwel-letterlijk-dubbele "regels"-grid plus een
+     apart "Offers bekijken"-scherm — zie "Onderste grid vervangen door offers" hierboven.
+  2. **Menubalk i.p.v. losse knoppen** (zelfde dag, user feedback: "ik heb nu bovenin mijn form een
+     aantal losse knoppen staan, kunnen we hier gewoon een menubalk van maken"): een `MenuStrip` met
+     twee hoofdmenu's vervangt de Order Details/Orders/Approvals/Supplier Mapping/Settings/Audit
+     Log-knoppen. **Options**: Supplier Mapping, Settings, Audit Log (configuratie/beheer). **Activity**:
+     Purchase Requests (activeert dit venster zelf — bedoeld om terug te schakelen als het
+     Orders/Approvals-venster ervoor stond), Purchase Orders (opent "Orders..."), en Approvals — bewust
+     ook onder Activity gezet (niet expliciet door de gebruiker genoemd, maar dezelfde categorie:
+     terugkerend werk om te checken, geen instelling). De vijf primaire actieknoppen (Add New Test
+     Request/Start Sourcing/Source All/Place Order/Process Order Confirmations) blijven gewoon knoppen
+     — frequente acties op dit scherm's eigen data, geen navigatie. **Order Details is volledig
+     verwijderd** (knop én `OrderDetailForm` zelf), niet verplaatst naar het menu: die knop werkte
+     alleen vanaf een geselecteerde requests-grid-rij, en sinds punt 1 hierboven kan een Ordered-rij
+     daar niet meer verschijnen — de knop was dus al onbereikbaar geworden, precies de twijfel die de
+     gebruiker er zelf al bij had.
 - **Alle UI-labels omgezet naar Engels, kolombreedtes app-breed nagelopen** (user feedback, 20 okt
   2026 — "het is nu een beetje een ratjetoe"): elke Button/Label/CheckBox/GroupBox-titel/
   kolomkop/Form-titel in `Procurement.UI/Forms/*.cs` die nog Nederlands was, is omgezet naar Engels

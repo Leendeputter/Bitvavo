@@ -59,12 +59,7 @@ namespace Procurement.UI.Forms
         private Button _sourceAllButton;
         private Button _placeOrdersButton;
         private Button _processConfirmationsButton;
-        private Button _orderDetailButton;
-        private Button _ordersButton;
-        private Button _approvalsButton;
-        private Button _supplierMappingButton;
-        private Button _settingsButton;
-        private Button _auditLogButton;
+        private MenuStrip _menuStrip;
         private Label _statusLabel;
 
         // Every action button shares this one "an operation is in flight" gate (SetBusy) instead of
@@ -119,24 +114,36 @@ namespace Procurement.UI.Forms
             // bevestiging apart (zie ProcurementEngine.ProcessOrderConfirmationsAsync).
             _processConfirmationsButton = new Button { Text = "Process Order Confirmations", AutoSize = true };
             _processConfirmationsButton.Click += async (s, e) => await ProcessOrderConfirmationsAsync();
-            _orderDetailButton = new Button { Text = "Order Details", AutoSize = true };
-            _orderDetailButton.Click += (s, e) => ShowOrderDetail();
-            _ordersButton = new Button { Text = "Orders...", AutoSize = true };
-            _ordersButton.Click += (s, e) => ShowOrders();
-            _approvalsButton = new Button { Text = "Approvals...", AutoSize = true };
-            _approvalsButton.Click += async (s, e) => await ShowApprovalsAsync();
-            _supplierMappingButton = new Button { Text = "Supplier Mapping...", AutoSize = true };
-            _supplierMappingButton.Click += (s, e) => ShowSupplierMapping();
-            _settingsButton = new Button { Text = "Settings...", AutoSize = true };
-            _settingsButton.Click += (s, e) => ShowSettings();
-            _auditLogButton = new Button { Text = "Audit Log...", AutoSize = true };
-            _auditLogButton.Click += (s, e) => ShowAuditLog();
 
             toolPanel.Controls.AddRange(new Control[]
             {
-                _newRequestButton, _startSourcingButton, _sourceAllButton, _placeOrdersButton, _processConfirmationsButton, _orderDetailButton,
-                _ordersButton, _approvalsButton, _supplierMappingButton, _settingsButton, _auditLogButton
+                _newRequestButton, _startSourcingButton, _sourceAllButton, _placeOrdersButton, _processConfirmationsButton
             });
+
+            // Menu bar (user request, 20 okt 2026: "ik heb nu bovenin mijn form een aantal losse
+            // knoppen staan, kunnen we hier gewoon een menubalk van maken") — replaces the former
+            // Order Details/Orders/Approvals/Supplier Mapping/Settings/Audit Log buttons. The five
+            // buttons above stay as direct buttons (frequent, primary actions on this screen's own
+            // data); only navigation to another screen moved into the menu. "Order Details" itself is
+            // not in the menu at all — it only ever showed a PO for the selected requests-grid row,
+            // but an Ordered row can no longer appear in that grid at all (see "Ordered komt niet meer
+            // voor in dit grid" elsewhere in this file/README), so it had already become unreachable;
+            // "Purchase Orders" below is the one real way to look at placed orders now.
+            _menuStrip = new MenuStrip { Dock = DockStyle.Top };
+            var optionsMenu = new ToolStripMenuItem("Options");
+            optionsMenu.DropDownItems.Add("Supplier Mapping...", null, (s, e) => ShowSupplierMapping());
+            optionsMenu.DropDownItems.Add("Settings...", null, (s, e) => ShowSettings());
+            optionsMenu.DropDownItems.Add("Audit Log...", null, (s, e) => ShowAuditLog());
+
+            // Approvals grouped under Activity too, not just the two the user named explicitly —
+            // same category (recurring work to check on), not configuration like the Options items.
+            var activityMenu = new ToolStripMenuItem("Activity");
+            activityMenu.DropDownItems.Add("Purchase Requests", null, (s, e) => Activate());
+            activityMenu.DropDownItems.Add("Purchase Orders...", null, (s, e) => ShowOrders());
+            activityMenu.DropDownItems.Add("Approvals...", null, async (s, e) => await ShowApprovalsAsync());
+
+            _menuStrip.Items.AddRange(new ToolStripItem[] { optionsMenu, activityMenu });
+            MainMenuStrip = _menuStrip;
 
             // Apart van de actieknoppen hierboven: het ophalen/filteren van MAX-orders krijgt een
             // eigen rij met groepsvakken (Query + status-filter, Due Date Range, en de generieke
@@ -218,6 +225,7 @@ namespace Procurement.UI.Forms
             Controls.Add(_requestsGrid);
             Controls.Add(filterPanel);
             Controls.Add(toolPanel);
+            Controls.Add(_menuStrip);
             Controls.Add(_statusLabel);
         }
 
@@ -1205,21 +1213,6 @@ namespace Procurement.UI.Forms
             }
         }
 
-        private void ShowOrderDetail()
-        {
-            var requestId = GetSelectedRequestId();
-            if (requestId == null)
-            {
-                MessageBox.Show(this, "Selecteer eerst een aanvraag.", "Geen selectie", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            using (var form = new OrderDetailForm(_composition.PurchaseRequestRepository, _composition.PurchaseOrderRepository, requestId.Value))
-            {
-                form.ShowDialog(this);
-            }
-        }
-
         private void ShowOrders()
         {
             using (var form = new OrdersForm(_composition.PurchaseOrderRepository, _composition.PurchaseRequestRepository))
@@ -1292,12 +1285,11 @@ namespace Procurement.UI.Forms
             _sourceAllButton.Enabled = enabled;
             _placeOrdersButton.Enabled = enabled;
             _processConfirmationsButton.Enabled = enabled;
-            _orderDetailButton.Enabled = enabled;
-            _ordersButton.Enabled = enabled;
-            _approvalsButton.Enabled = enabled;
-            _supplierMappingButton.Enabled = enabled;
-            _settingsButton.Enabled = enabled;
-            _auditLogButton.Enabled = enabled;
+            // One switch for every former Order Details/Orders/Approvals/Supplier Mapping/Settings/
+            // Audit Log button, now menu items (20 okt 2026) — disabling the whole menu bar during a
+            // busy operation is simpler than toggling each ToolStripMenuItem individually and has the
+            // same effect.
+            _menuStrip.Enabled = enabled;
             // Not strictly a race on shared MAX SqlConnections like the buttons above (their
             // CheckedChanged handler already no-ops via the same _isBusy check) — disabled anyway so
             // a toggle during a Query can't silently fail to visually match the grid until the next

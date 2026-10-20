@@ -11,9 +11,12 @@ namespace Procurement.UI.Forms
 {
     /// <summary>
     /// Global purchase-order register — every PO for this MAX company, independent of any one
-    /// purchase request. Complements OrderDetailForm (which only shows the PO(s) touching a single
-    /// selected aanvraag) rather than replacing it: a PO can bundle lines from several requests
-    /// (grouped by supplier, not by request — see PurchaseOrder.cs), and a PO's own lifecycle
+    /// purchase request. Used to complement OrderDetailForm (which only showed the PO(s) touching a
+    /// single selected request) rather than replace it — that form is gone now (20 okt 2026): it only
+    /// ever worked from a requests-grid row, and an Ordered row can no longer appear in that grid at
+    /// all, so it had become unreachable. This screen is the only way to look at placed orders now.
+    /// A PO can bundle lines from several requests (grouped by supplier, not by request — see
+    /// PurchaseOrder.cs), and a PO's own lifecycle
     /// (Created/Submitted/Acknowledged/Confirmed/.../Shipped/Completed) is a different axis from a
     /// PurchaseRequest's Workflow status, so cramming both into one PR-shaped grid never worked well
     /// (user request, sep 2026, after repeatedly having to open Order details per row just to see an
@@ -94,7 +97,7 @@ namespace Procurement.UI.Forms
 
             // Assigning DataSource can itself raise SelectionChanged; detach first so that doesn't
             // race with LoadLinesForSelectedOrder below against the same in-memory list (same
-            // reasoning as OrderDetailForm/MainForm).
+            // reasoning as MainForm's own grids).
             _ordersGrid.SelectionChanged -= OrdersGrid_SelectionChanged;
             _ordersGrid.DataSource = _loadedOrders.Select(po => new
             {
@@ -151,11 +154,11 @@ namespace Procurement.UI.Forms
                 return;
             }
 
-            // Traces each PO line back to the aanvraag/artikel it originated from — not shown
-            // anywhere else, and exactly the kind of thing this screen exists for (OrderDetailForm's
-            // own lines grid doesn't show it either, but that one is already reached *from* a
-            // specific aanvraag, so the gap matters less there). One lookup per line is fine at
-            // prototype scale (same reasoning as MainForm.GetSelectionsByLineIdAsync).
+            // Traces each PO line back to the request/article it originated from — not shown
+            // anywhere else, and exactly the kind of thing this screen exists for now that it's the
+            // only way to look at a placed order at all (see this file's own class comment). One
+            // lookup per line is fine at prototype scale (same reasoning as
+            // MainForm.GetSelectionsByLineIdAsync).
             var requestLines = new Dictionary<int, PurchaseRequestLine>();
             foreach (var line in order.Lines)
             {
