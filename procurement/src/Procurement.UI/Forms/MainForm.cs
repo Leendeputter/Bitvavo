@@ -88,6 +88,10 @@ namespace Procurement.UI.Forms
             Width = 1300;
             Height = 860;
             StartPosition = FormStartPosition.CenterScreen;
+            // Iets donkerder dan de standaard SystemColors.Control-achtergrond (user request, 20 okt
+            // 2026) — enkel de rand rond de Dock-ed children, die zelf hun eigen (lichtere) kleur
+            // houden, dus dit is zichtbaar als een smalle rand i.p.v. een volledige kleurwissel.
+            BackColor = Color.FromArgb(214, 214, 219);
             // Geeft alle Dock-ed children (grids, knoppenbalken) een beetje lucht t.o.v. de
             // vensterrand in plaats van er helemaal tegenaan te zitten.
             Padding = new Padding(8);
