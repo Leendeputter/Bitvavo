@@ -78,6 +78,33 @@ nu niet op die fix te wachten en gewoon met Order Management v1 door te testen (
 3. Nogmaals testen met het tooltje om te bevestigen dat de rijkere respons ook echt goed wordt
    gemapt, en deze Status-sectie bijwerken.
 
+**DigiKey support bevestigt de oorzaak van de 403's (20 okt 2026)**: een bekende, no-ETA bug in hun
+Sandbox-omgeving specifiek voor de **2-legged** OAuth2-flow ("client credentials not authorized").
+3-legged werkt in Sandbox wel gewoon. DigiKey's eigen advies: voor Product Information V4 (de API die
+dit feitelijk raakt — search/pricing) naar Production overstappen als 2-legged de voorkeur heeft, of
+anders 3-legged gebruiken. Voor Ordering was 3-legged al verplicht en dus al in gebruik; dit verklaart
+ook meteen de eerdere OrderStatus v4 403 (die loopt óók via 2-legged client credentials) — geen apart
+mysterie, dezelfde bug.
+
+**Experiment: `DigiKeyOptions.UseThreeLeggedForProductInformation`** (true by default, okt 2026) —
+in plaats van naar Production over te stappen (nieuwe DigiKey-registratie, apart ClientId/Secret,
+zorgvuldig gescheiden houden van de sandbox-bestelflow) eerst geprobeerd of de **bestaande** Ordering-
+RefreshToken ook Product Information V4 autoriseert. `DigiKeyHttpClientWrapper.AttachSearchHeadersAsync`
+kiest op basis van deze vlag tussen het normale 2-legged client-credentials-token en het 3-legged
+Ordering-token — verder geen enkele aanroep in `DigiKeyAdapter` hoeft te wijzigen, dezelfde
+`GetAsync`/`PostAsync` als altijd. Nog niet getest tegen de echte sandbox. Als dit werkt: geen
+Production-app nodig. Als DigiKey's token-endpoint Product Information-scopes niet onder de
+Ordering-consent toestaat: vlag terugzetten op `false` (geen andere codewijziging) en alsnog de
+Production-route uitwerken. Bijkomend effect, waarschijnlijk gewenst: de dormant
+`GetOrderStatusViaOrderStatusApiAsync` (punt 1-3 hierboven) loopt met deze vlag óók al via 3-legged,
+dus die testronde toetst tegelijk of dat pad nu werkt.
+
+Eén trade-off om in gedachten te houden zolang deze vlag aan staat: Product Information's
+beschikbaarheid hangt dan af van dezelfde RefreshToken/consent als Ordering — nu zijn dat twee
+onafhankelijke faalpaden, hierna één. Als "Ordering autoriseren..." nog nooit gedraaid is
+(RefreshToken leeg), faalt voortaan ook een gewone product search, niet alleen het plaatsen van een
+order.
+
 **Les uit deze sessie, voor toekomstige schema-wijzigingen**: elke nieuwe kolom heeft in
 `Program.cs`'s schema-existence-check een **eigen** `sys.columns`-probe nodig, ook als een andere
 kolom op dezelfde tabel al gecontroleerd wordt — een kolom die in een latere, aparte commit is

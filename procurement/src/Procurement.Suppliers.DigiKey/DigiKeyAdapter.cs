@@ -551,8 +551,9 @@ namespace Procurement.Suppliers.DigiKey
         /// GET /orderstatus/v4/salesorder/{salesOrderId} against DigiKey's confirmed OrderStatus v4
         /// Swagger spec (supplied directly by the user — see DigiKeyDtos.cs). That spec says this
         /// endpoint "uses both two-legged OAuth and three-legged OAuth", so this goes through the
-        /// plain 2-legged ISupplierHttpClient.GetAsync — the same client-credentials token Product
-        /// Information already uses, not the Ordering-specific 3-legged client.
+        /// plain ISupplierHttpClient.GetAsync — the same call path Product Information uses, which
+        /// as of DigiKeyOptions.UseThreeLeggedForProductInformation (okt 2026) means this now goes
+        /// through the 3-legged Ordering token too, not the 2-legged client-credentials one.
         ///
         /// Currently unused (see Capabilities' comment and GetOrderStatusViaOrderManagementApiAsync
         /// above) — this 403s against the sandbox despite showing Enabled in DigiKey's portal. Kept

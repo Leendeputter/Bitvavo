@@ -13,12 +13,15 @@ namespace Procurement.Suppliers.DigiKey.Http
 {
     /// <summary>
     /// Real DigiKey REST client, covering two unrelated OAuth2 flows: 2-legged client-credentials
-    /// for Product Information V4 (GetAsync/PostAsync, confirmed working against the sandbox) and
-    /// 3-legged Authorization Code for Ordering v3 (PostOrderAsync) — DigiKey's own Ordering spec
-    /// requires the latter explicitly ("This API uses 3 legged OAuth"), so it needs its own token
-    /// acquisition (via a stored refresh token, never a fresh interactive consent — that's
-    /// DigiKeyOrderingAuthorizer's job, run once from Instellingen) entirely separate from the
-    /// client-credentials token the 2-legged calls use.
+    /// (GetAccessTokenAsync) and 3-legged Authorization Code (GetOrderingAccessTokenAsync, via a
+    /// stored refresh token, never a fresh interactive consent — that's DigiKeyOrderingAuthorizer's
+    /// job, run once from Instellingen). Ordering v3 (PostOrderAsync) and Order Management v1
+    /// (GetOrderAsync) always use the 3-legged token — DigiKey's own Ordering spec requires it
+    /// explicitly ("This API uses 3 legged OAuth"). Product Information V4 (GetAsync/PostAsync)
+    /// normally uses the 2-legged token, but AttachSearchHeadersAsync picks the 3-legged one instead
+    /// when DigiKeyOptions.UseThreeLeggedForProductInformation is set — an experiment (okt 2026,
+    /// see that flag's own doc comment) to sidestep a known, no-ETA DigiKey Sandbox bug in the
+    /// 2-legged flow, confirmed by DigiKey support to not affect 3-legged.
     /// </summary>
     public class DigiKeyHttpClientWrapper : IDigiKeyOrderingHttpClient, IDisposable
     {
@@ -100,7 +103,13 @@ namespace Procurement.Suppliers.DigiKey.Http
 
         private async Task AttachSearchHeadersAsync(HttpRequestMessage request)
         {
-            var token = await GetAccessTokenAsync().ConfigureAwait(false);
+            // See DigiKeyOptions.UseThreeLeggedForProductInformation's doc comment — normally the
+            // 2-legged client-credentials token, but switched to the 3-legged Ordering token for
+            // this experiment. Locale/Client-Id headers are identical either way; only the token
+            // (and which credential it's acquired from) differs.
+            var token = _options.UseThreeLeggedForProductInformation
+                ? await GetOrderingAccessTokenAsync().ConfigureAwait(false)
+                : await GetAccessTokenAsync().ConfigureAwait(false);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             request.Headers.Add("X-DIGIKEY-Client-Id", _options.ClientId);
             request.Headers.Add("X-DIGIKEY-Locale-Site", _options.LocaleSite);
@@ -229,8 +238,11 @@ namespace Procurement.Suppliers.DigiKey.Http
 
                 if (string.IsNullOrEmpty(_options.RefreshToken))
                 {
+                    // Reached for a plain product search too when UseThreeLeggedForProductInformation
+                    // is on, not only for ordering — the message says "Ordering autoriseren" either
+                    // way since that's the one action that produces this RefreshToken.
                     throw new SupplierException(DigiKeyAdapter.Code, SupplierErrorCode.AuthenticationError,
-                        "DigiKey Ordering is nog niet geautoriseerd — gebruik \"Ordering autoriseren...\" in Instellingen voordat je een order plaatst.");
+                        "DigiKey Ordering is nog niet geautoriseerd — gebruik \"Ordering autoriseren...\" in Instellingen (nodig voor orders plaatsen, en nu ook voor product search/pricing).");
                 }
 
                 var form = new FormUrlEncodedContent(new[]

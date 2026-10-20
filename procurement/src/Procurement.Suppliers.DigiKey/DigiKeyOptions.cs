@@ -13,6 +13,29 @@ namespace Procurement.Suppliers.DigiKey
         public string ClientSecret { get; set; }
         public bool IsSandbox { get; set; } = true;
 
+        /// <summary>
+        /// Experiment (okt 2026): route Product Information V4 calls (search/pricing — GetAsync/
+        /// PostAsync on DigiKeyHttpClientWrapper) through the same 3-legged (Authorization Code)
+        /// token as Ordering/Order Management, instead of the normal 2-legged client-credentials
+        /// token. DigiKey support confirmed the Sandbox 2-legged flow has a known, no-ETA bug (the
+        /// recurring "client credentials not authorized" 403 seen on this app's Product Information
+        /// calls) and that 3-legged works fine in Sandbox — this flag tests whether the existing
+        /// Ordering RefreshToken/consent also authorizes Product Information, which would sidestep
+        /// the bug entirely without creating a separate Production application. True by default to
+        /// test it immediately; flip to false to fall back to the normal 2-legged flow (e.g. if
+        /// DigiKey's token endpoint rejects Product Information scopes under the Ordering consent) —
+        /// no other code change needed either way. If 3-legged turns out not to work at all (not
+        /// just "flip this back"), the other option DigiKey offered — a separate Production
+        /// application/credentials for Product Information only, Ordering staying on Sandbox — is a
+        /// bigger change, not implemented here.
+        ///
+        /// Trade-off worth knowing before relying on this: with this true, Product Information's
+        /// availability is coupled to the same RefreshToken/consent Ordering depends on — today two
+        /// independent failure modes, after this one. If "Ordering autoriseren..." has never been
+        /// run (RefreshToken null), product search/pricing fails too, not just ordering.
+        /// </summary>
+        public bool UseThreeLeggedForProductInformation { get; set; } = true;
+
         /// <summary>When true, the adapter never calls the HTTP layer and returns fixed/deterministic mock data instead. Search/pricing/availability real-mode is confirmed working against the sandbox; real-mode ordering additionally needs RefreshToken (see below) to be set via the one-time "Ordering autoriseren..." consent flow.</summary>
         public bool UseMockData { get; set; } = true;
 
