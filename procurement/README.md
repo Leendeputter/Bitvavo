@@ -1022,7 +1022,11 @@ raken dat mock-modus zelf nooit aanraakt:
      plaats van een verwarrende tweede kopie met zijn eigen Query/selectie-status te openen — de andere
      vijf schermen hebben die bescherming bewust niet (minder impactvol, geen reden om dat erbij te
      bouwen). `ApprovalForm`'s "ververs Purchase Requests na het sluiten"-logica (zie punt 3) verhuisde
-     mee naar `ShellForm`, en checkt nu expliciet of `MainForm` op dat moment wel open is.
+     mee naar `ShellForm`, en checkt nu expliciet of `MainForm` op dat moment wel open is. `ShellForm`
+     opende aanvankelijk klein en vast (`FormBorderStyle.FixedSingle`, `MaximizeBox = false`) — bewust
+     bedoeld als "enkel een menubalk, niets om te vergroten", maar dat oogde als een kapot venster
+     i.p.v. minimalistisch (user feedback, zelfde dag: "Het scherm moet wel full screen openen"). Nu
+     een heel normaal, maximaliseerbaar venster dat gemaximaliseerd opent.
 - **Alle UI-labels omgezet naar Engels, kolombreedtes app-breed nagelopen** (user feedback, 20 okt
   2026 — "het is nu een beetje een ratjetoe"): elke Button/Label/CheckBox/GroupBox-titel/
   kolomkop/Form-titel in `Procurement.UI/Forms/*.cs` die nog Nederlands was, is omgezet naar Engels

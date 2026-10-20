@@ -38,13 +38,14 @@ namespace Procurement.UI.Forms
         {
             Text = $"Component Procurement – {_composition.Session.CompanyName} ({_composition.Session.UserName})"
                  + (_composition.Session.TestMode ? " – TEST MODE" : string.Empty);
-            Width = 420;
-            Height = 100;
+            // A normal, resizable/maximizable window, opening maximized (user request, 20 okt 2026 —
+            // the first version was deliberately small/fixed-size as "just a launcher", but that read
+            // as broken rather than minimal). Width/Height are only what it'd fall back to if the
+            // user un-maximizes it.
+            Width = 1300;
+            Height = 860;
             StartPosition = FormStartPosition.CenterScreen;
-            // A plain menu bar has nothing that benefits from being resizable or maximized — fixed
-            // keeps it a small, deliberate "launcher", not something that looks like it wants content.
-            FormBorderStyle = FormBorderStyle.FixedSingle;
-            MaximizeBox = false;
+            WindowState = FormWindowState.Maximized;
 
             var menuStrip = new MenuStrip { Dock = DockStyle.Top };
 
