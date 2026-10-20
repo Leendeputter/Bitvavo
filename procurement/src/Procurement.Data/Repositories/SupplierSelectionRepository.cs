@@ -27,5 +27,15 @@ namespace Procurement.Data.Repositories
                 .Where(s => s.PurchaseRequestLineId == purchaseRequestLineId)
                 .OrderByDescending(s => s.SelectedAt)
                 .FirstOrDefaultAsync());
+
+        /// <summary>Clears a line back to "no offer selected" (ProcurementEngine.DeselectOfferAsync) — removes every SupplierSelection row for it, not just the latest, since none of this app's own logic needs a historical trail here (the audit log already has one, separately).</summary>
+        public Task DeleteByLineIdAsync(int purchaseRequestLineId) => _context.RunGuardedAsync(async () =>
+        {
+            var selections = await _context.SupplierSelections
+                .Where(s => s.PurchaseRequestLineId == purchaseRequestLineId)
+                .ToListAsync();
+            _context.SupplierSelections.RemoveRange(selections);
+            await _context.SaveChangesAsync();
+        });
     }
 }

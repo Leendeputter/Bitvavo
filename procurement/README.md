@@ -257,13 +257,30 @@ aanvraag — maar elke MAX-PR/PL heeft er altijd precies één, dus dat was vrij
 herhaling van de bovenste rij. `MainForm.LoadOffersForSelectedRequestAsync` toont daar nu in plaats
 daarvan rechtstreeks de offers (`ProcurementEngine.GetOffersForLineAsync`) van die ene regel — dezelfde
 kolommen als het oude "Offers bekijken"-scherm (Supplier, Supplier Part Number, Match, Quantity, Unit
-Price, Currency, Packaging, Reel, Landed Cost, Lead Time, Available Qty, LevertDatum), plus een
-**"Kiezen"**-checkboxkolom vooraan: de huidig geselecteerde offerte staat aangevinkt, een ander vakje
-aanvinken kiest meteen die offerte (`ProcurementEngine.SelectOfferManuallyAsync`) en ververst beide
-grids. Het losse "Offers bekijken"-scherm (`OfferComparisonForm`, met zijn verplichte
-reden-tekstveld-vóór-kiezen-flow) is hiermee overbodig geworden en verwijderd — zie "Verplichte reden
-bij handmatige keuze vervallen" hieronder voor waarom die eis zelf ook is losgelaten, niet alleen het
-scherm errond.
+Price, Currency, Packaging, Reel, Landed Cost, Lead Time (Working Days), Available Qty, Due Date — de
+laatste twee kolomnamen op verzoek aangepast, zie verderop), plus een **"Select"**-checkboxkolom
+vooraan (hernoemd vanuit "Kiezen", smal gehouden i.p.v. Fill-breed net als Currency — user request, 20
+okt 2026): de huidig geselecteerde offerte staat aangevinkt, een ander vakje aanvinken kiest meteen die
+offerte (`ProcurementEngine.SelectOfferManuallyAsync`) en ververst beide grids. Het losse "Offers
+bekijken"-scherm (`OfferComparisonForm`, met zijn verplichte reden-tekstveld-vóór-kiezen-flow) is
+hiermee overbodig geworden en verwijderd — zie "Verplichte reden bij handmatige keuze vervallen"
+hieronder voor waarom die eis zelf ook is losgelaten, niet alleen het scherm errond.
+
+**Deselecteren kan ook** (zelfde user feedback, 20 okt 2026): aanvinken zet de workflowstatus naar
+ReadyToOrder zodra de regel een selectie heeft (bevestigd gedrag, ongewijzigd) — maar het vakje van de
+al-gekozen offerte uitvinken deed voorheen zelf niets (enkel een refresh die het vakje terugzette naar
+aangevinkt). `ProcurementEngine.DeselectOfferAsync` (nieuw) verwijdert de `SupplierSelection`-rij(en)
+voor die regel volledig (geen "geen offerte"-representatie mogelijk voor het verplichte
+`SelectedOfferId`-veld, en het audit-log — een apart, append-only logboek — bewaart toch al wie wat
+wanneer koos) en zet de aanvraag terug naar **Sourcing**. Geblokkeerd zodra de aanvraag al Ordered is
+(er bestaat dan al een echte ERP-PO; deselecteren zou die toch niet ongedaan maken).
+
+**Testaanvragen niet meer standaard zichtbaar** (zelfde user feedback: "dit zijn uitzonderingen, die
+wil ik niet standaard zien"): een nieuwe checkbox **"Testaanvragen tonen"** in de "Weergeven"-groep,
+uit by default. Handmatige testaanvragen ("TEST-"-prefix) werden tot nu toe altijd getoond, ongeacht de
+status-/Due Date-/Select By-filters (ze waren nooit onderdeel van een MAX-query, dus die filters zouden
+ze anders onterecht lijken te "verbergen") — dit nieuwe vakje overstemt die uitzondering juist weer: uit
+betekent nu echt niet zichtbaar, ook niet via de andere filters.
 
 **Verplichte reden bij handmatige keuze vervallen** (zelfde user feedback): `SelectOfferManuallyAsync`
 eiste tot nu toe een niet-lege `reason` (gooide anders een `ArgumentException`) — een bewuste

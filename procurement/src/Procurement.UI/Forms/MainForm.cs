@@ -20,7 +20,7 @@ namespace Procurement.UI.Forms
         private DataGridView _offersGrid;
 
         // The one PurchaseRequestLine the offers grid currently shows — set whenever
-        // LoadOffersForSelectedRequestAsync (re)loads, read when a "Kiezen" checkbox is ticked.
+        // LoadOffersForSelectedRequestAsync (re)loads, read when a "Select" checkbox is ticked.
         // Every MAX-synced PR has exactly one line (see PopulateRequestsGrid's own comment), so the
         // offers grid never needs to represent more than one line's offers at a time.
         private int? _currentLineId;
@@ -48,6 +48,11 @@ namespace Procurement.UI.Forms
         // lines grids are for PRs/PLs only — an actually-placed order belongs in the dedicated
         // "Orders..." window, not toggled back into this one) — see BuildRequestStatusFilterGroup.
         private readonly Dictionary<PurchaseRequestStatus, CheckBox> _requestStatusCheckBoxes = new Dictionary<PurchaseRequestStatus, CheckBox>();
+
+        // Uit by default — testaanvragen zijn uitzonderingen, niet standaard zichtbaar (user request,
+        // 20 okt 2026). Overstemt IsManualTestRequest's eigen "altijd tonen"-uitzondering in
+        // ApplyRangeAndDueDateFilters/GetOpenPurchaseRequestsAsync wanneer uitgevinkt.
+        private CheckBox _showTestRequestsCheckBox;
 
         private Button _newRequestButton;
         private Button _startSourcingButton;
@@ -176,13 +181,13 @@ namespace Procurement.UI.Forms
             EnableRowNumberHeaders(_requestsGrid);
             _requestsGrid.SelectionChanged += RequestsGrid_SelectionChanged;
 
-            var offersLabel = new Label { Text = "Offers voor geselecteerde aanvraag (vink \"Kiezen\" aan om een offerte te selecteren):", Dock = DockStyle.Top, Height = 20, Padding = new Padding(4) };
+            var offersLabel = new Label { Text = "Offers voor geselecteerde aanvraag (vink \"Select\" aan om een offerte te selecteren/deselecteren):", Dock = DockStyle.Top, Height = 20, Padding = new Padding(4) };
 
             _offersGrid = new DataGridView
             {
                 Dock = DockStyle.Fill,
                 // Niet grid-breed ReadOnly (anders dan elk ander grid in dit scherm) — enkel de
-                // "Kiezen"-kolom mag bewerkt worden, de rest wordt individueel op ReadOnly gezet na
+                // "Select"-kolom mag bewerkt worden, de rest wordt individueel op ReadOnly gezet na
                 // het vullen (zie het eind van LoadOffersForSelectedRequestAsync). Nodig omdat
                 // DataGridView geen per-kolom ReadOnly toestaat zolang de grid zelf ReadOnly staat.
                 ReadOnly = false,
@@ -312,6 +317,21 @@ namespace Procurement.UI.Forms
                 checkBox.CheckedChanged += async (s, e) => await ReloadWithCurrentStatusFilterAsync();
             }
 
+            // Uit by default (user request, 20 okt 2026: "dit zijn uitzonderingen, die wil ik niet
+            // standaard zien") — handmatige testaanvragen ("TEST-"-prefix) worden normaal altijd
+            // getoond ongeacht de status-/Due Date-/Select By-filters hierboven (zie
+            // ApplyRangeAndDueDateFilters/GetOpenPurchaseRequestsAsync's eigen IsManualTestRequest-
+            // uitzondering); dit vakje overstemt die uitzondering juist weer, los van de rest.
+            _showTestRequestsCheckBox = new CheckBox
+            {
+                Text = "Testaanvragen tonen",
+                AutoSize = true,
+                Checked = false,
+                Margin = new Padding(0, 8, 0, 2)
+            };
+            _showTestRequestsCheckBox.CheckedChanged += async (s, e) => await ReloadWithCurrentStatusFilterAsync();
+            layout.Controls.Add(_showTestRequestsCheckBox);
+
             return WrapInGroupBox("Weergeven", layout);
         }
 
@@ -399,7 +419,9 @@ namespace Procurement.UI.Forms
             SetStatus("Aanvragen laden...");
             var statuses = GetCheckedRequestStatuses();
             var allRequests = await _composition.PurchaseRequestRepository.GetAllAsync();
-            var requests = ApplyRangeAndDueDateFilters(allRequests.Where(r => statuses.Contains(r.Status)));
+            var requests = ApplyRangeAndDueDateFilters(allRequests.Where(r => statuses.Contains(r.Status)))
+                .Where(r => _showTestRequestsCheckBox.Checked || !IsManualTestRequest(r.ErpRequestNumber))
+                .ToList();
             await PopulateRequestsGrid(requests);
             SetStatus($"{requests.Count} aanvraag/aanvragen getoond (statusfilter).");
             await LoadOffersForSelectedRequestAsync();
@@ -475,7 +497,9 @@ namespace Procurement.UI.Forms
             // aanvragen terug (Query = "wat moet er nog gesourced worden") — een al bestelde aanvraag
             // bekijk je voortaan via het aparte "Orders..."-scherm.
             var statuses = GetCheckedRequestStatuses();
-            var filteredRequests = requests.Where(r => statuses.Contains(r.Status)).ToList();
+            var filteredRequests = requests.Where(r => statuses.Contains(r.Status))
+                .Where(r => _showTestRequestsCheckBox.Checked || !IsManualTestRequest(r.ErpRequestNumber))
+                .ToList();
             await PopulateRequestsGrid(filteredRequests);
             // Toont ook hoeveel orders de MAX-query zelf teruggaf (voor het filter toepassen op de
             // lokale lijst) — handig om te zien of een filter al op MAX-niveau iets doet, los van
@@ -789,7 +813,8 @@ namespace Procurement.UI.Forms
         /// weergegeven... met de optie om daar het gewenste offer te kiezen") — vervangt het oude
         /// "regels van deze aanvraag"-grid, dat toch altijd precies één (vrijwel identieke) regel liet
         /// zien, zie PopulateRequestsGrid's eigen commentaar. Het losse "Offers bekijken"-scherm
-        /// (OfferComparisonForm) verviel hiermee; kiezen gebeurt nu via de "Kiezen"-checkbox hieronder.
+        /// (OfferComparisonForm) verviel hiermee; kiezen/deselecteren gebeurt nu via de
+        /// "Select"-checkbox hieronder.
         /// </summary>
         private async System.Threading.Tasks.Task LoadOffersForSelectedRequestAsync()
         {
@@ -816,7 +841,7 @@ namespace Procurement.UI.Forms
             _offersGrid.DataSource = offers.Select(o => new OfferGridRow
             {
                 Id = o.Id,
-                Kiezen = selection != null && selection.SelectedOfferId == o.Id,
+                Select = selection != null && selection.SelectedOfferId == o.Id,
                 SupplierCode = o.SupplierCode,
                 SupplierPartNumber = o.SupplierPartNumber,
                 MatchConfidence = o.MatchConfidence.ToString(),
@@ -828,7 +853,7 @@ namespace Procurement.UI.Forms
                 LandedCost = o.LandedCost,
                 LeadTimeDays = o.LeadTimeDays,
                 AvailableQuantity = o.AvailableQuantity,
-                LevertDatum = o.EstimatedDeliveryDate
+                DueDate = o.EstimatedDeliveryDate
             }).ToList();
 
             if (_offersGrid.Columns["Id"] != null)
@@ -839,31 +864,37 @@ namespace Procurement.UI.Forms
             SetHeaderText(_offersGrid, "OfferedQuantity", "Quantity");
             SetHeaderText(_offersGrid, "UnitPrice", "Unit Price");
             SetHeaderText(_offersGrid, "LandedCost", "Landed Cost");
-            SetHeaderText(_offersGrid, "LeadTimeDays", "Lead Time (dagen)");
+            SetHeaderText(_offersGrid, "LeadTimeDays", "Lead Time (Working Days)");
             SetHeaderText(_offersGrid, "AvailableQuantity", "Available Qty");
+            SetHeaderText(_offersGrid, "DueDate", "Due Date");
             ApplyQuantityColumns(_offersGrid, "OfferedQuantity", "AvailableQuantity");
             ApplyCurrencyColumns(_offersGrid, "UnitPrice", "LandedCost");
-            ApplyDateColumns(_offersGrid, "LevertDatum");
+            ApplyDateColumns(_offersGrid, "DueDate");
+            // Smal genoeg voor een checkbox + "Select"-tekst, resp. voor "Currency" (de waarden zelf,
+            // bv. "EUR", zijn altijd korter dan de kolomnaam) — anders trekt AutoSizeColumnsMode.Fill
+            // ze even breed als de rest (user request, 20 okt 2026).
+            SetCharacterBasedColumnWidth(_offersGrid, "Select", 8);
+            SetCharacterBasedColumnWidth(_offersGrid, "Currency", 8);
 
-            // Enkel "Kiezen" mag bewerkt worden — zie de ReadOnly=false op de grid zelf.
+            // Enkel "Select" mag bewerkt worden — zie de ReadOnly=false op de grid zelf.
             foreach (DataGridViewColumn column in _offersGrid.Columns)
-                column.ReadOnly = column.Name != "Kiezen";
+                column.ReadOnly = column.Name != "Select";
         }
 
         /// <summary>
         /// Een gewone klasse i.p.v. een anoniem type (zoals elk ander grid in dit scherm wél
         /// gebruikt) — nodig omdat een anoniem type alleen getters heeft, en DataGridView een
         /// "ReadOnly moet True zijn voor een kolom gekoppeld aan een alleen-lezen veld"-foutmelding
-        /// geeft zodra de grid zelf niet grid-breed ReadOnly staat (wat hier moet, voor "Kiezen") maar
+        /// geeft zodra de grid zelf niet grid-breed ReadOnly staat (wat hier moet, voor "Select") maar
         /// de gebonden eigenschap geen setter heeft — ontdekt pas bij het echt selecteren van een rij
-        /// in de praktijk, niet bij het bouwen. "Kiezen" heeft hierdoor een echte setter, net als elke
-        /// andere eigenschap hier (ook al wordt alleen "Kiezen" zelf echt bewerkt — zie de ReadOnly-lus
+        /// in de praktijk, niet bij het bouwen. "Select" heeft hierdoor een echte setter, net als elke
+        /// andere eigenschap hier (ook al wordt alleen "Select" zelf echt bewerkt — zie de ReadOnly-lus
         /// hierboven).
         /// </summary>
         private class OfferGridRow
         {
             public int Id { get; set; }
-            public bool Kiezen { get; set; }
+            public bool Select { get; set; }
             public string SupplierCode { get; set; }
             public string SupplierPartNumber { get; set; }
             public string MatchConfidence { get; set; }
@@ -875,22 +906,22 @@ namespace Procurement.UI.Forms
             public decimal LandedCost { get; set; }
             public int LeadTimeDays { get; set; }
             public int AvailableQuantity { get; set; }
-            public DateTime LevertDatum { get; set; }
+            public DateTime DueDate { get; set; }
         }
 
         /// <summary>
-        /// Aanvinken kiest die offerte. Uitvinken doet zelf niets (een regel kan niet "geen offerte"
-        /// hebben zodra er al een selectie is) maar ververst wél altijd — zonder dat zou een per
-        /// ongeluk uitgevinkt vakje op de al-gekozen regel in het grid blijven staan als "uit", ook al
-        /// is er in de database niets veranderd.
+        /// Aanvinken kiest die offerte (SelectOfferManuallyAsync); uitvinken van de al-gekozen regel
+        /// maakt die keuze weer ongedaan (DeselectOfferAsync, user request, 20 okt 2026 — workflow
+        /// springt dan terug van ReadyToOrder naar Sourcing). Uitvinken van een andere (niet eerder
+        /// gekozen) regel kan niet gebeuren — die stond al uit — dus die tak wordt nooit bereikt.
         /// </summary>
         private async System.Threading.Tasks.Task OffersGrid_CellValueChangedAsync(DataGridViewCellEventArgs e)
         {
-            if (e.RowIndex < 0 || _offersGrid.Columns[e.ColumnIndex].Name != "Kiezen") return;
+            if (e.RowIndex < 0 || _offersGrid.Columns[e.ColumnIndex].Name != "Select") return;
             if (_currentLineId == null) return;
 
             var row = _offersGrid.Rows[e.RowIndex];
-            var nowChecked = (bool)row.Cells["Kiezen"].Value;
+            var nowChecked = (bool)row.Cells["Select"].Value;
 
             try
             {
@@ -899,6 +930,10 @@ namespace Procurement.UI.Forms
                 {
                     var offerId = (int)row.Cells["Id"].Value;
                     await _composition.Engine.SelectOfferManuallyAsync(_currentLineId.Value, offerId, reason: null, _composition.Session.UserName);
+                }
+                else
+                {
+                    await _composition.Engine.DeselectOfferAsync(_currentLineId.Value, _composition.Session.UserName);
                 }
             }
             catch (Exception ex)

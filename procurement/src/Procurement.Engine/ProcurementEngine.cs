@@ -141,6 +141,32 @@ namespace Procurement.Engine
             await RecomputeRequestStatusIfFullySelectedAsync(line.PurchaseRequestId);
         }
 
+        /// <summary>
+        /// Reverts a line back to "no offer selected" — the inverse of SelectOfferManuallyAsync (user
+        /// request, 20 okt 2026: unticking "Select" in MainForm's offers grid should actually clear
+        /// the choice, not just revert itself back to checked on the next refresh). SupplierSelection
+        /// rows are deleted outright rather than kept as inactive history — there's no "no offer"
+        /// representation for SelectedOfferId (a required int), and the audit log (a separate,
+        /// append-only table) already records SUPPLIER_SELECTED_MANUAL/_AUTO regardless, so nothing
+        /// about who chose what when is actually lost. Workflow status moves back to Sourcing, since
+        /// RecomputeRequestStatusIfFullySelectedAsync only reaches ReadyToOrder once every line has a
+        /// selection again. Refused once the request is already Ordered — a real ERP PO exists for it
+        /// by then, so clearing the selection here wouldn't undo that anyway.
+        /// </summary>
+        public async Task DeselectOfferAsync(int purchaseRequestLineId, string user)
+        {
+            var line = await GetLineAsync(purchaseRequestLineId);
+            var request = await _purchaseRequestRepository.GetByIdAsync(line.PurchaseRequestId);
+            if (request != null && request.Status == PurchaseRequestStatus.Ordered)
+                throw new InvalidOperationException("Deze aanvraag is al besteld — de offertekeuze kan niet meer ongedaan gemaakt worden.");
+
+            await _selectionRepository.DeleteByLineIdAsync(purchaseRequestLineId);
+            await _auditLogger.LogAsync("PurchaseRequestLine", purchaseRequestLineId.ToString(), "SUPPLIER_SELECTION_CLEARED", "Success", userOrSystem: user);
+
+            await _purchaseRequestRepository.UpdateStatusAsync(line.PurchaseRequestId, PurchaseRequestStatus.Sourcing);
+            await _auditLogger.LogAsync("PurchaseRequest", line.PurchaseRequestId.ToString(), "SELECTION_CLEARED_BACK_TO_SOURCING", "Success", userOrSystem: user);
+        }
+
         /// <summary>Spec §8.3: decide a line that failed the auto-approve criteria.</summary>
         public async Task ApproveAsync(int approvalRequestId, bool approve, string comment, string user)
         {
