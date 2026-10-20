@@ -1,3 +1,4 @@
+using System.Drawing;
 using System.Reflection;
 using System.Windows.Forms;
 
@@ -102,6 +103,26 @@ namespace Procurement.UI.Support
         {
             var property = typeof(DataGridView).GetProperty("DoubleBuffered", BindingFlags.Instance | BindingFlags.NonPublic);
             property?.SetValue(grid, true, null);
+        }
+
+        /// <summary>
+        /// DataGridView's row header is blank by default (just a selection arrow) — no built-in
+        /// property shows a row number there, so this draws the 1-based row number into it on every
+        /// repaint (RowPostPaint fires per visible row, same event WinForms itself uses for this
+        /// well-known workaround). Subscribed once per grid instance (call this where the grid is
+        /// constructed, alongside EnableDoubleBuffering) — the event lives on the DataGridView
+        /// control itself, not on its rows, so it survives every later DataSource reassignment
+        /// without needing to be re-wired on each refresh.
+        /// </summary>
+        public static void EnableRowNumberHeaders(DataGridView grid)
+        {
+            grid.RowPostPaint += (s, e) =>
+            {
+                var rowNumber = (e.RowIndex + 1).ToString();
+                var headerBounds = new Rectangle(e.RowBounds.Left, e.RowBounds.Top, grid.RowHeadersWidth, e.RowBounds.Height);
+                TextRenderer.DrawText(e.Graphics, rowNumber, grid.Font, headerBounds, SystemColors.ControlText,
+                    TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter);
+            };
         }
     }
 }

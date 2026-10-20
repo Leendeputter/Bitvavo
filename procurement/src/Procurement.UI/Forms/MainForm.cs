@@ -157,8 +157,9 @@ namespace Procurement.UI.Forms
                 // stabiel ongeacht het aantal rijen — de kolommen met een expliciete breedte
                 // (ApplyMaxColumnWidths, AutoSizeMode.None) doen niet mee met die verdeling.
                 AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-                // Rijnummers worden hier niet gebruikt maar tellen bij Fill-kolomherberekening
-                // (venster resizen) alsnog mee als er geen vaste breedte staat.
+                // DisableResizing houdt de headerbreedte vast op het DataGridView-default (genoeg
+                // voor de rijnummers die EnableRowNumberHeaders erin tekent) — zonder deze instelling
+                // telt die breedte bovendien mee bij Fill-kolomherberekening (venster resizen).
                 RowHeadersWidthSizeMode = DataGridViewRowHeadersWidthSizeMode.DisableResizing,
                 SelectionMode = DataGridViewSelectionMode.RowHeaderSelect,
                 // Ctrl/Shift-klik om meerdere aanvragen tegelijk te selecteren voor "Sourcing
@@ -167,6 +168,7 @@ namespace Procurement.UI.Forms
                 MultiSelect = true
             };
             EnableDoubleBuffering(_requestsGrid);
+            EnableRowNumberHeaders(_requestsGrid);
             _requestsGrid.SelectionChanged += RequestsGrid_SelectionChanged;
             // Same drill-down as double-clicking a line below (ShowOffersForSelectedLine) — added
             // once the Selected Supplier/Price/Qty/DueDate columns made this grid itself show the
@@ -189,6 +191,7 @@ namespace Procurement.UI.Forms
                 MultiSelect = false
             };
             EnableDoubleBuffering(_linesGrid);
+            EnableRowNumberHeaders(_linesGrid);
             _linesGrid.CellDoubleClick += (s, e) => ShowOffersForSelectedLine();
 
             // Dock=Bottom op de knop zelf zou 'm over de hele breedte uitrekken (zag er dan niet
