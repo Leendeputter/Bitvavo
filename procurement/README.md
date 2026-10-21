@@ -1207,3 +1207,14 @@ raken dat mock-modus zelf nooit aanraakt:
   "Include"-checkbox heet nu "Status 4 Orders (Completed)" i.p.v. de eigen bewoording "Completed
   Orders" — letterlijk de tekst uit de door de gebruiker aangeleverde "PO Schedule Inquiry
   1"-screenshot.
+- **Kolomnaam "MAX Status" → "Status"** (user feedback, 20 okt 2026: "De kolomnaam mag gewoon
+  Status zijn, zonder MAX ervoor") — alleen de `HeaderText` aangepast, de onderliggende kolomnaam
+  (`MaxStatus`) en de `GetMaxStatus`-logica blijven ongewijzigd. Tegelijk gemeld: de kolom staat
+  bij de gebruiker leeg, mogelijk voor orders die in MAX zijn verwijderd — en de bijbehorende,
+  terechte vraag waarom zulke orders dan nog wél in het bovenste "All Purchase Orders"-grid
+  verschijnen. Dat grid (`OrdersForm._ordersGrid`) komt uitsluitend uit deze app's eigen lokale
+  `Procurement_PurchaseOrder`-tabel, zonder enige reconciliatie tegen MAX's actuele stand — in
+  tegenstelling tot PurchaseRequests, die wél tegen MAX gereconcilieerd worden vóórdat ze besteld
+  worden (`MaxErpConnector.ReconcileAgainstMaxAsync`). Nog niet gewijzigd — eerst overlegd met de
+  gebruiker hoe dit moet (zie chat): blijft de lege Status-waarde het juiste, eerlijke signaal dat
+  MAX de regel niet meer kent, of moet dit expliciet gelabeld/gefilterd worden?

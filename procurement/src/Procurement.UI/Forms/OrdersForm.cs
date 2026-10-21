@@ -272,7 +272,7 @@ namespace Procurement.UI.Forms
             ApplyQuantityColumns(_linesGrid, "Quantity", "ConfirmedQuantity");
             ApplyCurrencyColumns(_linesGrid, "UnitPrice", "ConfirmedUnitPrice", "LineTotal");
             ApplyDateColumns(_linesGrid, "RequiredDate", "ConfirmedShipDate");
-            SetHeaderText(_linesGrid, "MaxStatus", "MAX Status");
+            SetHeaderText(_linesGrid, "MaxStatus", "Status");
             SetHeaderText(_linesGrid, "QuantityMismatch", "Qty Mismatch?");
             SetHeaderText(_linesGrid, "PriceMismatch", "Price Mismatch?");
             SetHeaderText(_linesGrid, "DeliveryIsLate", "Late?");
