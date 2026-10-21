@@ -1026,7 +1026,14 @@ raken dat mock-modus zelf nooit aanraakt:
      opende aanvankelijk klein en vast (`FormBorderStyle.FixedSingle`, `MaximizeBox = false`) — bewust
      bedoeld als "enkel een menubalk, niets om te vergroten", maar dat oogde als een kapot venster
      i.p.v. minimalistisch (user feedback, zelfde dag: "Het scherm moet wel full screen openen"). Nu
-     een heel normaal, maximaliseerbaar venster dat gemaximaliseerd opent.
+     een heel normaal, maximaliseerbaar venster dat gemaximaliseerd opent, met een witte achtergrond
+     (eerste poging kleurde per ongeluk `MainForm` donkerder i.p.v. `ShellForm` wit — teruggedraaid
+     zodra de gebruiker dat meldde: "Dit was niet de bedoeling... Ik bedoelde enkel de achtergrond van
+     het startscherm"). De menubalk zelf heeft sindsdien ook het lichtblauwe kleurenschema van MAX's
+     eigen MRP-menu (`ShellForm.ClassicBlueColorTable`, een `ProfessionalColorTable`-subklasse — de
+     standaard WinForms-manier om een `MenuStrip` buiten `BackColor` om te hertekenen, nodig omdat de
+     normale `ToolStripRenderMode.System` die kleur grotendeels negeert ten gunste van het
+     OS-thema), op basis van een door de gebruiker aangeleverde screenshot.
 - **Alle UI-labels omgezet naar Engels, kolombreedtes app-breed nagelopen** (user feedback, 20 okt
   2026 — "het is nu een beetje een ratjetoe"): elke Button/Label/CheckBox/GroupBox-titel/
   kolomkop/Form-titel in `Procurement.UI/Forms/*.cs` die nog Nederlands was, is omgezet naar Engels

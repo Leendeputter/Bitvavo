@@ -52,7 +52,16 @@ namespace Procurement.UI.Forms
             // MainForm, which keeps its own default background).
             BackColor = Color.White;
 
-            var menuStrip = new MenuStrip { Dock = DockStyle.Top };
+            // Classic blue menu-bar look (user request, 20 okt 2026 — screenshot of MAX's own MRP
+            // menu bar as the reference). ToolStripProfessionalRenderer is the standard WinForms way
+            // to recolor a MenuStrip beyond plain BackColor (System render mode mostly ignores it in
+            // favor of the OS theme); see ClassicBlueColorTable below for the actual palette.
+            var menuStrip = new MenuStrip
+            {
+                Dock = DockStyle.Top,
+                RenderMode = ToolStripRenderMode.Professional,
+                Renderer = new ToolStripProfessionalRenderer(new ClassicBlueColorTable())
+            };
 
             // Approvals grouped under Activity too, not just the two the user named explicitly when
             // this menu was first built — same category (recurring work to check on), not
@@ -128,6 +137,28 @@ namespace Procurement.UI.Forms
             var form = new AuditLogForm(_composition.ProcurementEventRepository);
             form.FormClosed += (s, e) => form.Dispose();
             form.Show();
+        }
+
+        /// <summary>
+        /// Light-blue gradient menu bar matching the look of MAX's own MRP menu (user-supplied
+        /// screenshot, 20 okt 2026) — only the colors that screenshot's menu bar actually shows
+        /// (gradient background, selection/press highlight, borders) are overridden; everything else
+        /// falls back to ProfessionalColorTable's own defaults.
+        /// </summary>
+        private sealed class ClassicBlueColorTable : ProfessionalColorTable
+        {
+            public override Color MenuStripGradientBegin => Color.FromArgb(222, 234, 246);
+            public override Color MenuStripGradientEnd => Color.FromArgb(185, 211, 238);
+            public override Color MenuBorder => Color.FromArgb(120, 160, 210);
+            public override Color MenuItemBorder => Color.FromArgb(120, 160, 210);
+            public override Color MenuItemSelected => Color.FromArgb(193, 218, 244);
+            public override Color MenuItemSelectedGradientBegin => Color.FromArgb(193, 218, 244);
+            public override Color MenuItemSelectedGradientEnd => Color.FromArgb(193, 218, 244);
+            public override Color MenuItemPressedGradientBegin => Color.FromArgb(155, 190, 230);
+            public override Color MenuItemPressedGradientEnd => Color.FromArgb(155, 190, 230);
+            public override Color ImageMarginGradientBegin => Color.White;
+            public override Color ImageMarginGradientMiddle => Color.White;
+            public override Color ImageMarginGradientEnd => Color.White;
         }
     }
 }
