@@ -49,6 +49,9 @@ namespace Procurement.UI.Forms
             // ShowOrders() uses a plain Show() (independent top-level window, user request, 20 okt
             // 2026), and CenterParent with no Owner set has nothing to center against.
             StartPosition = FormStartPosition.CenterScreen;
+            // "Lichtgrijze formulierachtergrond" (user request, 20 okt 2026) — explicit so every
+            // screen matches on purpose, not by coincidence of an unset property.
+            BackColor = System.Drawing.SystemColors.Control;
 
             var topPanel = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 36, FlowDirection = FlowDirection.LeftToRight };
             var refreshButton = new Button { Text = "Refresh", AutoSize = true, Margin = new Padding(4) };
@@ -68,6 +71,7 @@ namespace Procurement.UI.Forms
             };
             EnableDoubleBuffering(_ordersGrid);
             EnableRowNumberHeaders(_ordersGrid);
+            ApplyClassicHeaderStyle(_ordersGrid);
             _ordersGrid.SelectionChanged += OrdersGrid_SelectionChanged;
 
             var linesLabel = new Label { Text = "Lines of Selected PO:", Dock = DockStyle.Top, Height = 20, Padding = new Padding(4) };
@@ -82,6 +86,7 @@ namespace Procurement.UI.Forms
             };
             EnableDoubleBuffering(_linesGrid);
             EnableRowNumberHeaders(_linesGrid);
+            ApplyClassicHeaderStyle(_linesGrid);
 
             _statusBar = new Label { Dock = DockStyle.Bottom, Height = 24, Padding = new Padding(4), BackColor = System.Drawing.SystemColors.ControlLight };
 

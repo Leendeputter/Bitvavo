@@ -37,6 +37,9 @@ namespace Procurement.UI.Forms
             // (The inner detail dialog opened from within this form stays CenterParent, since that
             // one is genuinely modal to this window, not to MainForm.)
             StartPosition = FormStartPosition.CenterScreen;
+            // "Lichtgrijze formulierachtergrond" (user request, 20 okt 2026) — explicit so every
+            // screen matches on purpose, not by coincidence of an unset property.
+            BackColor = System.Drawing.SystemColors.Control;
 
             var filterPanel = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 70, FlowDirection = FlowDirection.LeftToRight };
 
@@ -79,6 +82,7 @@ namespace Procurement.UI.Forms
             };
             EnableDoubleBuffering(_grid);
             EnableRowNumberHeaders(_grid);
+            ApplyClassicHeaderStyle(_grid);
             // Error/RequestPayload/ResponsePayload routinely hold a full HTTP error body (e.g. a
             // DigiKey 403's JSON) that the grid's own column width truncates — dubbelklik geeft de
             // volledige, niet-afgekapte tekst in een los venster i.p.v. de kolom handmatig te moeten

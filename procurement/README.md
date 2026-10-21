@@ -1077,3 +1077,20 @@ raken dat mock-modus zelf nooit aanraakt:
   (order plaatsen → "Orderbevestiging verwerken") opnieuw doorlopen en controleren of
   `ConfirmedQuantity`/`ConfirmedUnitPrice` dan wél correct gevuld worden, en of OrderStatus v4 dan wél
   bruikbaar is (rijkere data dan Order Management v1 — zie die methode's eigen comment).
+- **Kleurstelling van de overige schermen afgestemd op MAX zelf** (user feedback, 20 okt 2026, naar
+  aanleiding van een screenshot van MAX's eigen "MRP Detail 11"-invoerscherm: "Ok en de schermen
+  graag iets als deze kleur"). Dat screenshot combineerde drie losse stijlkeuzes (gele
+  invoervelden, grijze formulierachtergrond, blauwe grid-headers), dus is er eerst expliciet
+  gevraagd welke(n) precies gewenst waren in plaats van alle drie te gokken — het antwoord was
+  **"Lichtgrijze formulierachtergrond, Blauwe grid-headers"**; de gele invoervelden zijn bewust
+  **niet** meegenomen. Doorgevoerd op `MainForm`, `OrdersForm`, `ApprovalForm`,
+  `SupplierMappingForm`, `SettingsForm`, `AuditLogForm` en `OrderConfirmationExceptionsForm` (niet
+  `ShellForm` zelf — die kreeg zijn eigen witte achtergrond al bij de vorige wijziging, bewust
+  bedoeld als contrast tegenover de rest, zie het punt hierboven). Elke `BackColor` is nu expliciet
+  `SystemColors.Control` in plaats van impliciet (het was toevallig al de WinForms-default, maar nu
+  staat elk scherm er bewust op, niet bij toeval van een ongezette property). Voor de grid-headers
+  is een nieuwe gedeelde `GridFormatting.ApplyClassicHeaderStyle` toegevoegd — zet
+  `EnableHeadersVisualStyles = false` (zonder dat negeert Windows de eigen headerkleur volledig en
+  tekent het OS-thema overheen) en een lichtblauwe `ColumnHeadersDefaultCellStyle.BackColor`
+  (`RGB 205,221,240`) — en die wordt nu op alle 13 grids in de app aangeroepen, naast de bestaande
+  `EnableDoubleBuffering`/`EnableRowNumberHeaders` op dezelfde plek.

@@ -56,6 +56,9 @@ namespace Procurement.UI.Forms
             Width = 1000;
             Height = 500;
             StartPosition = FormStartPosition.CenterParent;
+            // "Lichtgrijze formulierachtergrond" (user request, 20 okt 2026) — explicit so every
+            // screen matches on purpose, not by coincidence of an unset property.
+            BackColor = System.Drawing.SystemColors.Control;
 
             _grid = new DataGridView
             {
@@ -68,6 +71,7 @@ namespace Procurement.UI.Forms
             };
             EnableDoubleBuffering(_grid);
             EnableRowNumberHeaders(_grid);
+            ApplyClassicHeaderStyle(_grid);
 
             var closeButton = new Button { Text = "Close", AutoSize = true, Dock = DockStyle.Bottom };
             closeButton.Click += (s, e) => Close();

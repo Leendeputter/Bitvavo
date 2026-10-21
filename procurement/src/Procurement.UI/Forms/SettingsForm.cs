@@ -51,6 +51,9 @@ namespace Procurement.UI.Forms
             // (Inner dialogs opened from within this form — credential/contact editors, etc. — stay
             // CenterParent, since those are genuinely modal to this window, not to MainForm.)
             StartPosition = FormStartPosition.CenterScreen;
+            // "Lichtgrijze formulierachtergrond" (user request, 20 okt 2026) — explicit so every
+            // screen matches on purpose, not by coincidence of an unset property.
+            BackColor = System.Drawing.SystemColors.Control;
 
             var tabs = new TabControl { Dock = DockStyle.Fill };
             tabs.TabPages.Add(BuildSuppliersTab());
@@ -73,6 +76,7 @@ namespace Procurement.UI.Forms
             };
             EnableDoubleBuffering(_suppliersGrid);
             EnableRowNumberHeaders(_suppliersGrid);
+            ApplyClassicHeaderStyle(_suppliersGrid);
             var hint = new Label
             {
                 Dock = DockStyle.Top,
@@ -111,6 +115,7 @@ namespace Procurement.UI.Forms
             };
             EnableDoubleBuffering(_supplierPreferenceGrid);
             EnableRowNumberHeaders(_supplierPreferenceGrid);
+            ApplyClassicHeaderStyle(_supplierPreferenceGrid);
             var saveButton = new Button { Text = "Save", Dock = DockStyle.Bottom, AutoSize = true };
             saveButton.Click += async (s, e) => await SaveSupplierPreferencesAsync();
 
@@ -130,6 +135,7 @@ namespace Procurement.UI.Forms
             };
             EnableDoubleBuffering(_packagingPolicyGrid);
             EnableRowNumberHeaders(_packagingPolicyGrid);
+            ApplyClassicHeaderStyle(_packagingPolicyGrid);
             var hint = new Label
             {
                 Dock = DockStyle.Top,
@@ -183,6 +189,7 @@ namespace Procurement.UI.Forms
             };
             EnableDoubleBuffering(_capabilitiesGrid);
             EnableRowNumberHeaders(_capabilitiesGrid);
+            ApplyClassicHeaderStyle(_capabilitiesGrid);
             page.Controls.Add(_capabilitiesGrid);
             return page;
         }

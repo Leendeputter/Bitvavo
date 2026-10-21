@@ -31,6 +31,9 @@ namespace Procurement.UI.Forms
             // CenterScreen, not CenterParent — shown owner-less via a plain Show() (independent
             // top-level window, user request, 20 okt 2026), so there's no Owner to center against.
             StartPosition = FormStartPosition.CenterScreen;
+            // "Lichtgrijze formulierachtergrond" (user request, 20 okt 2026) — explicit so every
+            // screen matches on purpose, not by coincidence of an unset property.
+            BackColor = System.Drawing.SystemColors.Control;
 
             var topPanel = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 40, FlowDirection = FlowDirection.LeftToRight };
             topPanel.Controls.Add(new Label { Text = "Filter by match confidence:", AutoSize = true, Padding = new Padding(0, 8, 4, 0) });
@@ -52,6 +55,7 @@ namespace Procurement.UI.Forms
             };
             EnableDoubleBuffering(_grid);
             EnableRowNumberHeaders(_grid);
+            ApplyClassicHeaderStyle(_grid);
 
             _verifyButton = new Button { Text = "Mark as Verified", Dock = DockStyle.Bottom, AutoSize = true };
             _verifyButton.Click += async (s, e) => await VerifySelectedAsync();

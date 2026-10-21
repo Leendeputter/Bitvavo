@@ -91,6 +91,11 @@ namespace Procurement.UI.Forms
             // Geeft alle Dock-ed children (grids, knoppenbalken) een beetje lucht t.o.v. de
             // vensterrand in plaats van er helemaal tegenaan te zitten.
             Padding = new Padding(8);
+            // Explicit instead of relying on the implicit default — "lichtgrijze formulierachtergrond"
+            // (user request, 20 okt 2026, matching MAX's own "MRP Detail" screenshot) is what
+            // SystemColors.Control already renders as, but spelling it out keeps every screen on the
+            // same color on purpose rather than by coincidence of an unset property.
+            BackColor = SystemColors.Control;
 
             var toolPanel = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 40, FlowDirection = FlowDirection.LeftToRight };
             _newRequestButton = new Button { Text = "Add New Test Request", AutoSize = true };
@@ -166,6 +171,7 @@ namespace Procurement.UI.Forms
             };
             EnableDoubleBuffering(_requestsGrid);
             EnableRowNumberHeaders(_requestsGrid);
+            ApplyClassicHeaderStyle(_requestsGrid);
             _requestsGrid.SelectionChanged += RequestsGrid_SelectionChanged;
 
             var offersLabel = new Label { Text = "Offers for the selected request (tick \"Select\" to select/deselect an offer):", Dock = DockStyle.Top, Height = 20, Padding = new Padding(4) };
@@ -186,6 +192,7 @@ namespace Procurement.UI.Forms
             };
             EnableDoubleBuffering(_offersGrid);
             EnableRowNumberHeaders(_offersGrid);
+            ApplyClassicHeaderStyle(_offersGrid);
             // Standaard WinForms-truc voor een checkbox-kolom: CellValueChanged vuurt pas nadat de
             // cel "committed" is, en een checkbox-cel committed vanzelf pas zodra de focus verplaatst
             // — CurrentCellDirtyStateChanged forceert dat meteen bij het klikken zelf.

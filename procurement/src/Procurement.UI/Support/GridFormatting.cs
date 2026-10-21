@@ -139,5 +139,21 @@ namespace Procurement.UI.Support
                     TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter);
             };
         }
+
+        /// <summary>
+        /// Pale-blue column headers matching MAX's own grids (user-supplied screenshot of its "MRP
+        /// Detail" form, 20 okt 2026 — "Blauwe grid-headers" was one of the two styling choices
+        /// explicitly kept out of the three offered; the form's yellow input-field highlighting was
+        /// declined). EnableHeadersVisualStyles must be turned off first — left on, Windows visual
+        /// styles paint the header chrome itself and ignore ColumnHeadersDefaultCellStyle entirely.
+        /// </summary>
+        public static void ApplyClassicHeaderStyle(DataGridView grid)
+        {
+            grid.EnableHeadersVisualStyles = false;
+            grid.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(205, 221, 240);
+            grid.ColumnHeadersDefaultCellStyle.ForeColor = Color.Black;
+            grid.ColumnHeadersDefaultCellStyle.SelectionBackColor = Color.FromArgb(205, 221, 240);
+            grid.ColumnHeadersDefaultCellStyle.SelectionForeColor = Color.Black;
+        }
     }
 }
