@@ -1196,3 +1196,14 @@ raken dat mock-modus zelf nooit aanraakt:
   `TextRenderer.MeasureText` als `WrapInGroupBox`, plus een `Math.Min`-ondergrens die het hervatte
   stuk sowieso nooit voorbij de rechterrand laat beginnen, ongeacht toekomstige font-/
   meetverschillen.
+- **MAX Status-kolom in Lines of Selected PO + checkbox-tekst matcht MAX's eigen scherm** (user
+  feedback, 20 okt 2026): "De status in de Order Master heeft betrekking op de lijnen. Er is geen
+  status beschikbaar voor de hele inkooporder. Kun je in het onderste grid de status (getal)
+  toevoegen als kolom. Graag de tekst i[n] de groepbox aanpassen naar de tekst die ik je in het
+  voorbeeld gestuurd had, dat verbeterd de adaptie wellicht." Nieuwe "MAX Status"-kolom toont het
+  rauwe `Order_Master.STATUS_10`-cijfer per regel (ongevertaald, zoals MAX het zelf ook toont), via
+  een nieuwe gedeelde `OrdersForm.GetMaxStatus`-helper (ook hergebruikt door de bestaande
+  `IsCompletedInMax`-filterlogica, zodat er maar één plek is die `_lineStatusesByKey` opzoekt). De
+  "Include"-checkbox heet nu "Status 4 Orders (Completed)" i.p.v. de eigen bewoording "Completed
+  Orders" — letterlijk de tekst uit de door de gebruiker aangeleverde "PO Schedule Inquiry
+  1"-screenshot.

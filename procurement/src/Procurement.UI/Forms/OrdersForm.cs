@@ -80,9 +80,11 @@ namespace Procurement.UI.Forms
             // Orders (Completed)" checkbox, same Order_Master.STATUS_10 field). Unchecked by default:
             // only still-open lines show; checking it also shows lines MAX's own STATUS_10 marks
             // Completed ("4"). Re-filters instantly from the cached _lineStatusesByKey (set once per
-            // RefreshAsync) rather than re-querying MAX on every toggle.
+            // RefreshAsync) rather than re-querying MAX on every toggle. Label text matches MAX's own
+            // screenshot verbatim rather than this app's own wording (user request, 20 okt 2026 — "de
+            // tekst die ik je in het voorbeeld gestuurd had, dat verbeterd de adaptie wellicht").
             var includeLayout = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true };
-            _includeCompletedCheckBox = new CheckBox { Text = "Completed Orders", AutoSize = true };
+            _includeCompletedCheckBox = new CheckBox { Text = "Status 4 Orders (Completed)", AutoSize = true };
             _includeCompletedCheckBox.CheckedChanged += async (s, e) => await LoadLinesForSelectedOrderAsync();
             includeLayout.Controls.Add(_includeCompletedCheckBox);
             var includeGroup = WrapInGroupBox("Include", includeLayout);
@@ -246,6 +248,11 @@ namespace Procurement.UI.Forms
                     ErpRequestNumber = requestLine?.PurchaseRequest?.ErpRequestNumber,
                     PartID = requestLine?.ErpArticleId,
                     l.SupplierPartNumber,
+                    // Raw Order_Master.STATUS_10 for this line (user request, 20 okt 2026 — there is
+                    // no order-level status in MAX, only this per-line one). Shown as-is (the raw
+                    // char(1) digit), not translated to a word — MAX itself shows it this way too
+                    // (the "PO Schedule Inquiry 1" screenshot's "Status 4/5/6" wording).
+                    MaxStatus = GetMaxStatus(order.ErpPoNumber, l),
                     Confirmed = confirmed,
                     l.Quantity,
                     l.ConfirmedQuantity,
@@ -265,6 +272,7 @@ namespace Procurement.UI.Forms
             ApplyQuantityColumns(_linesGrid, "Quantity", "ConfirmedQuantity");
             ApplyCurrencyColumns(_linesGrid, "UnitPrice", "ConfirmedUnitPrice", "LineTotal");
             ApplyDateColumns(_linesGrid, "RequiredDate", "ConfirmedShipDate");
+            SetHeaderText(_linesGrid, "MaxStatus", "MAX Status");
             SetHeaderText(_linesGrid, "QuantityMismatch", "Qty Mismatch?");
             SetHeaderText(_linesGrid, "PriceMismatch", "Price Mismatch?");
             SetHeaderText(_linesGrid, "DeliveryIsLate", "Late?");
@@ -275,6 +283,7 @@ namespace Procurement.UI.Forms
             SetCharacterBasedColumnWidth(_linesGrid, "ErpRequestNumber", 12);
             SetCharacterBasedColumnWidth(_linesGrid, "PartID", 14);
             SetMinimumWidth(_linesGrid, "SupplierPartNumber", 140);
+            SetCharacterBasedColumnWidth(_linesGrid, "MaxStatus", 10);
             SetCharacterBasedColumnWidth(_linesGrid, "Confirmed", 10);
             SetCharacterBasedColumnWidth(_linesGrid, "Quantity", 10);
             SetCharacterBasedColumnWidth(_linesGrid, "ConfirmedQuantity", 12);
@@ -296,6 +305,17 @@ namespace Procurement.UI.Forms
         }
 
         /// <summary>
+        /// Raw Order_Master.STATUS_10 for this line, or null if no MAX row was found (placed while
+        /// UseMockPurchaseOrders=true, or no MAX link yet). There is no order-header-level status in
+        /// MAX itself (user, 20 okt 2026: "De status in de Order Master heeft betrekking op de
+        /// lijnen. Er is geen status beschikbaar voor de hele inkooporder") — only this per-line one.
+        /// </summary>
+        private string GetMaxStatus(string erpPoNumber, PurchaseOrderLine line) =>
+            _lineStatusesByKey.TryGetValue((erpPoNumber, line.MaxLineNumber, line.MaxDeliveryNumber), out var status)
+                ? status
+                : null;
+
+        /// <summary>
         /// "4" is MAX's own Order_Master.STATUS_10 value for Completed (per the user-supplied "PO
         /// Schedule Inquiry 1" screenshot's "Status 4 Orders (Completed)" checkbox) — not guessed, the
         /// same convention this app already follows for "1"/"2" (Planned/Approved) elsewhere. A line
@@ -304,8 +324,7 @@ namespace Procurement.UI.Forms
         /// should never silently hide a line the user might actually need to act on.
         /// </summary>
         private bool IsCompletedInMax(string erpPoNumber, PurchaseOrderLine line) =>
-            _lineStatusesByKey.TryGetValue((erpPoNumber, line.MaxLineNumber, line.MaxDeliveryNumber), out var status)
-                && status == "4";
+            GetMaxStatus(erpPoNumber, line) == "4";
 
         // Warning-orange for a line whose confirmation deviates in some way (quantity/prijs/te laat)
         // — mirrors OrderConfirmationExceptionsForm's own "only exceptions need a human look"
