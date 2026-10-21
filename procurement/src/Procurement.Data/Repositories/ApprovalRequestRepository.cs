@@ -27,7 +27,9 @@ namespace Procurement.Data.Repositories
         public Task<IReadOnlyList<ApprovalRequest>> GetPendingAsync() => _context.RunGuardedAsync(async () =>
         {
             IReadOnlyList<ApprovalRequest> result = await _context.ApprovalRequests
-                .Include(a => a.PurchaseRequestLine)
+                // .PurchaseRequest too (not just .PurchaseRequestLine) — ApprovalForm's grid shows
+                // the PR number (user request, 20 okt 2026), which needs that one more hop.
+                .Include(a => a.PurchaseRequestLine.PurchaseRequest)
                 .Include(a => a.ProposedOffer)
                 .Where(a => a.Decision == ApprovalDecision.Pending)
                 .OrderBy(a => a.CreatedAt)

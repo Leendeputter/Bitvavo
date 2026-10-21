@@ -1263,3 +1263,11 @@ raken dat mock-modus zelf nooit aanraakt:
   `PartID`-kolom (`PurchaseRequestLine.ErpArticleId`, ons eigen interne artikelnummer, niet de
   Manufacturer Part Number die `Part` al toont) direct links van `Part` gezet, zelfde 14-tekens
   breedte als dezelfde kolom elders in de app (MainForm/OrdersForm).
+- **Approvals-grid: PR-nummer toegevoegd** (user feedback, 20 okt 2026: "Kun je hier ook het PR
+  nummer nog bijzetten?") — nieuwe `ErpRequestNumber`-kolom (`PurchaseRequestLine.PurchaseRequest.
+  ErpRequestNumber`), vóór `Line` gezet. Vereiste een aanpassing in
+  `ApprovalRequestRepository.GetPendingAsync`: `.Include(a => a.PurchaseRequestLine)` ving enkel de
+  PR-regel zelf, niet de PurchaseRequest erboven — vervangen door
+  `.Include(a => a.PurchaseRequestLine.PurchaseRequest)` zodat die ene hop extra ook eager geladen
+  wordt, in plaats van op EF6's lazy loading te vertrouwen (consistent met hoe de rest van de app
+  altijd expliciet Include't wat een scherm nodig heeft).

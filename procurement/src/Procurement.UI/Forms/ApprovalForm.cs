@@ -78,6 +78,7 @@ namespace Procurement.UI.Forms
             _grid.DataSource = pending.Select(a => new
             {
                 a.Id,
+                ErpRequestNumber = a.PurchaseRequestLine?.PurchaseRequest?.ErpRequestNumber,
                 Line = a.PurchaseRequestLineId,
                 PartID = a.PurchaseRequestLine?.ErpArticleId,
                 Part = a.PurchaseRequestLine?.ManufacturerPartNumber,
@@ -93,6 +94,7 @@ namespace Procurement.UI.Forms
             SetHeaderText(_grid, "OfferedQty", "Offered Qty");
             // Reason is the one genuinely free-text column here, left in Fill with a floor.
             SetCharacterBasedColumnWidth(_grid, "Id", 6);
+            SetCharacterBasedColumnWidth(_grid, "ErpRequestNumber", 12);
             SetCharacterBasedColumnWidth(_grid, "Line", 8);
             SetCharacterBasedColumnWidth(_grid, "PartID", 14);
             SetCharacterBasedColumnWidth(_grid, "Part", 18);
