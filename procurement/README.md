@@ -1289,3 +1289,38 @@ raken dat mock-modus zelf nooit aanraakt:
   tekening heen rendert, een page-herschilder-volgorde-issue, of een DPI/scaling-effect dat hier nog
   niet getest is) — vraagt om een nieuwe screenshot + gerichter kijken naar wélk exact stuk van de
   rand ontbreekt voordat er nog een gok gedaan wordt.
+- **Samenvatting sessie 20 okt 2026 — Farnell/Mouser/TME ordering-flow (user: "Ok. Ik ga dit zelf
+  opzoeken. Graag even een samenvatting opslaan. Morgen verder")**: onderzocht of Farnell, Mouser en
+  TME een vergelijkbare "echte order plaatsen"-flow kunnen krijgen als DigiKey (die al werkt tegen de
+  sandbox — zie eerdere punten over Order Management v1 en de 3-legged OAuth-autorisatie).
+  - **Wat al op orde staat, ongeacht leverancier**: product search/pricing/availability/packaging
+    zijn bij Farnell, Mouser én TME al écht geïmplementeerd (geen mock), credential-opslag loopt al
+    via dezelfde generieke `Supplier`-rij/Instellingen-route, en `ProcurementEngine`/sourcing is
+    adapter-agnostisch — een leverancier doet al automatisch mee zodra `SupplierPreference.Active`
+    staat. Enkel `CreateOrderAsync`/`GetOrderStatusAsync`/`CancelOrderAsync` zijn bij alle drie nog
+    mock-only in real-mode (gooien een duidelijke "API contract unconfirmed"-exception) — exact
+    dezelfde situatie als DigiKey vóórdat die sessie's werk daaraan begon.
+  - **Farnell**: element14's publieke catalog-API (al in gebruik voor search/pricing) heeft geen
+    bevestigde Order Submission API — waarschijnlijk een apart, afgeschermd API-product dat nog bij
+    Farnell/element14 moet worden opgevraagd. User gaat dit zelf uitzoeken.
+  - **Mouser**: wél degelijk gedocumenteerd — een aparte **Order API** (naast de Search API, eigen
+    key via "My Mouser" → API-beheer) met een endpoint om een bestaande order in te dienen
+    (`SubmitOrder`-vlag: false geeft enkel een samenvatting terug, geen echte plaatsing) en een
+    endpoint om een geplaatste order op te zoeken. Let op: Mouser's eigen "API Explorer" is **geen
+    sandbox** — testen daar plaatst een echte order op het account. Bronnen:
+    [Mouser API Order](https://www.mouser.com/en/api-order/),
+    [Mouser API Guide (PDF)](https://www.mouser.lt/pdfDocs/api-guide.pdf),
+    [Mouser API Hub](https://www.mouser.com/en/api-hub/). Bestaande comment in `MouserAdapter.cs`
+    ("Order API needs a separate, additionally-approved API key") is hiermee bevestigd.
+  - **TME**: developer-portal bestaat (`developers.tme.eu`), vermeldt een "Product API"
+    (productdata/voorraad/prijzen) en een migratie-opmerking voor apps aangemaakt na 14 mei 2026,
+    maar geen publiek vindbare order-plaatsings-/orderstatus-API kon bevestigd worden. Twee
+    `WebFetch`-pogingen naar `developers.tme.eu` en `www.tme.eu` liepen beide vast op een
+    DNS-foutmelding vanuit deze sessie-omgeving (zelfde soort beperking als eerder deze sessie bij
+    andere externe sites) — kon dus niet zelf direct nakijken. User gaat dit zelf uitzoeken (evt.
+    ingelogd op een TME-developeraccount, waar meer zichtbaar kan zijn).
+  - **Volgende sessie**: wachten op wat de gebruiker bij Farnell/TME vindt voordat
+    `CreateOrderAsync`/`GetOrderStatusAsync` voor die twee gebouwd wordt. Voor Mouser zou, zodra
+    gewenst, al met de hierboven gevonden documentatie begonnen kunnen worden (eventueel eerst de
+    contact-/verzendgegevens-velden laten meelopen in `MouserOptions`, zelfde aanpak als bij
+    DigiKey's `AccountId`/`ContactName`/etc.).
