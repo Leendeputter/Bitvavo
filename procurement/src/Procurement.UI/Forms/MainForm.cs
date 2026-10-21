@@ -155,8 +155,11 @@ namespace Procurement.UI.Forms
 
             _requestsGrid = new DataGridView
             {
-                Dock = DockStyle.Top,
-                Height = 300,
+                // Fill instead of a fixed height (user request, 20 okt 2026 — "mag lager, ten gunste
+                // van de PR's": the offers grid below rarely needs more than ~5 rows, so it gets a
+                // fixed, modest height instead, and this grid — which can hold many more PRs — gets
+                // whatever space that frees up).
+                Dock = DockStyle.Fill,
                 ReadOnly = true,
                 AllowUserToAddRows = false,
                 // AllCells meet de tekstbreedte van élke cel in élke rij om kolombreedtes te bepalen
@@ -182,11 +185,16 @@ namespace Procurement.UI.Forms
             ApplyClassicHeaderStyle(_requestsGrid);
             _requestsGrid.SelectionChanged += RequestsGrid_SelectionChanged;
 
-            var offersLabel = new Label { Text = "Offers for the selected request (tick \"Select\" to select/deselect an offer):", Dock = DockStyle.Top, Height = 20, Padding = new Padding(4) };
+            var offersLabel = new Label { Text = "Offers for the selected request (tick \"Select\" to select/deselect an offer):", Dock = DockStyle.Bottom, Height = 20, Padding = new Padding(4) };
 
             _offersGrid = new DataGridView
             {
-                Dock = DockStyle.Fill,
+                // Fixed, modest height instead of Fill (user request, 20 okt 2026 — "Over het
+                // algemeen zullen we niet meer dan een stuk of 5 offers per PR hebben"): room for a
+                // header plus about 7 rows before scrolling, comfortably above that typical ~5, in
+                // favor of giving the requests grid above the space this used to take.
+                Dock = DockStyle.Bottom,
+                Height = 190,
                 // Niet grid-breed ReadOnly (anders dan elk ander grid in dit scherm) — enkel de
                 // "Select"-kolom mag bewerkt worden, de rest wordt individueel op ReadOnly gezet na
                 // het vullen (zie het eind van LoadOffersForSelectedRequestAsync). Nodig omdat
@@ -213,14 +221,18 @@ namespace Procurement.UI.Forms
 
             _statusLabel = new Label { Dock = DockStyle.Bottom, Height = 24, Text = "Ready. Click \"Query\" to fetch orders from MAX.", Padding = new Padding(4) };
 
-            // Volgorde bepaalt de docking-stapeling (laatst toegevoegde Top-control komt bovenaan):
-            // toolPanel (buitenste rand), dan filterPanel, dan requestsGrid.
-            Controls.Add(_offersGrid);
-            Controls.Add(offersLabel);
+            // Docking processes controls in REVERSE add-order (last added claims its edge first) —
+            // within one direction, the last-added of that group ends up outermost. _requestsGrid
+            // (Fill) must therefore be added before every Top/Bottom sibling, so it's processed last
+            // and correctly receives whatever's left after all of them have claimed their own slice:
+            // toolPanel (outermost top) above filterPanel above [requestsGrid: Fill] above
+            // offersLabel above _offersGrid (fixed height) above _statusLabel (outermost bottom).
             Controls.Add(_requestsGrid);
+            Controls.Add(offersLabel);
+            Controls.Add(_offersGrid);
+            Controls.Add(_statusLabel);
             Controls.Add(filterPanel);
             Controls.Add(toolPanel);
-            Controls.Add(_statusLabel);
         }
 
         private GroupBox BuildQueryGroup()

@@ -1218,3 +1218,30 @@ raken dat mock-modus zelf nooit aanraakt:
   worden (`MaxErpConnector.ReconcileAgainstMaxAsync`). Nog niet gewijzigd — eerst overlegd met de
   gebruiker hoe dit moet (zie chat): blijft de lege Status-waarde het juiste, eerlijke signaal dat
   MAX de regel niet meer kent, of moet dit expliciet gelabeld/gefilterd worden?
+- **Drie losse punten in één keer afgehandeld** (user feedback, 20 okt 2026, met een screenshot van
+  MainForm's filterrij):
+  1. **GroupBox-rand had nog geen afgeronde hoeken** ("De kwaliteit van de border van de
+     goupboxen is nog niet verbeterd") — de vorige fix loste enkel op dat de rand altijd sluit, maar
+     tekende nog rechte hoeken, terwijl elke door de gebruiker aangeleverde MAX-screenshot deze
+     sessie steeds afgeronde hoeken laat zien. `ClassicGroupBox.OnPaint` tekent de rand nu met
+     `Graphics.DrawArc` op elke hoek (straal 6px) in plaats van scherpe `DrawLine`-hoeken, met
+     `SmoothingMode.AntiAlias` zodat de bogen ook daadwerkelijk glad ogen. De titel-gap-logica (zie
+     de vorige fix) blijft verder ongewijzigd, enkel ingepast tussen de nieuwe hoekbogen.
+  2. **Offers-grid in Purchase Requests mocht lager, ten gunste van het PR-grid** ("Over het
+     algemeen zullen we niet meer dan een stuk of 5 offers per PR hebben"): `_requestsGrid` en
+     `_offersGrid` zijn verwisseld van rol — `_requestsGrid` is nu `Dock = Fill` (krijgt de meeste
+     ruimte, kan honderden PR's bevatten) en `_offersGrid` is nu `Dock = Bottom` met een vaste hoogte
+     van 190px (genoeg voor een header plus ~7 rijen, ruim boven de verwachte ~5). Vereiste ook het
+     herordenen van de `Controls.Add`-volgorde, omdat WinForms docking-controls in omgekeerde
+     toevoegvolgorde verwerkt (laatst toegevoegde binnen elke richting komt het verst naar de rand).
+  3. **Orders verwijderd in MAX nu uit de standaardlijst gefilterd** (antwoord op de eerder
+     voorgestelde optie 2: "Als ze verwijderd zijn uit MAX dan graag uit de lijst verwijderen...
+     maar dat ze nog wel in de tabel blijven staan"): nieuwe `OrdersForm.IsNotFoundInMax`-helper
+     (true zodra élke MAX-gekoppelde regel van een order geen Order_Master-rij meer oplevert — een
+     order die alleen met `UseMockPurchaseOrders=true` is geplaatst telt niet mee, die had sowieso
+     nooit een echte MAX-koppeling) plus een nieuwe checkbox "Deleted in MAX" in dezelfde
+     "Include"-groupbox, **uitgevinkt** by default. De lokale `Procurement_PurchaseOrder`-rij wordt
+     nooit verwijderd — enkel uit het standaard zichtbare grid gefilterd; de checkbox toont ze weer.
+     `OrdersForm.RefreshAsync`'s grid-opbouw is hiervoor verplaatst naar een herbruikbare
+     `PopulateOrdersGrid`-methode, zodat het aan/uitvinken van de checkbox direct herfiltert zonder
+     opnieuw bij MAX te hoeven opvragen.

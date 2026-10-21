@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Reflection;
 using System.Windows.Forms;
 
@@ -198,8 +199,16 @@ namespace Procurement.UI.Support
         /// </summary>
         public sealed class ClassicGroupBox : GroupBox
         {
+            // Rounded corners instead of sharp right angles (user feedback, 20 okt 2026 — "De
+            // kwaliteit van de border van de goupboxen is nog niet verbeterd", after the border-
+            // closing fix alone): matches the rounded-corner look every MAX screenshot shown this
+            // session actually has, which plain DrawLine right angles don't.
+            private const int CornerRadius = 6;
+
             protected override void OnPaint(PaintEventArgs e)
             {
+                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+
                 // TextRenderer.MeasureText — the same measurement API WrapInGroupBox used to size
                 // this box — not Graphics.MeasureString (what this used to call here). The two report
                 // different widths for the same text/font; when the title is wider than the content
@@ -213,14 +222,26 @@ namespace Procurement.UI.Support
                 var titleGap = string.IsNullOrEmpty(Text) ? 0 : textSize.Width + 6;
                 var resumeX = Math.Min(8 + titleGap, Width - 1);
 
+                var left = 0;
+                var right = Width - 1;
+                var bottom = Height - 1;
+                var r = CornerRadius;
+
                 using (var borderPen = new Pen(ClassicBorderColor))
                 {
-                    e.Graphics.DrawLine(borderPen, 0, top, titleGap > 0 ? 8 : Width - 1, top);
+                    // Angles are GDI+'s usual clockwise-from-3-o'clock convention; each DrawArc's
+                    // bounding rectangle is the full circle for that corner, of which only the
+                    // relevant quarter is swept.
+                    e.Graphics.DrawArc(borderPen, left, top, r * 2, r * 2, 180, 90);
+                    e.Graphics.DrawLine(borderPen, left + r, top, titleGap > 0 ? 8 : right - r, top);
                     if (titleGap > 0)
-                        e.Graphics.DrawLine(borderPen, resumeX, top, Width - 1, top);
-                    e.Graphics.DrawLine(borderPen, Width - 1, top, Width - 1, Height - 1);
-                    e.Graphics.DrawLine(borderPen, Width - 1, Height - 1, 0, Height - 1);
-                    e.Graphics.DrawLine(borderPen, 0, Height - 1, 0, top);
+                        e.Graphics.DrawLine(borderPen, resumeX, top, right - r, top);
+                    e.Graphics.DrawArc(borderPen, right - r * 2, top, r * 2, r * 2, 270, 90);
+                    e.Graphics.DrawLine(borderPen, right, top + r, right, bottom - r);
+                    e.Graphics.DrawArc(borderPen, right - r * 2, bottom - r * 2, r * 2, r * 2, 0, 90);
+                    e.Graphics.DrawLine(borderPen, right - r, bottom, left + r, bottom);
+                    e.Graphics.DrawArc(borderPen, left, bottom - r * 2, r * 2, r * 2, 90, 90);
+                    e.Graphics.DrawLine(borderPen, left, bottom - r, left, top + r);
                 }
 
                 if (!string.IsNullOrEmpty(Text))

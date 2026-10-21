@@ -32,6 +32,7 @@ namespace Procurement.UI.Forms
         private DataGridView _ordersGrid;
         private DataGridView _linesGrid;
         private CheckBox _includeCompletedCheckBox;
+        private CheckBox _includeDeletedCheckBox;
         private Label _statusBar;
         private IReadOnlyList<PurchaseOrder> _loadedOrders = new List<PurchaseOrder>();
 
@@ -87,6 +88,16 @@ namespace Procurement.UI.Forms
             _includeCompletedCheckBox = new CheckBox { Text = "Status 4 Orders (Completed)", AutoSize = true };
             _includeCompletedCheckBox.CheckedChanged += async (s, e) => await LoadLinesForSelectedOrderAsync();
             includeLayout.Controls.Add(_includeCompletedCheckBox);
+
+            // Orders whose Order_Master rows have been deleted straight in MAX (user feedback, 20 okt
+            // 2026: "Als ze verwijderd zijn uit MAX dan graag uit de lijst verwijderen... maar dat ze
+            // nog wel in de tabel blijven staan") — this app never deletes its own local PurchaseOrder
+            // row just because MAX's side is gone (that stays the historical record), it only hides
+            // such rows from the default view here, with this checkbox to reveal them again.
+            _includeDeletedCheckBox = new CheckBox { Text = "Deleted in MAX", AutoSize = true };
+            _includeDeletedCheckBox.CheckedChanged += (s, e) => PopulateOrdersGrid();
+            includeLayout.Controls.Add(_includeDeletedCheckBox);
+
             var includeGroup = WrapInGroupBox("Include", includeLayout);
             includeGroup.Margin = new Padding(12, 2, 4, 2);
             topPanel.Controls.Add(includeGroup);
@@ -146,11 +157,26 @@ namespace Procurement.UI.Forms
                 .ToList();
             _lineStatusesByKey = await _maxOrderRepository.GetLineStatusesAsync(lineKeys);
 
+            PopulateOrdersGrid();
+            await LoadLinesForSelectedOrderAsync();
+        }
+
+        /// <summary>
+        /// Rebuilds _ordersGrid's rows from the already-loaded/already-fetched _loadedOrders and
+        /// _lineStatusesByKey — called from RefreshAsync, and again from _includeDeletedCheckBox's
+        /// CheckedChanged so toggling it re-filters instantly without a MAX round-trip.
+        /// </summary>
+        private void PopulateOrdersGrid()
+        {
+            var visibleOrders = _loadedOrders
+                .Where(po => _includeDeletedCheckBox.Checked || !IsNotFoundInMax(po))
+                .ToList();
+
             // Assigning DataSource can itself raise SelectionChanged; detach first so that doesn't
             // race with LoadLinesForSelectedOrder below against the same in-memory list (same
             // reasoning as MainForm's own grids).
             _ordersGrid.SelectionChanged -= OrdersGrid_SelectionChanged;
-            _ordersGrid.DataSource = _loadedOrders.Select(po => new
+            _ordersGrid.DataSource = visibleOrders.Select(po => new
             {
                 po.Id,
                 po.ErpPoNumber,
@@ -183,8 +209,9 @@ namespace Procurement.UI.Forms
             SetCharacterBasedColumnWidth(_ordersGrid, "Currency", 8);
             SetCharacterBasedColumnWidth(_ordersGrid, "Lines", 8);
 
-            _statusBar.Text = $"{_loadedOrders.Count} order(s).";
-            await LoadLinesForSelectedOrderAsync();
+            var hiddenDeletedCount = _loadedOrders.Count - visibleOrders.Count;
+            _statusBar.Text = $"{visibleOrders.Count} order(s)"
+                + (hiddenDeletedCount > 0 ? $", {hiddenDeletedCount} verwijderd in MAX verborgen." : ".");
         }
 
         private async void OrdersGrid_SelectionChanged(object sender, EventArgs e) => await LoadLinesForSelectedOrderAsync();
@@ -325,6 +352,22 @@ namespace Procurement.UI.Forms
         /// </summary>
         private bool IsCompletedInMax(string erpPoNumber, PurchaseOrderLine line) =>
             GetMaxStatus(erpPoNumber, line) == "4";
+
+        /// <summary>
+        /// True once every MAX-linked line of this order has no Order_Master row left at all (user
+        /// request, 20 okt 2026: orders deleted straight in MAX should disappear from the default
+        /// view, without this app ever deleting its own local PurchaseOrder record). Only considers
+        /// lines that ever had a real MAX link (MaxLineNumber set) — an order placed entirely while
+        /// UseMockPurchaseOrders=true never had one to begin with, so it's never "deleted", just
+        /// always mock. An order with a mix of found/not-found lines (a partial MAX-side deletion)
+        /// is deliberately NOT treated as deleted here — that's a different, more surprising case
+        /// than this checkbox is meant to cover, and staying visible is the safer default for it.
+        /// </summary>
+        private bool IsNotFoundInMax(PurchaseOrder order)
+        {
+            var maxLinkedLines = order.Lines.Where(l => !string.IsNullOrEmpty(l.MaxLineNumber)).ToList();
+            return maxLinkedLines.Count > 0 && maxLinkedLines.All(l => GetMaxStatus(order.ErpPoNumber, l) == null);
+        }
 
         // Warning-orange for a line whose confirmation deviates in some way (quantity/prijs/te laat)
         // — mirrors OrderConfirmationExceptionsForm's own "only exceptions need a human look"
