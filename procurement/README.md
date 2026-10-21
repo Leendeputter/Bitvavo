@@ -1278,3 +1278,14 @@ raken dat mock-modus zelf nooit aanraakt:
   `Visible = false` — dezelfde aanpak als `OrdersForm._ordersGrid`'s eigen `Id`-kolom. `Line`
   (`PurchaseRequestLineId`) is volledig uit de projectie gehaald, niet enkel verborgen — nergens
   anders in dit scherm gebruikt.
+- **OPEN PUNT — GroupBox-rand nog steeds niet (volledig) gesloten** (user feedback, 20 okt 2026:
+  "Graag even noteren dat de groupboxen nog steeds niet gesloten zijn, denk daar nog maar eens over
+  na hoe te fixen, want dat ziet er niet netjes uit"). Twee eerdere pogingen zaten ernaast
+  (meetverschil tussen `Graphics.MeasureString`/`TextRenderer.MeasureText`, daarna
+  `SmoothingMode.AntiAlias` dat rechte lijnen liet verwateren) — beide zijn opgelost, maar het
+  probleem blijft kennelijk bestaan, dus de werkelijke oorzaak is nog niet gevonden. Nog te
+  onderzoeken bij oppak: mogelijk een laag-niveau WinForms/`GroupBox`-eigenaardigheid die los staat
+  van de eigen `OnPaint`-tekenlogica (bv. een ingebouwde Windows-thema-laag die alsnog over de eigen
+  tekening heen rendert, een page-herschilder-volgorde-issue, of een DPI/scaling-effect dat hier nog
+  niet getest is) — vraagt om een nieuwe screenshot + gerichter kijken naar wélk exact stuk van de
+  rand ontbreekt voordat er nog een gok gedaan wordt.
