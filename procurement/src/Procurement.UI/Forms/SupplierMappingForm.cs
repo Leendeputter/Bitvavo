@@ -61,6 +61,7 @@ namespace Procurement.UI.Forms
             ApplyClassicHeaderStyle(_grid);
 
             _verifyButton = new Button { Text = "Mark as Verified", Dock = DockStyle.Bottom, AutoSize = true };
+            ApplyClassicButtonStyle(_verifyButton);
             _verifyButton.Click += async (s, e) => await VerifySelectedAsync();
 
             Controls.Add(_grid);

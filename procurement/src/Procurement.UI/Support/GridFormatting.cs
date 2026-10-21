@@ -166,5 +166,57 @@ namespace Procurement.UI.Support
             grid.ColumnHeadersDefaultCellStyle.SelectionBackColor = Color.FromArgb(205, 221, 240);
             grid.ColumnHeadersDefaultCellStyle.SelectionForeColor = Color.Black;
         }
+
+        /// <summary>Same blue family as ClassicScreenBackColor/ApplyClassicHeaderStyle/ShellForm's menu — the one color this "classic MAX" styling keeps reusing for borders and emphasis.</summary>
+        private static readonly Color ClassicBorderColor = Color.FromArgb(120, 160, 210);
+
+        /// <summary>
+        /// Flat, thin-bordered button matching MAX's own screens (user-supplied screenshot, 20 okt
+        /// 2026 — "de opmaak van de knoppen aanpassen naar de layout op het voorbeeld"). Without this,
+        /// Application.EnableVisualStyles() (Program.cs) renders every button with the modern Windows
+        /// theme's raised/gradient look, nothing like that screenshot's flat, thin-bordered buttons —
+        /// FlatStyle.Flat is what opts a button out of that theme rendering.
+        /// </summary>
+        public static void ApplyClassicButtonStyle(Button button)
+        {
+            button.FlatStyle = FlatStyle.Flat;
+            button.FlatAppearance.BorderSize = 1;
+            button.FlatAppearance.BorderColor = ClassicBorderColor;
+            button.FlatAppearance.MouseOverBackColor = Color.FromArgb(222, 234, 246);
+            button.FlatAppearance.MouseDownBackColor = Color.FromArgb(193, 218, 244);
+            button.BackColor = Color.White;
+            button.Padding = new Padding(6, 2, 6, 2);
+        }
+
+        /// <summary>
+        /// GroupBox with the same thin blue border as the rest of this "classic MAX" styling (user
+        /// request, 20 okt 2026 — "de rand van groupboxen"). The stock GroupBox border is drawn by
+        /// whatever Windows visual style is active and completely ignores ForeColor/BackColor for it,
+        /// so matching the color here means drawing the border by hand instead of setting any
+        /// property — the standard WinForms technique for a recolored GroupBox.
+        /// </summary>
+        public sealed class ClassicGroupBox : GroupBox
+        {
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                var textSize = e.Graphics.MeasureString(Text, Font);
+                var top = (int)(textSize.Height / 2);
+                var titleGap = string.IsNullOrEmpty(Text) ? 0 : (int)textSize.Width + 6;
+
+                using (var borderPen = new Pen(ClassicBorderColor))
+                {
+                    e.Graphics.DrawLine(borderPen, 0, top, titleGap > 0 ? 8 : Width - 1, top);
+                    if (titleGap > 0)
+                        e.Graphics.DrawLine(borderPen, 8 + titleGap, top, Width - 1, top);
+                    e.Graphics.DrawLine(borderPen, Width - 1, top, Width - 1, Height - 1);
+                    e.Graphics.DrawLine(borderPen, Width - 1, Height - 1, 0, Height - 1);
+                    e.Graphics.DrawLine(borderPen, 0, Height - 1, 0, top);
+                }
+
+                if (!string.IsNullOrEmpty(Text))
+                    using (var textBrush = new SolidBrush(ForeColor))
+                        e.Graphics.DrawString(Text, Font, textBrush, 8, 0);
+            }
+        }
     }
 }

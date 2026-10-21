@@ -1120,3 +1120,26 @@ raken dat mock-modus zelf nooit aanraakt:
     bestaat pas zodra het form-handle is aangemaakt), zodat het gebied rond/achter de MDI-children
     niet in een afwijkend grijs (`SystemColors.AppWorkspace`) overblijft. `ShellForm` zelf
     (het "startscherm") behoudt zijn eigen witte achtergrond, zoals eerder expliciet gevraagd.
+- **Knoppen en GroupBox-randen in dezelfde "classic MAX"-stijl** (user feedback, 20 okt 2026, naar
+  aanleiding van een screenshot van een MAX-queryscherm met "Query"/"Graph"-knoppen en getitelde,
+  omrande vakken "Range"/"Dates"/"Transaction Types"): eerst gevraagd wat precies bedoeld werd —
+  antwoord: "Ik bedoel de opmaak van de knoppen aanpassen naar de layout op het voorbeeld, evenals
+  de rand van groupboxen etc. (Voor alle schermen voor zover van toepassing)".
+  - **Knoppen**: `Application.EnableVisualStyles()` (Program.cs) laat elke `Button` standaard
+    renderen met het moderne Windows-thema (verloop, afgeronde hoeklook) — niets zoals de vlakke,
+    dunomrande knoppen in het voorbeeld. Nieuwe gedeelde `GridFormatting.ApplyClassicButtonStyle`
+    zet `FlatStyle = FlatStyle.Flat` met een dunne blauwe rand (dezelfde kleurfamilie als de
+    menubalk/grid-headers/schermachtergrond elders in de app) en een witte achtergrond — toegepast
+    op alle 30 knoppen in de app buiten `LoginForm` (bewust niet meegenomen: dat is het
+    inlogscherm vóór de sessie, geen onderdeel van de eigenlijke procurement-schermen).
+  - **GroupBox-randen**: de standaard GroupBox-rand wordt getekend door het actieve Windows-thema
+    en negeert `ForeColor`/`BackColor` daarvoor volledig — de kleur aanpassen kan dus alleen door de
+    rand zelf te tekenen. Nieuwe `GridFormatting.ClassicGroupBox` (een `GroupBox`-subklasse met een
+    eigen `OnPaint` die rand + titel met de hand tekent, dezelfde blauwe kleur als de knoppen)
+    vervangt de kale `GroupBox` die `MainForm.WrapInGroupBox` al gebruikte voor "Fetch Orders from
+    MAX"/"Due Date Range"/"Filter"/"Display" — vooralsnog de enige plek in de app met
+    GroupBox-secties.
+  - Ook de laatste losse plekken zonder de lichtblauwe schermachtergrond kregen die er nu bij:
+    `NewPurchaseRequestForm` (nieuw: had nog geen `ClassicScreenBackColor`/knopstijl) en de vier
+    los-geopende detail-/credential-dialogen (`AuditLogForm`'s rij-detailvenster,
+    `SettingsForm`'s credentials-/shipping-/DigiKey-authorize-dialogen).

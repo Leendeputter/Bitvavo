@@ -57,6 +57,7 @@ namespace Procurement.UI.Forms
 
             var topPanel = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 36, FlowDirection = FlowDirection.LeftToRight };
             var refreshButton = new Button { Text = "Refresh", AutoSize = true, Margin = new Padding(4) };
+            ApplyClassicButtonStyle(refreshButton);
             refreshButton.Click += async (s, e) => await RefreshAsync();
             topPanel.Controls.Add(refreshButton);
 

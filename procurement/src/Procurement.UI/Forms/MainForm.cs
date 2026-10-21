@@ -102,26 +102,31 @@ namespace Procurement.UI.Forms
 
             var toolPanel = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 40, FlowDirection = FlowDirection.LeftToRight };
             _newRequestButton = new Button { Text = "Add New Test Request", AutoSize = true };
+            ApplyClassicButtonStyle(_newRequestButton);
             _newRequestButton.Click += async (s, e) => await NewRequestAsync();
             // Elke rij is een MAX-order voor precies 1 artikel — bij tientallen open orders is 1
             // voor 1 klikken onwerkbaar. Sourcing starten verwerkt daarom alle geselecteerde
             // aanvragen (Ctrl/Shift-klik in het grid); Alles sourcen verwerkt de hele lijst zonder
             // eerst te hoeven selecteren.
             _startSourcingButton = new Button { Text = "Start Sourcing (Selection)", AutoSize = true };
+            ApplyClassicButtonStyle(_startSourcingButton);
             _startSourcingButton.Click += async (s, e) => await SourceRequestsAsync(GetSelectedRequestIds(), confirmIfMoreThan: 1);
             _sourceAllButton = new Button { Text = "Source All", AutoSize = true };
+            ApplyClassicButtonStyle(_sourceAllButton);
             _sourceAllButton.Click += async (s, e) => await SourceRequestsAsync(GetAllRequestIds(), confirmIfMoreThan: 1);
             // Losgekoppeld van sourcing (spec-correctie): sourcing/goedkeuring brengt een aanvraag
             // enkel tot ReadyToOrder (een SupplierSelection per regel), het daadwerkelijk plaatsen
             // van de order is een aparte, expliciete stap — zo kan per leverancier gebundeld worden
             // i.p.v. automatisch bij elke match meteen te bestellen.
             _placeOrdersButton = new Button { Text = "Place Order (Selection)", AutoSize = true };
+            ApplyClassicButtonStyle(_placeOrdersButton);
             _placeOrdersButton.Click += async (s, e) => await PlaceOrdersAsync(GetSelectedRequestIds());
             // Eén knop voor alle nog te bevestigen orders — verwerkt bevestigingen automatisch
             // (lokaal altijd, en in real-mode ook de MAX Confirming/Reference/duedate-velden) en
             // toont enkel wat afwijkt (aantal/prijs/te late levering), niet elke geslaagde
             // bevestiging apart (zie ProcurementEngine.ProcessOrderConfirmationsAsync).
             _processConfirmationsButton = new Button { Text = "Process Order Confirmations", AutoSize = true };
+            ApplyClassicButtonStyle(_processConfirmationsButton);
             _processConfirmationsButton.Click += async (s, e) => await ProcessOrderConfirmationsAsync();
 
             toolPanel.Controls.AddRange(new Control[]
@@ -230,6 +235,7 @@ namespace Procurement.UI.Forms
             UpdateIncludedOrderStatuses();
 
             _queryButton = new Button { Text = "Query", AutoSize = true, Margin = new Padding(0, 6, 0, 0) };
+            ApplyClassicButtonStyle(_queryButton);
             _queryButton.Click += async (s, e) => await QueryOrdersAsync();
 
             layout.Controls.Add(_statusPlannedCheckBox);
@@ -381,7 +387,9 @@ namespace Procurement.UI.Forms
         {
             const int left = 12, top = 20, right = 24, bottom = 20;
 
-            var group = new GroupBox { Text = title, Margin = new Padding(4) };
+            // ClassicGroupBox (user request, 20 okt 2026 — "de rand van groupboxen"), not a plain
+            // GroupBox, for the same thin blue border as the rest of this app's classic MAX styling.
+            var group = new ClassicGroupBox { Text = title, Margin = new Padding(4) };
             content.Location = new Point(left, top);
             group.Controls.Add(content);
 

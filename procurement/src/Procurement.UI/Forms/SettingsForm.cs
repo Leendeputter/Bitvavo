@@ -91,12 +91,16 @@ namespace Procurement.UI.Forms
             };
             var buttonPanel = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true };
             var saveButton = new Button { Text = "Save", AutoSize = true };
+            ApplyClassicButtonStyle(saveButton);
             saveButton.Click += async (s, e) => await SaveSuppliersAsync();
             var credentialsButton = new Button { Text = "Edit Credentials...", AutoSize = true };
+            ApplyClassicButtonStyle(credentialsButton);
             credentialsButton.Click += async (s, e) => await EditCredentialsForSelectedSupplierAsync();
             var shippingButton = new Button { Text = "Edit Shipping Details...", AutoSize = true };
+            ApplyClassicButtonStyle(shippingButton);
             shippingButton.Click += async (s, e) => await EditOrderingContactForSelectedSupplierAsync();
             var authorizeOrderingButton = new Button { Text = "Authorize Ordering...", AutoSize = true };
+            ApplyClassicButtonStyle(authorizeOrderingButton);
             authorizeOrderingButton.Click += async (s, e) => await AuthorizeDigiKeyOrderingAsync();
             buttonPanel.Controls.Add(saveButton);
             buttonPanel.Controls.Add(credentialsButton);
@@ -122,6 +126,7 @@ namespace Procurement.UI.Forms
             EnableRowNumberHeaders(_supplierPreferenceGrid);
             ApplyClassicHeaderStyle(_supplierPreferenceGrid);
             var saveButton = new Button { Text = "Save", Dock = DockStyle.Bottom, AutoSize = true };
+            ApplyClassicButtonStyle(saveButton);
             saveButton.Click += async (s, e) => await SaveSupplierPreferencesAsync();
 
             page.Controls.Add(_supplierPreferenceGrid);
@@ -149,6 +154,7 @@ namespace Procurement.UI.Forms
                 Text = "AllowedPackaging: comma-separated list of enum names, e.g. OriginalReel,CutTape"
             };
             var saveButton = new Button { Text = "Save", Dock = DockStyle.Bottom, AutoSize = true };
+            ApplyClassicButtonStyle(saveButton);
             saveButton.Click += async (s, e) => await SavePackagingPoliciesAsync();
 
             page.Controls.Add(_packagingPolicyGrid);
@@ -175,6 +181,7 @@ namespace Procurement.UI.Forms
             AddRow(layout, "Alternative part allowed:", _allowAlternativePartBox);
 
             var saveButton = new Button { Text = "Save", Dock = DockStyle.Bottom, AutoSize = true };
+            ApplyClassicButtonStyle(saveButton);
             saveButton.Click += async (s, e) => await SaveApprovalPolicyAsync();
 
             page.Controls.Add(layout);
@@ -331,7 +338,8 @@ namespace Procurement.UI.Forms
                 StartPosition = FormStartPosition.CenterParent,
                 FormBorderStyle = FormBorderStyle.FixedDialog,
                 MinimizeBox = false,
-                MaximizeBox = false
+                MaximizeBox = false,
+                BackColor = ClassicScreenBackColor
             })
             {
                 var layout = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 2, AutoSize = true, Padding = new Padding(10) };
@@ -352,7 +360,9 @@ namespace Procurement.UI.Forms
 
                 var buttonPanel = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(10) };
                 var saveButton = new Button { Text = "Save", AutoSize = true, DialogResult = DialogResult.OK };
+                ApplyClassicButtonStyle(saveButton);
                 var cancelButton = new Button { Text = "Cancel", AutoSize = true, DialogResult = DialogResult.Cancel };
+                ApplyClassicButtonStyle(cancelButton);
                 buttonPanel.Controls.Add(cancelButton);
                 buttonPanel.Controls.Add(saveButton);
 
@@ -403,7 +413,8 @@ namespace Procurement.UI.Forms
                 StartPosition = FormStartPosition.CenterParent,
                 FormBorderStyle = FormBorderStyle.FixedDialog,
                 MinimizeBox = false,
-                MaximizeBox = false
+                MaximizeBox = false,
+                BackColor = ClassicScreenBackColor
             })
             {
                 var layout = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 2, AutoSize = true, Padding = new Padding(10) };
@@ -430,7 +441,9 @@ namespace Procurement.UI.Forms
 
                 var buttonPanel = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(10) };
                 var saveButton = new Button { Text = "Save", AutoSize = true, DialogResult = DialogResult.OK };
+                ApplyClassicButtonStyle(saveButton);
                 var cancelButton = new Button { Text = "Cancel", AutoSize = true, DialogResult = DialogResult.Cancel };
+                ApplyClassicButtonStyle(cancelButton);
                 buttonPanel.Controls.Add(cancelButton);
                 buttonPanel.Controls.Add(saveButton);
 
@@ -542,7 +555,8 @@ namespace Procurement.UI.Forms
                 StartPosition = FormStartPosition.CenterParent,
                 FormBorderStyle = FormBorderStyle.FixedDialog,
                 MinimizeBox = false,
-                MaximizeBox = false
+                MaximizeBox = false,
+                BackColor = ClassicScreenBackColor
             })
             {
                 var hint = new Label
@@ -559,7 +573,9 @@ namespace Procurement.UI.Forms
 
                 var buttonPanel = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(10) };
                 var okButton = new Button { Text = "OK", AutoSize = true, DialogResult = DialogResult.OK };
+                ApplyClassicButtonStyle(okButton);
                 var cancelButton = new Button { Text = "Cancel", AutoSize = true, DialogResult = DialogResult.Cancel };
+                ApplyClassicButtonStyle(cancelButton);
                 buttonPanel.Controls.Add(cancelButton);
                 buttonPanel.Controls.Add(okButton);
 

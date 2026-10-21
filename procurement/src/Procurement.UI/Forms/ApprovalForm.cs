@@ -56,8 +56,10 @@ namespace Procurement.UI.Forms
             actionPanel.Controls.Add(new Label { Text = "Comment:", AutoSize = true, Padding = new Padding(0, 8, 4, 0) });
             _commentBox = new TextBox { Width = 400 };
             _approveButton = new Button { Text = "Approve", AutoSize = true };
+            ApplyClassicButtonStyle(_approveButton);
             _approveButton.Click += async (s, e) => await DecideAsync(approve: true);
             _rejectButton = new Button { Text = "Reject", AutoSize = true };
+            ApplyClassicButtonStyle(_rejectButton);
             _rejectButton.Click += async (s, e) => await DecideAsync(approve: false);
             actionPanel.Controls.Add(_commentBox);
             actionPanel.Controls.Add(_approveButton);

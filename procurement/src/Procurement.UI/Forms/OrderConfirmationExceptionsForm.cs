@@ -75,6 +75,7 @@ namespace Procurement.UI.Forms
             ApplyClassicHeaderStyle(_grid);
 
             var closeButton = new Button { Text = "Close", AutoSize = true, Dock = DockStyle.Bottom };
+            ApplyClassicButtonStyle(closeButton);
             closeButton.Click += (s, e) => Close();
 
             Controls.Add(_grid);

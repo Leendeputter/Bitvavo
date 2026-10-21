@@ -72,6 +72,7 @@ namespace Procurement.UI.Forms
             filterPanel.Controls.Add(_toPicker);
 
             var searchButton = new Button { Text = "Search", AutoSize = true, Margin = new Padding(8, 4, 0, 0) };
+            ApplyClassicButtonStyle(searchButton);
             searchButton.Click += async (s, e) => await SearchAsync();
             filterPanel.Controls.Add(searchButton);
 
@@ -115,7 +116,8 @@ namespace Procurement.UI.Forms
                 Height = 550,
                 StartPosition = FormStartPosition.CenterParent,
                 MinimizeBox = false,
-                MaximizeBox = false
+                MaximizeBox = false,
+                BackColor = ClassicScreenBackColor
             })
             {
                 var textBox = new TextBox
@@ -130,7 +132,9 @@ namespace Procurement.UI.Forms
                 };
                 var buttonPanel = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(8) };
                 var closeButton = new Button { Text = "Close", AutoSize = true, DialogResult = DialogResult.OK };
+                ApplyClassicButtonStyle(closeButton);
                 var copyButton = new Button { Text = "Copy to Clipboard", AutoSize = true };
+                ApplyClassicButtonStyle(copyButton);
                 copyButton.Click += (s, e) => Clipboard.SetText(text);
                 buttonPanel.Controls.Add(closeButton);
                 buttonPanel.Controls.Add(copyButton);

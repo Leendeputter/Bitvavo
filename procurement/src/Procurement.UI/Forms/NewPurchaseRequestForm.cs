@@ -5,6 +5,7 @@ using Procurement.Core.Entities;
 using Procurement.Core.Enums;
 using Procurement.Data.Repositories;
 using Procurement.Erp;
+using static Procurement.UI.Support.GridFormatting;
 
 namespace Procurement.UI.Forms
 {
@@ -47,6 +48,9 @@ namespace Procurement.UI.Forms
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
+            // Pale blue, matching MAX's own "MRP Detail" screenshot (user request, 20 okt 2026) — see
+            // GridFormatting.ClassicScreenBackColor's own comment.
+            BackColor = ClassicScreenBackColor;
 
             var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, Padding = new Padding(10), AutoSize = true };
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40));
@@ -54,6 +58,7 @@ namespace Procurement.UI.Forms
 
             _erpArticleIdBox = new TextBox { Dock = DockStyle.Fill, Text = "ART-" + DateTime.UtcNow.Ticks % 100000 };
             var lookupButton = new Button { Text = "Fetch from MAX", AutoSize = true };
+            ApplyClassicButtonStyle(lookupButton);
             lookupButton.Click += async (s, e) => await LookupFromMaxAsync();
             var articleIdPanel = new Panel { Dock = DockStyle.Fill, Height = 24 };
             _erpArticleIdBox.Dock = DockStyle.Left;
@@ -88,7 +93,9 @@ namespace Procurement.UI.Forms
 
             var buttonPanel = new FlowLayoutPanel { Dock = DockStyle.Bottom, FlowDirection = FlowDirection.RightToLeft, Height = 40 };
             var cancelButton = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel };
+            ApplyClassicButtonStyle(cancelButton);
             var okButton = new Button { Text = "Save" };
+            ApplyClassicButtonStyle(okButton);
             okButton.Click += async (s, e) => await SaveAsync();
             buttonPanel.Controls.Add(cancelButton);
             buttonPanel.Controls.Add(okButton);
