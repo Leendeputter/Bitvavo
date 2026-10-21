@@ -200,15 +200,24 @@ namespace Procurement.UI.Support
         {
             protected override void OnPaint(PaintEventArgs e)
             {
-                var textSize = e.Graphics.MeasureString(Text, Font);
-                var top = (int)(textSize.Height / 2);
-                var titleGap = string.IsNullOrEmpty(Text) ? 0 : (int)textSize.Width + 6;
+                // TextRenderer.MeasureText — the same measurement API WrapInGroupBox used to size
+                // this box — not Graphics.MeasureString (what this used to call here). The two report
+                // different widths for the same text/font; when the title is wider than the content
+                // (e.g. OrdersForm's "Include" box around a single checkbox), MeasureString's larger
+                // number pushed the resumed top-border segment past the box's actual right edge, so
+                // it never got drawn — the border looked permanently open (user-reported 20 okt 2026:
+                // "Kun je de groupboxen nog eens dicht proberen te krijgen"). Math.Min below is a
+                // second safety net regardless of any future measurement/font drift.
+                var textSize = TextRenderer.MeasureText(Text, Font);
+                var top = textSize.Height / 2;
+                var titleGap = string.IsNullOrEmpty(Text) ? 0 : textSize.Width + 6;
+                var resumeX = Math.Min(8 + titleGap, Width - 1);
 
                 using (var borderPen = new Pen(ClassicBorderColor))
                 {
                     e.Graphics.DrawLine(borderPen, 0, top, titleGap > 0 ? 8 : Width - 1, top);
                     if (titleGap > 0)
-                        e.Graphics.DrawLine(borderPen, 8 + titleGap, top, Width - 1, top);
+                        e.Graphics.DrawLine(borderPen, resumeX, top, Width - 1, top);
                     e.Graphics.DrawLine(borderPen, Width - 1, top, Width - 1, Height - 1);
                     e.Graphics.DrawLine(borderPen, Width - 1, Height - 1, 0, Height - 1);
                     e.Graphics.DrawLine(borderPen, 0, Height - 1, 0, top);

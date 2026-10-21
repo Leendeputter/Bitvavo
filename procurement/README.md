@@ -1182,3 +1182,17 @@ raken dat mock-modus zelf nooit aanraakt:
   `MainForm.WrapInGroupBox` is voor deze gelegenheid verhuisd naar de gedeelde
   `GridFormatting`-klasse (was `private static` op `MainForm`) zodat `OrdersForm` 'm ook kan
   gebruiken — gedrag ongewijzigd.
+- **GroupBox-rand sloot niet altijd** (user feedback, 20 okt 2026, met een screenshot van het nieuwe
+  "Include"-vak: "Kun je de groupboxen nog eens dicht proberen te krijgen... dit geldt eigenlijk
+  voor alle groupboxen"). Oorzaak gevonden: `ClassicGroupBox.OnPaint` mat de titeltekst met
+  `Graphics.MeasureString`, terwijl `WrapInGroupBox` de box zelf had gegroepeerd/gesized met
+  `TextRenderer.MeasureText` — die twee rapporteren een andere breedte voor dezelfde tekst/font. Bij
+  een box waar de titel breder is dan de inhoud (zoals "Include" rond één enkele checkbox) viel het
+  hervatte stukje bovenrand (na de titel) daardoor net buiten de werkelijke rechterrand van de box,
+  en werd het simpelweg nooit getekend — de rand oogde daardoor blijvend "open". Bij de bredere
+  groupboxen in MainForm (Fetch Orders from MAX/Due Date Range/Filter/Display) viel ditzelfde defect
+  niet op omdat de inhoud daar al breder was dan de titel, maar de onderliggende bug zat er net zo
+  goed in — vandaar "dit geldt voor alle groupboxen". Fix: `OnPaint` gebruikt nu dezelfde
+  `TextRenderer.MeasureText` als `WrapInGroupBox`, plus een `Math.Min`-ondergrens die het hervatte
+  stuk sowieso nooit voorbij de rechterrand laat beginnen, ongeacht toekomstige font-/
+  meetverschillen.
