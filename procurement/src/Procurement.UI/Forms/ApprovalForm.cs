@@ -79,6 +79,7 @@ namespace Procurement.UI.Forms
             {
                 a.Id,
                 Line = a.PurchaseRequestLineId,
+                PartID = a.PurchaseRequestLine?.ErpArticleId,
                 Part = a.PurchaseRequestLine?.ManufacturerPartNumber,
                 Supplier = a.ProposedOffer?.SupplierCode,
                 OfferedQty = a.ProposedOffer?.OfferedQuantity,
@@ -91,7 +92,9 @@ namespace Procurement.UI.Forms
             ApplyDateTimeColumns(_grid, "CreatedAt");
             SetHeaderText(_grid, "OfferedQty", "Offered Qty");
             // Reason is the one genuinely free-text column here, left in Fill with a floor.
+            SetCharacterBasedColumnWidth(_grid, "Id", 6);
             SetCharacterBasedColumnWidth(_grid, "Line", 8);
+            SetCharacterBasedColumnWidth(_grid, "PartID", 14);
             SetCharacterBasedColumnWidth(_grid, "Part", 18);
             SetCharacterBasedColumnWidth(_grid, "Supplier", 12);
             SetCharacterBasedColumnWidth(_grid, "OfferedQty", 12);

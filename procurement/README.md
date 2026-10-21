@@ -1256,3 +1256,10 @@ raken dat mock-modus zelf nooit aanraakt:
   nu per onderdeel — `Default` (geen anti-aliasing) voor elke rechte `DrawLine`, `AntiAlias` enkel
   rond de hoek-`DrawArc`-aanroepen, waar het daadwerkelijk helpt (een boog heeft geen rechte
   pixel-grens om te vervagen).
+- **Approvals-grid: Id-kolom smaller, PartID-kolom toegevoegd** (user feedback, 20 okt 2026: "IN
+  APprovals is de kolom Id nu belachelijk breed. Graag smaller maken. Verder zou ik hier ook nog
+  een kolom bij willen hebben met ons PartID, liefst links naast Part"). `Id` had geen expliciete
+  breedte en deelde dus mee in `AutoSizeColumnsMode.Fill`'s verdeling — nu vast op 6 tekens. Nieuwe
+  `PartID`-kolom (`PurchaseRequestLine.ErpArticleId`, ons eigen interne artikelnummer, niet de
+  Manufacturer Part Number die `Part` al toont) direct links van `Part` gezet, zelfde 14-tekens
+  breedte als dezelfde kolom elders in de app (MainForm/OrdersForm).
