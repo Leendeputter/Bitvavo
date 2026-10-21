@@ -1245,3 +1245,14 @@ raken dat mock-modus zelf nooit aanraakt:
      `OrdersForm.RefreshAsync`'s grid-opbouw is hiervoor verplaatst naar een herbruikbare
      `PopulateOrdersGrid`-methode, zodat het aan/uitvinken van de checkbox direct herfiltert zonder
      opnieuw bij MAX te hoeven opvragen.
+- **GroupBox-rand nog steeds niet volledig zichtbaar, ondanks gesloten + afgeronde hoeken** (user
+  feedback, 20 okt 2026, met een nieuwe screenshot: "De hoeken zijn prima zo, maar als de border
+  niet volledig getekend is dan heb ik er niet zoveel aan"). Oorzaak: `SmoothingMode.AntiAlias`
+  stond aan voor de hele tekening, inclusief de rechte `DrawLine`-stukken — een 1px rechte lijn op
+  een exacte integer-coördinaat ligt precies op de grens tussen twee pixelrijen; zónder AntiAlias
+  rondt GDI+ dat af naar één volledig dekkende rij, mét AntiAlias juist naar twee halftransparante
+  rijen, wat tegen de lichtblauwe achtergrond als een nauwelijks zichtbare, uitgewassen lijn oogt —
+  exact "de hoeken (bogen) zijn prima, de rest (rechte stukken) niet". Fix: `SmoothingMode` wisselt
+  nu per onderdeel — `Default` (geen anti-aliasing) voor elke rechte `DrawLine`, `AntiAlias` enkel
+  rond de hoek-`DrawArc`-aanroepen, waar het daadwerkelijk helpt (een boog heeft geen rechte
+  pixel-grens om te vervagen).

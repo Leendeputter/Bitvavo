@@ -207,8 +207,6 @@ namespace Procurement.UI.Support
 
             protected override void OnPaint(PaintEventArgs e)
             {
-                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-
                 // TextRenderer.MeasureText — the same measurement API WrapInGroupBox used to size
                 // this box — not Graphics.MeasureString (what this used to call here). The two report
                 // different widths for the same text/font; when the title is wider than the content
@@ -229,19 +227,30 @@ namespace Procurement.UI.Support
 
                 using (var borderPen = new Pen(ClassicBorderColor))
                 {
-                    // Angles are GDI+'s usual clockwise-from-3-o'clock convention; each DrawArc's
-                    // bounding rectangle is the full circle for that corner, of which only the
-                    // relevant quarter is swept.
-                    e.Graphics.DrawArc(borderPen, left, top, r * 2, r * 2, 180, 90);
+                    // A 1px orthogonal line at an exact integer coordinate straddles two pixel rows —
+                    // without AntiAlias, GDI+ snaps that to one fully-opaque row; with it on, GDI+
+                    // instead blends it as two half-opacity rows, which against this box's own pale
+                    // blue background reads as a washed-out, barely-there line — exactly the "border
+                    // isn't fully drawn" the corners-are-fine-but-the-rest-isn't feedback described
+                    // (20 okt 2026). So: AntiAlias only around the arcs below, where it actually helps
+                    // (a corner has no exact-integer orthogonal edge to blur), Default for every
+                    // straight DrawLine.
+                    e.Graphics.SmoothingMode = SmoothingMode.Default;
                     e.Graphics.DrawLine(borderPen, left + r, top, titleGap > 0 ? 8 : right - r, top);
                     if (titleGap > 0)
                         e.Graphics.DrawLine(borderPen, resumeX, top, right - r, top);
-                    e.Graphics.DrawArc(borderPen, right - r * 2, top, r * 2, r * 2, 270, 90);
                     e.Graphics.DrawLine(borderPen, right, top + r, right, bottom - r);
-                    e.Graphics.DrawArc(borderPen, right - r * 2, bottom - r * 2, r * 2, r * 2, 0, 90);
                     e.Graphics.DrawLine(borderPen, right - r, bottom, left + r, bottom);
-                    e.Graphics.DrawArc(borderPen, left, bottom - r * 2, r * 2, r * 2, 90, 90);
                     e.Graphics.DrawLine(borderPen, left, bottom - r, left, top + r);
+
+                    // Angles are GDI+'s usual clockwise-from-3-o'clock convention; each DrawArc's
+                    // bounding rectangle is the full circle for that corner, of which only the
+                    // relevant quarter is swept.
+                    e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                    e.Graphics.DrawArc(borderPen, left, top, r * 2, r * 2, 180, 90);
+                    e.Graphics.DrawArc(borderPen, right - r * 2, top, r * 2, r * 2, 270, 90);
+                    e.Graphics.DrawArc(borderPen, right - r * 2, bottom - r * 2, r * 2, r * 2, 0, 90);
+                    e.Graphics.DrawArc(borderPen, left, bottom - r * 2, r * 2, r * 2, 90, 90);
                 }
 
                 if (!string.IsNullOrEmpty(Text))
