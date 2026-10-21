@@ -252,6 +252,80 @@ WHERE PRTNUM_01 IN ({string.Join(",", paramNames)})";
             }
         }
 
+        // 3 parameters per key here (order+line+delivery, matching Order_Master's own composite key
+        // — see MaxPurchaseOrderRepository.ApplyLineConfirmationAsync's identical WHERE) instead of 1
+        // per key like the other batched lookups above, so a third of GetByOrderNumbersBatchSize for
+        // the same SQL Server 2100-parameter-per-command ceiling.
+        private const int GetLineStatusesBatchSize = 600;
+
+        /// <summary>
+        /// Order_Master.STATUS_10 per PO line, keyed by the exact (ORDNUM_10, LINNUM_10, DELNUM_10)
+        /// triple MaxPurchaseOrderRepository.ApplyLineConfirmationAsync already matches Order_Master
+        /// rows on — used by OrdersForm to hide already-Completed (Status 4) lines by default (user
+        /// request, 20 okt 2026, "PO Schedule Inquiry" screenshot: "Status 4 Orders (Completed)").
+        /// Deliberately a live, batched lookup rather than a new stored column on PurchaseOrderLine,
+        /// the same choice already made for PO DueDate/preferred vendor above — a new EF-mapped
+        /// column triggers the schema-regen script, which also wipes Supplier credentials.
+        /// </summary>
+        public async Task<IReadOnlyDictionary<(string OrderNumber, string LineNumber, string DeliveryNumber), string>> GetLineStatusesAsync(
+            IReadOnlyCollection<(string OrderNumber, string LineNumber, string DeliveryNumber)> keys)
+        {
+            var result = new Dictionary<(string, string, string), string>();
+            if (keys == null || keys.Count == 0) return result;
+
+            var distinct = keys
+                .Where(k => !string.IsNullOrEmpty(k.OrderNumber) && !string.IsNullOrEmpty(k.LineNumber) && !string.IsNullOrEmpty(k.DeliveryNumber))
+                .Distinct()
+                .ToList();
+            for (var offset = 0; offset < distinct.Count; offset += GetLineStatusesBatchSize)
+            {
+                var batch = distinct.Skip(offset).Take(GetLineStatusesBatchSize).ToList();
+                await GetLineStatusesBatchAsync(batch, result);
+            }
+
+            return result;
+        }
+
+        private async Task GetLineStatusesBatchAsync(
+            IReadOnlyList<(string OrderNumber, string LineNumber, string DeliveryNumber)> batch,
+            Dictionary<(string, string, string), string> result)
+        {
+            var where = new StringBuilder();
+            var parameters = new List<SqlParameter>();
+            for (var i = 0; i < batch.Count; i++)
+            {
+                if (i > 0) where.Append(" OR ");
+                where.Append($"(ORDNUM_10 = @o{i} AND LINNUM_10 = @l{i} AND DELNUM_10 = @d{i})");
+                parameters.Add(new SqlParameter($"@o{i}", batch[i].OrderNumber));
+                parameters.Add(new SqlParameter($"@l{i}", batch[i].LineNumber));
+                parameters.Add(new SqlParameter($"@d{i}", batch[i].DeliveryNumber));
+            }
+
+            var sql = $@"
+SELECT ORDNUM_10 AS [Order], LINNUM_10 AS LineNumber, DELNUM_10 AS DeliveryNumber, STATUS_10 AS Status
+FROM dbo.Order_Master
+WHERE {where}";
+
+            using (var conn = new SqlConnection(_session.AdminConnectionString))
+            using (var cmd = new SqlCommand(sql, conn))
+            {
+                cmd.Parameters.AddRange(parameters.ToArray());
+
+                await conn.OpenAsync();
+                using (var reader = await cmd.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        var key = (
+                            reader["Order"].ToString().Trim(),
+                            reader["LineNumber"].ToString().Trim(),
+                            reader["DeliveryNumber"].ToString().Trim());
+                        result[key] = reader["Status"].ToString().Trim();
+                    }
+                }
+            }
+        }
+
         /// <summary>
         /// Part_Master-only lookup (no Order_Master join — there's no order yet), used by two
         /// unrelated callers: "Nieuwe testaanvraag toevoegen" (Desc1/Desc2/PartType/Customer, the

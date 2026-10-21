@@ -372,34 +372,6 @@ namespace Procurement.UI.Forms
             layout.Controls.Add(control, 1, row);
         }
 
-        /// <summary>
-        /// GroupBox.AutoSize with a manually-positioned (non-Dock) child turned out unreliable, so
-        /// this reads the child's own (properly computed) PreferredSize and sizes the GroupBox
-        /// explicitly around it instead. Dock=Fill for the child (tried in an earlier round) turned
-        /// out worse, not better: GroupBox reserves its own built-in space for the border/label on
-        /// top of whatever Padding is set, so a Dock=Fill child ends up squeezed into less room than
-        /// this method actually sized the box for. A manually-placed (non-Dock) child at an explicit
-        /// Location doesn't hit that double reservation, so that's what this goes back to — sized
-        /// generously on the right/bottom since content clipping is a much worse failure mode than
-        /// a little unused space in the box.
-        /// </summary>
-        private static GroupBox WrapInGroupBox(string title, Control content)
-        {
-            const int left = 12, top = 20, right = 24, bottom = 20;
-
-            // ClassicGroupBox (user request, 20 okt 2026 — "de rand van groupboxen"), not a plain
-            // GroupBox, for the same thin blue border as the rest of this app's classic MAX styling.
-            var group = new ClassicGroupBox { Text = title, Margin = new Padding(4) };
-            content.Location = new Point(left, top);
-            group.Controls.Add(content);
-
-            var contentSize = content.PreferredSize;
-            var titleWidth = TextRenderer.MeasureText(title, group.Font).Width + 24;
-            group.Size = new Size(Math.Max(contentSize.Width + left + right, titleWidth), contentSize.Height + top + bottom);
-
-            return group;
-        }
-
         private void UpdateIncludedOrderStatuses()
         {
             var statuses = new HashSet<string>();

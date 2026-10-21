@@ -5,6 +5,7 @@ using System.Windows.Forms;
 using Procurement.Core.Entities;
 using Procurement.Core.Models;
 using Procurement.Data.Repositories;
+using Procurement.Erp;
 using static Procurement.UI.Support.GridFormatting;
 
 namespace Procurement.UI.Forms
@@ -26,16 +27,27 @@ namespace Procurement.UI.Forms
     {
         private readonly PurchaseOrderRepository _purchaseOrderRepository;
         private readonly PurchaseRequestRepository _purchaseRequestRepository;
+        private readonly MaxOrderRepository _maxOrderRepository;
 
         private DataGridView _ordersGrid;
         private DataGridView _linesGrid;
+        private CheckBox _includeCompletedCheckBox;
         private Label _statusBar;
         private IReadOnlyList<PurchaseOrder> _loadedOrders = new List<PurchaseOrder>();
 
-        public OrdersForm(PurchaseOrderRepository purchaseOrderRepository, PurchaseRequestRepository purchaseRequestRepository)
+        /// <summary>
+        /// MAX Order_Master.STATUS_10 per PO line (ErpPoNumber+MaxLineNumber+MaxDeliveryNumber),
+        /// refreshed once per RefreshAsync — backs the "Completed Orders" filter below without
+        /// re-querying MAX on every checkbox toggle/order selection.
+        /// </summary>
+        private IReadOnlyDictionary<(string OrderNumber, string LineNumber, string DeliveryNumber), string> _lineStatusesByKey =
+            new Dictionary<(string, string, string), string>();
+
+        public OrdersForm(PurchaseOrderRepository purchaseOrderRepository, PurchaseRequestRepository purchaseRequestRepository, MaxOrderRepository maxOrderRepository)
         {
             _purchaseOrderRepository = purchaseOrderRepository ?? throw new ArgumentNullException(nameof(purchaseOrderRepository));
             _purchaseRequestRepository = purchaseRequestRepository ?? throw new ArgumentNullException(nameof(purchaseRequestRepository));
+            _maxOrderRepository = maxOrderRepository ?? throw new ArgumentNullException(nameof(maxOrderRepository));
             InitializeComponent();
             Load += async (s, e) => await RefreshAsync();
         }
@@ -55,11 +67,27 @@ namespace Procurement.UI.Forms
             // visually-no-op SystemColors.Control attempt.
             BackColor = ClassicScreenBackColor;
 
-            var topPanel = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 36, FlowDirection = FlowDirection.LeftToRight };
+            // Taller than a plain button bar (user request, 20 okt 2026 — matching MAX's own "PO
+            // Schedule Inquiry" screenshot) to fit the "Include" group below.
+            var topPanel = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 70, FlowDirection = FlowDirection.LeftToRight };
             var refreshButton = new Button { Text = "Refresh", AutoSize = true, Margin = new Padding(4) };
             ApplyClassicButtonStyle(refreshButton);
             refreshButton.Click += async (s, e) => await RefreshAsync();
             topPanel.Controls.Add(refreshButton);
+
+            // "Orderlijnen die al geleverd zijn" default-hidden in Lines of Selected PO (user request,
+            // 20 okt 2026, matching MAX's own "PO Schedule Inquiry 1" filter screen — its "Status 4
+            // Orders (Completed)" checkbox, same Order_Master.STATUS_10 field). Unchecked by default:
+            // only still-open lines show; checking it also shows lines MAX's own STATUS_10 marks
+            // Completed ("4"). Re-filters instantly from the cached _lineStatusesByKey (set once per
+            // RefreshAsync) rather than re-querying MAX on every toggle.
+            var includeLayout = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true };
+            _includeCompletedCheckBox = new CheckBox { Text = "Completed Orders", AutoSize = true };
+            _includeCompletedCheckBox.CheckedChanged += async (s, e) => await LoadLinesForSelectedOrderAsync();
+            includeLayout.Controls.Add(_includeCompletedCheckBox);
+            var includeGroup = WrapInGroupBox("Include", includeLayout);
+            includeGroup.Margin = new Padding(12, 2, 4, 2);
+            topPanel.Controls.Add(includeGroup);
 
             var poLabel = new Label { Text = "All Purchase Orders:", Dock = DockStyle.Top, Height = 20, Padding = new Padding(4) };
             _ordersGrid = new DataGridView
@@ -105,6 +133,16 @@ namespace Procurement.UI.Forms
         {
             _statusBar.Text = "Orders laden...";
             _loadedOrders = await _purchaseOrderRepository.GetAllAsync();
+
+            // One batched MAX round-trip for every line's Order_Master.STATUS_10 across every loaded
+            // order — backs the "Completed Orders" filter in LoadLinesForSelectedOrderAsync. Lines
+            // placed while UseMockPurchaseOrders=true (or synced before MaxLineNumber existed) have no
+            // real MAX row to look up and are simply absent from the key set (treated as "still open"
+            // by the filter below, the same fail-open default used elsewhere).
+            var lineKeys = _loadedOrders
+                .SelectMany(po => po.Lines.Select(l => (po.ErpPoNumber, l.MaxLineNumber, l.MaxDeliveryNumber)))
+                .ToList();
+            _lineStatusesByKey = await _maxOrderRepository.GetLineStatusesAsync(lineKeys);
 
             // Assigning DataSource can itself raise SelectionChanged; detach first so that doesn't
             // race with LoadLinesForSelectedOrder below against the same in-memory list (same
@@ -185,7 +223,10 @@ namespace Procurement.UI.Forms
             // QuantityMismatch/PriceMismatch/DeliveryIsLate rather than re-deriving the same
             // deviation logic here — same reasoning MainForm.OrderConfirmationExceptionsForm already
             // follows for "Orderbevestiging verwerken".
-            _linesGrid.DataSource = order.Lines.Select(l =>
+            var visibleLines = order.Lines
+                .Where(l => _includeCompletedCheckBox.Checked || !IsCompletedInMax(order.ErpPoNumber, l))
+                .ToList();
+            _linesGrid.DataSource = visibleLines.Select(l =>
             {
                 requestLines.TryGetValue(l.PurchaseRequestLineId, out var requestLine);
                 var confirmed = l.ConfirmedQuantity.HasValue;
@@ -246,11 +287,25 @@ namespace Procurement.UI.Forms
             SetCharacterBasedColumnWidth(_linesGrid, "DeliveryIsLate", 8);
             SetCharacterBasedColumnWidth(_linesGrid, "LineTotal", 14);
 
-            var unconfirmedCount = order.Lines.Count(l => !l.ConfirmedQuantity.HasValue);
+            var unconfirmedCount = visibleLines.Count(l => !l.ConfirmedQuantity.HasValue);
+            var hiddenCompletedCount = order.Lines.Count - visibleLines.Count;
             _statusBar.Text = $"{order.SupplierCode}: {order.Status}"
                 + (string.IsNullOrEmpty(order.SupplierOrderNumber) ? string.Empty : $" (ordernummer {order.SupplierOrderNumber})")
-                + $" — {order.Lines.Count} regel(s), {unconfirmedCount} nog niet bevestigd.";
+                + $" — {visibleLines.Count} regel(s), {unconfirmedCount} nog niet bevestigd"
+                + (hiddenCompletedCount > 0 ? $", {hiddenCompletedCount} voltooid verborgen." : ".");
         }
+
+        /// <summary>
+        /// "4" is MAX's own Order_Master.STATUS_10 value for Completed (per the user-supplied "PO
+        /// Schedule Inquiry 1" screenshot's "Status 4 Orders (Completed)" checkbox) — not guessed, the
+        /// same convention this app already follows for "1"/"2" (Planned/Approved) elsewhere. A line
+        /// missing from _lineStatusesByKey (no MAX row found, or placed while
+        /// UseMockPurchaseOrders=true) is treated as still open rather than hidden — a lookup gap
+        /// should never silently hide a line the user might actually need to act on.
+        /// </summary>
+        private bool IsCompletedInMax(string erpPoNumber, PurchaseOrderLine line) =>
+            _lineStatusesByKey.TryGetValue((erpPoNumber, line.MaxLineNumber, line.MaxDeliveryNumber), out var status)
+                && status == "4";
 
         // Warning-orange for a line whose confirmation deviates in some way (quantity/prijs/te laat)
         // — mirrors OrderConfirmationExceptionsForm's own "only exceptions need a human look"

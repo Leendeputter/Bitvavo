@@ -1143,3 +1143,42 @@ raken dat mock-modus zelf nooit aanraakt:
     `NewPurchaseRequestForm` (nieuw: had nog geen `ClassicScreenBackColor`/knopstijl) en de vier
     los-geopende detail-/credential-dialogen (`AuditLogForm`'s rij-detailvenster,
     `SettingsForm`'s credentials-/shipping-/DigiKey-authorize-dialogen).
+- **DigiKey-herbevestiging: gecheckt, bewust niet gewijzigd** (user vraag, 20 okt 2026): "Wat
+  gebeurt er nu als DigiKey een herbevestiging stuurt? Komt die ook automatisch in MAX terecht als
+  we op de knop Process Order Confirmation drukken?" Antwoord: nee — `PurchaseOrderRepository.
+  GetAwaitingConfirmationAsync` selecteert alleen orders met status `Submitted`/`Acknowledged`/
+  `PartiallyConfirmed`; zodra de eerste bevestiging de status naar `Confirmed` zet, valt de order
+  blijvend buiten die candidates-lijst, dus een latere herbevestiging wordt nooit meer opgehaald.
+  User: "Ik wil dit voor nu graag zo houden zoals het is, later kunnen we dat nog finetunen" — geen
+  codewijziging, bewust geparkeerd voor een latere iteratie (twee opties al besproken: welke
+  statussen blijven rechecken, en of een wijziging t.o.v. de vórige bevestiging — i.p.v. t.o.v. de
+  oorspronkelijke bestelling — een eigen soort exception moet worden).
+- **Orders-scherm: regel al bevestigd (`Confirmed`-checkbox), maar Order Status toch "Confirmed"**
+  (user vraag, 20 okt 2026) — geen bug, bevestigde sandbox-beperking: `DigiKeyAdapter.
+  GetOrderStatusViaOrderManagementApiAsync`'s `InferStatusFromOrderManagementDetails` berekent de
+  order-status puur uit aggregate hoeveelheden (ongeacht artikelmatching), terwijl de
+  regel-`Confirmed`-checkbox in `OrdersForm`/`MainForm` pas waar wordt als
+  `PurchaseOrderRepository.ApplyOrderConfirmationAsync` een regel vindt met exact dezelfde
+  `SupplierPartNumber` — en DigiKey's Order Management v1 sandbox geeft altijd hetzelfde vaste
+  testartikel terug, dus die match mislukt bijna altijd. Zelfde al-gedocumenteerde sandbox-beperking
+  als de niet-gevulde `ConfirmedQuantity`; lost zichzelf op zodra tegen een echte DigiKey-omgeving
+  getest wordt. User bevestigde: "Ja, dit is nog sandbox, dus duidelijk."
+- **Orders-scherm: "Completed Orders"-filter op de Lines-grid** (user request, 20 okt 2026, met een
+  screenshot van MAX's eigen "PO Schedule Inquiry 1"-scherm als stijlvoorbeeld): "bij de Purchase
+  orders wil ik standaard enkel de orderlijnen zien die nog open staan, niet de lijnen die al
+  geleverd zijn. Graag hier een checkbox toevoegen incl Completed Orders... De status kan gehaald
+  worden uit Order_Master.STATUS_10 (char(1))." Nieuwe, getitelde `ClassicGroupBox` "Include" (naast
+  de Refresh-knop) met één checkbox "Completed Orders", **uitgevinkt** by default — exact MAX's eigen
+  "Status 4 Orders (Completed)"-conventie uit de screenshot, niet gegokt. Live, batched lookup
+  (`MaxOrderRepository.GetLineStatusesAsync`, nieuw) van `Order_Master.STATUS_10` per PO-regel,
+  gematcht op exact dezelfde `(ORDNUM_10, LINNUM_10, DELNUM_10)`-sleutel als
+  `MaxPurchaseOrderRepository.ApplyLineConfirmationAsync` al gebruikt om Order_Master-rijen te
+  vinden — bewust geen nieuwe opgeslagen kolom (zelfde reden als PO Due Date/voorkeursleverancier:
+  een nieuwe EF-kolom triggert het schema-regenereer-script, dat ook Supplier-credentials wist). Eén
+  keer opgehaald per "Refresh", daarna puur client-side gefilterd bij het aan/uitvinken van de
+  checkbox of het wisselen van geselecteerde order — geen extra MAX-round-trip per toggle. Een regel
+  zonder gevonden MAX-status (geplaatst met `UseMockPurchaseOrders=true`, of nog geen
+  `MaxLineNumber`) blijft zichtbaar (fail-open) in plaats van stilzwijgend verborgen te worden.
+  `MainForm.WrapInGroupBox` is voor deze gelegenheid verhuisd naar de gedeelde
+  `GridFormatting`-klasse (was `private static` op `MainForm`) zodat `OrdersForm` 'm ook kan
+  gebruiken — gedrag ongewijzigd.

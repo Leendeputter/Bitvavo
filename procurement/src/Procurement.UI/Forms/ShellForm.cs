@@ -131,7 +131,7 @@ namespace Procurement.UI.Forms
 
         private void ShowOrders()
         {
-            var form = new OrdersForm(_composition.PurchaseOrderRepository, _composition.PurchaseRequestRepository) { MdiParent = this };
+            var form = new OrdersForm(_composition.PurchaseOrderRepository, _composition.PurchaseRequestRepository, _composition.MaxOrderRepository) { MdiParent = this };
             form.FormClosed += (s, e) => form.Dispose();
             form.Show();
         }
