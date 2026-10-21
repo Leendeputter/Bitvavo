@@ -77,9 +77,11 @@ namespace Procurement.UI.Forms
             var pending = await _engine.GetPendingApprovalsAsync();
             _grid.DataSource = pending.Select(a => new
             {
+                // Kept in the DataSource (DecideAsync reads it back from the grid) but hidden below
+                // — just a sequential id, and the row header already shows a row number (user
+                // request, 20 okt 2026: "in de row header staat ook een teller").
                 a.Id,
                 ErpRequestNumber = a.PurchaseRequestLine?.PurchaseRequest?.ErpRequestNumber,
-                Line = a.PurchaseRequestLineId,
                 PartID = a.PurchaseRequestLine?.ErpArticleId,
                 Part = a.PurchaseRequestLine?.ManufacturerPartNumber,
                 Supplier = a.ProposedOffer?.SupplierCode,
@@ -93,9 +95,8 @@ namespace Procurement.UI.Forms
             ApplyDateTimeColumns(_grid, "CreatedAt");
             SetHeaderText(_grid, "OfferedQty", "Offered Qty");
             // Reason is the one genuinely free-text column here, left in Fill with a floor.
-            SetCharacterBasedColumnWidth(_grid, "Id", 6);
+            if (_grid.Columns["Id"] != null) _grid.Columns["Id"].Visible = false;
             SetCharacterBasedColumnWidth(_grid, "ErpRequestNumber", 12);
-            SetCharacterBasedColumnWidth(_grid, "Line", 8);
             SetCharacterBasedColumnWidth(_grid, "PartID", 14);
             SetCharacterBasedColumnWidth(_grid, "Part", 18);
             SetCharacterBasedColumnWidth(_grid, "Supplier", 12);

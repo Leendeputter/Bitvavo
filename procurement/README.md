@@ -1271,3 +1271,10 @@ raken dat mock-modus zelf nooit aanraakt:
   `.Include(a => a.PurchaseRequestLine.PurchaseRequest)` zodat die ene hop extra ook eager geladen
   wordt, in plaats van op EF6's lazy loading te vertrouwen (consistent met hoe de rest van de app
   altijd expliciet Include't wat een scherm nodig heeft).
+- **Approvals-grid: Id verborgen, Line weg** (user feedback, 20 okt 2026: "ALs het ID veld trouwens
+  gewoon een teller is dan kan die net zo goed weg, want in de row header staat ook een teller.
+  Line ben ik eerlijk gezegd ook niet in geinteresseerd, het gaat mij om de PR"). `Id` blijft wél in
+  de DataSource (`DecideAsync` leest 'm terug via `_grid.Columns["Id"]`), maar staat nu op
+  `Visible = false` — dezelfde aanpak als `OrdersForm._ordersGrid`'s eigen `Id`-kolom. `Line`
+  (`PurchaseRequestLineId`) is volledig uit de projectie gehaald, niet enkel verborgen — nergens
+  anders in dit scherm gebruikt.
