@@ -1,4 +1,5 @@
 using System;
+using System.Drawing;
 using System.Windows.Forms;
 using Procurement.UI.Composition;
 
@@ -46,6 +47,10 @@ namespace Procurement.UI.Forms
             Height = 860;
             StartPosition = FormStartPosition.CenterScreen;
             WindowState = FormWindowState.Maximized;
+            // White instead of the default SystemColors.Control gray, for more contrast against the
+            // menu bar (user request, 20 okt 2026 — this is the "startscherm" they meant, not
+            // MainForm, which keeps its own default background).
+            BackColor = Color.White;
 
             var menuStrip = new MenuStrip { Dock = DockStyle.Top };
 
