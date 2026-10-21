@@ -34,12 +34,16 @@ namespace Procurement.UI.Forms
             Height = 650;
             // CenterScreen, not CenterParent — shown owner-less via a plain Show() (independent
             // top-level window, user request, 20 okt 2026), so there's no Owner to center against.
-            // (The inner detail dialog opened from within this form stays CenterParent, since that
-            // one is genuinely modal to this window, not to MainForm.)
+            // StartPosition is moot for an MDI child (ShellForm.ShowAuditLog() sets MdiParent, user
+            // request, 20 okt 2026 — "MDI-container?") — WinForms always places MDI children with its
+            // own cascading layout regardless of this setting; left as CenterScreen only because
+            // nothing depends on changing it. (The inner detail dialog opened from within this form
+            // stays CenterParent, since that one is genuinely a modal dialog, not an MDI child.)
             StartPosition = FormStartPosition.CenterScreen;
-            // "Lichtgrijze formulierachtergrond" (user request, 20 okt 2026) — explicit so every
-            // screen matches on purpose, not by coincidence of an unset property.
-            BackColor = System.Drawing.SystemColors.Control;
+            // Pale blue, matching MAX's own "MRP Detail" screenshot (user request, 20 okt 2026) — see
+            // GridFormatting.ClassicScreenBackColor's own comment for why this replaced an earlier,
+            // visually-no-op SystemColors.Control attempt.
+            BackColor = ClassicScreenBackColor;
 
             var filterPanel = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 70, FlowDirection = FlowDirection.LeftToRight };
 

@@ -82,20 +82,23 @@ namespace Procurement.UI.Forms
         private void InitializeComponent()
         {
             // "Component Procurement" (with company/user) is ShellForm's title now — this window is
-            // just one independent screen among several (user request, 20 okt 2026), so it gets a
-            // plain screen name instead, same style as Orders/Approvals/Settings/etc.
+            // just one MDI child among several (user request, 20 okt 2026), so it gets a plain screen
+            // name instead, same style as Orders/Approvals/Settings/etc.
             Text = "Purchase Requests" + (_composition.Session.TestMode ? " – TEST MODE" : string.Empty);
             Width = 1300;
             Height = 860;
+            // StartPosition is moot for an MDI child (ShellForm.ShowPurchaseRequests() sets MdiParent,
+            // user request, 20 okt 2026 — "MDI-container?") — WinForms always places MDI children with
+            // its own cascading layout regardless of this setting; left as CenterScreen only because
+            // nothing depends on changing it.
             StartPosition = FormStartPosition.CenterScreen;
             // Geeft alle Dock-ed children (grids, knoppenbalken) een beetje lucht t.o.v. de
             // vensterrand in plaats van er helemaal tegenaan te zitten.
             Padding = new Padding(8);
-            // Explicit instead of relying on the implicit default — "lichtgrijze formulierachtergrond"
-            // (user request, 20 okt 2026, matching MAX's own "MRP Detail" screenshot) is what
-            // SystemColors.Control already renders as, but spelling it out keeps every screen on the
-            // same color on purpose rather than by coincidence of an unset property.
-            BackColor = SystemColors.Control;
+            // Pale blue, matching MAX's own "MRP Detail" screenshot (user request, 20 okt 2026) — see
+            // GridFormatting.ClassicScreenBackColor's own comment for why this replaced an earlier,
+            // visually-no-op SystemColors.Control attempt.
+            BackColor = ClassicScreenBackColor;
 
             var toolPanel = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 40, FlowDirection = FlowDirection.LeftToRight };
             _newRequestButton = new Button { Text = "Add New Test Request", AutoSize = true };

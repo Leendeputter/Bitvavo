@@ -1094,3 +1094,29 @@ raken dat mock-modus zelf nooit aanraakt:
   tekent het OS-thema overheen) en een lichtblauwe `ColumnHeadersDefaultCellStyle.BackColor`
   (`RGB 205,221,240`) — en die wordt nu op alle 13 grids in de app aangeroepen, naast de bestaande
   `EnableDoubleBuffering`/`EnableRowNumberHeaders` op dezelfde plek.
+- **MDI-container + echt lichtblauwe schermachtergrond** (user feedback, 20 okt 2026): "De schermen
+  van bv Purchase Request kan ik nog steeds buiten het hoofdscherm plaatsen, bedoeling is dat die
+  binnen het hoofdscherm blijven, MDI-container? De achtergrond van de schermen is niet gewijzigd,
+  die wil ik ook hetzelfde hebben als het voorbeeld dat ik eerder stuurde, dus lichtblauwachtig."
+  Twee aparte problemen:
+  - **Vensters nog los te verslepen**: de vorige wijziging maakte van elk scherm een onafhankelijk,
+    eigenaarloos topleveltvenster (`Show()` zonder Owner) — dat kon dus letterlijk overal op het
+    bureaublad gesleept worden, buiten `ShellForm` om. Dat was niet de bedoeling van "waarbij
+    Component Procurement de container is". `ShellForm` is nu een echte MDI-container
+    (`IsMdiContainer = true`), en elk scherm (`MainForm`, `OrdersForm`, `ApprovalForm`,
+    `SupplierMappingForm`, `SettingsForm`, `AuditLogForm`) krijgt bij het openen
+    `MdiParent = this` in plaats van alleen `Show()` — ze blijven nu letterlijk binnen
+    `ShellForm`'s cliëntgebied en kunnen er niet meer buiten gesleept worden.
+    `OrderConfirmationExceptionsForm` blijft ongewijzigd een modaal dialoogvenster (geopend vanuit
+    `MainForm` met `ShowDialog`, niet vanuit de menubalk) en wordt dus bewust geen MDI-child.
+  - **Achtergrond "niet gewijzigd"**: terecht opgemerkt — de vorige wijziging zette `BackColor`
+    expliciet op `SystemColors.Control`, maar dat was toevallig al de impliciete WinForms-default,
+    dus er was visueel niets veranderd. Vervangen door een echte lichtblauwe kleur
+    (`GridFormatting.ClassicScreenBackColor`, `RGB 230,240,250`) op diezelfde zeven schermen — een
+    tint lichter dan de blauwe grid-headers (`RGB 205,221,240`) zodat de headers nog als een apart
+    "bandje" blijven afsteken in plaats van in de achtergrond te verdwijnen. Het verborgen
+    `MdiClient`-besturingselement achter de menubalk (automatisch aangemaakt zodra
+    `IsMdiContainer = true` is) kreeg dezelfde kleur mee (via `ShellForm.OnLoad`, want dat element
+    bestaat pas zodra het form-handle is aangemaakt), zodat het gebied rond/achter de MDI-children
+    niet in een afwijkend grijs (`SystemColors.AppWorkspace`) overblijft. `ShellForm` zelf
+    (het "startscherm") behoudt zijn eigen witte achtergrond, zoals eerder expliciet gevraagd.

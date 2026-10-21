@@ -2,20 +2,27 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 using Procurement.UI.Composition;
+using static Procurement.UI.Support.GridFormatting;
 
 namespace Procurement.UI.Forms
 {
     /// <summary>
-    /// The actual application root (what Program.cs passes to Application.Run) — just a menu bar,
-    /// no content of its own. Took over that role from MainForm (user feedback, 20 okt 2026): "De
-    /// Purchase Requests ziet er nog steeds uit als een hoofdform. Ik kan dat niet afsluiten of
-    /// minimaliseren. En ik wil het bij opstarten gewoon zelf kunnen openen via menu - Purchase
-    /// Requests. Nu opent het default." Both complaints had the same root cause — MainForm being the
-    /// literal Application.Run() form made it the application itself, not a peer window: closing it
-    /// ends the whole app instead of just that one screen, and nothing opens until the user picks it
-    /// from this menu. MainForm (and Orders/Approvals/Supplier Mapping/Settings/Audit Log) are now
-    /// independent windows opened from here via a plain Show() with no Owner, exactly like the other
-    /// five already were (see MainForm's own former ShowOrders/etc. comment, now moved here).
+    /// The actual application root (what Program.cs passes to Application.Run) — a menu bar plus an
+    /// MDI client area, no content of its own otherwise. Took over the Application.Run() role from
+    /// MainForm (user feedback, 20 okt 2026): "De Purchase Requests ziet er nog steeds uit als een
+    /// hoofdform. Ik kan dat niet afsluiten of minimaliseren. En ik wil het bij opstarten gewoon zelf
+    /// kunnen openen via menu - Purchase Requests. Nu opent het default." Both complaints had the same
+    /// root cause — MainForm being the literal Application.Run() form made it the application itself,
+    /// not a peer window: closing it ends the whole app instead of just that one screen, and nothing
+    /// opens until the user picks it from this menu.
+    ///
+    /// MainForm (and Orders/Approvals/Supplier Mapping/Settings/Audit Log) were briefly independent,
+    /// owner-less top-level windows, but that let them be dragged anywhere on the desktop, outside
+    /// this window entirely — not what "waarbij Component Procurement de container is" meant (user
+    /// feedback, 20 okt 2026): "De schermen van bv Purchase Request kan ik nog steeds buiten het
+    /// hoofdscherm plaatsen, bedoeling is dat die binnen het hoofdscherm blijven, MDI-container?".
+    /// IsMdiContainer = true plus MdiParent = this on each child is exactly that: every screen now
+    /// lives inside this window's client area and can't be moved outside it.
     ///
     /// Nothing opens automatically at startup — the user picks what to look at, Activity > Purchase
     /// Requests included.
@@ -52,6 +59,13 @@ namespace Procurement.UI.Forms
             // MainForm, which keeps its own default background).
             BackColor = Color.White;
 
+            // Confines every screen to this window instead of letting them be dragged out onto the
+            // desktop (user request, 20 okt 2026 — see class comment). The actual MDI child area is a
+            // separate, auto-created MdiClient control, not this Form itself, hence OnLoad below to
+            // reach it and match its backdrop to the child forms' own pale-blue background — otherwise
+            // it'd default to a plain flat gray (SystemColors.AppWorkspace) behind/around them.
+            IsMdiContainer = true;
+
             // Classic blue menu-bar look (user request, 20 okt 2026 — screenshot of MAX's own MRP
             // menu bar as the reference). ToolStripProfessionalRenderer is the standard WinForms way
             // to recolor a MenuStrip beyond plain BackColor (System render mode mostly ignores it in
@@ -83,11 +97,28 @@ namespace Procurement.UI.Forms
             Controls.Add(menuStrip);
         }
 
+        /// <summary>
+        /// The MdiClient control behind the menu strip is created automatically once IsMdiContainer
+        /// is true and this Form's handle exists — not before, hence doing this in OnLoad rather than
+        /// InitializeComponent. Matches its backdrop to ClassicScreenBackColor so the area
+        /// behind/around child windows (e.g. a non-maximized child, or the margin next to one) reads
+        /// as the same pale blue instead of the MdiClient's own default flat gray.
+        /// </summary>
+        protected override void OnLoad(EventArgs e)
+        {
+            base.OnLoad(e);
+            foreach (Control control in Controls)
+            {
+                if (control is MdiClient mdiClient)
+                    mdiClient.BackColor = ClassicScreenBackColor;
+            }
+        }
+
         private void ShowPurchaseRequests()
         {
             if (_mainForm == null || _mainForm.IsDisposed)
             {
-                _mainForm = new MainForm(_composition);
+                _mainForm = new MainForm(_composition) { MdiParent = this };
                 _mainForm.FormClosed += (s, e) => _mainForm = null;
                 _mainForm.Show();
                 return;
@@ -100,7 +131,7 @@ namespace Procurement.UI.Forms
 
         private void ShowOrders()
         {
-            var form = new OrdersForm(_composition.PurchaseOrderRepository, _composition.PurchaseRequestRepository);
+            var form = new OrdersForm(_composition.PurchaseOrderRepository, _composition.PurchaseRequestRepository) { MdiParent = this };
             form.FormClosed += (s, e) => form.Dispose();
             form.Show();
         }
@@ -108,7 +139,7 @@ namespace Procurement.UI.Forms
         /// <summary>Refreshes Purchase Requests (if open) after Approvals closes — a manual approval decision can move a request's Workflow status out of WaitingApproval, previously refreshed by MainForm itself when it owned this button directly.</summary>
         private void ShowApprovals()
         {
-            var form = new ApprovalForm(_composition.Engine);
+            var form = new ApprovalForm(_composition.Engine) { MdiParent = this };
             form.FormClosed += async (s, e) =>
             {
                 form.Dispose();
@@ -120,21 +151,21 @@ namespace Procurement.UI.Forms
 
         private void ShowSupplierMapping()
         {
-            var form = new SupplierMappingForm(_composition.SupplierProductMappingRepository);
+            var form = new SupplierMappingForm(_composition.SupplierProductMappingRepository) { MdiParent = this };
             form.FormClosed += (s, e) => form.Dispose();
             form.Show();
         }
 
         private void ShowSettings()
         {
-            var form = new SettingsForm(_composition.PolicyRepository, _composition.SupplierRepository);
+            var form = new SettingsForm(_composition.PolicyRepository, _composition.SupplierRepository) { MdiParent = this };
             form.FormClosed += (s, e) => form.Dispose();
             form.Show();
         }
 
         private void ShowAuditLog()
         {
-            var form = new AuditLogForm(_composition.ProcurementEventRepository);
+            var form = new AuditLogForm(_composition.ProcurementEventRepository) { MdiParent = this };
             form.FormClosed += (s, e) => form.Dispose();
             form.Show();
         }

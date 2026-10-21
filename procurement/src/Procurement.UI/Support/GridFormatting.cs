@@ -19,6 +19,17 @@ namespace Procurement.UI.Support
         private const string QuantityFormat = "N4";
         private const string CurrencyFormat = "€ #,##0.0000";
 
+        /// <summary>
+        /// Pale-blue "screen" background matching MAX's own MRP screens (user-supplied screenshot,
+        /// 20 okt 2026). Replaces an earlier attempt that set BackColor = SystemColors.Control
+        /// explicitly — which made no visible difference at all, since that's already the implicit
+        /// WinForms default, and the user correctly flagged it ("De achtergrond van de schermen is
+        /// niet gewijzigd... dus lichtblauwachtig"). A shade lighter than
+        /// ApplyClassicHeaderStyle's grid-header blue below, so headers still read as a distinct band
+        /// rather than blending into the form itself.
+        /// </summary>
+        public static readonly Color ClassicScreenBackColor = Color.FromArgb(230, 240, 250);
+
         public static void ApplyQuantityColumns(DataGridView grid, params string[] columnNames)
         {
             foreach (var name in columnNames) ApplyFormat(grid, name, QuantityFormat);
