@@ -34,9 +34,19 @@ namespace Procurement.Suppliers.TME
             Pricing = CapabilityStatus.Supported,
             Availability = CapabilityStatus.Supported,
             Packaging = CapabilityStatus.Supported,
-            // Ordering stays mock-only even when UseMockData=false — see CreateOrderAsync below.
-            Ordering = CapabilityStatus.Supported,
-            OrderStatus = CapabilityStatus.Supported,
+            // ManualProcess, not Supported (confirmed 21 okt 2026 — two documents pasted by the
+            // user: TME's own "TME API (V2.0 Current Version)" overview and a developer-account
+            // setup guide): the confirmed TME API is product/catalog-only — search, prices, stock,
+            // delivery, parameters, documents. No order-placement or order-status endpoint exists
+            // anywhere in either document. The user's own guess ("ordering zou wel mogelijk moeten
+            // zijn via EDI") may be right, but EDI is a fundamentally different integration (a
+            // trading-partner file/message exchange, not a REST call) that neither document
+            // describes — nothing here guesses at one. ProcessOrderConfirmationsAsync and
+            // PlaceSupplierPurchaseOrderAsync both skip an adapter whose capability isn't Supported,
+            // so TME orders now fall through to "place/track manually" instead of hitting
+            // CreateOrderAsync/GetOrderStatusAsync's still-unimplemented real-mode throw.
+            Ordering = CapabilityStatus.ManualProcess,
+            OrderStatus = CapabilityStatus.ManualProcess,
             Shipment = CapabilityStatus.ManualProcess,
             Tracking = CapabilityStatus.ManualProcess,
             Invoice = CapabilityStatus.ManualProcess

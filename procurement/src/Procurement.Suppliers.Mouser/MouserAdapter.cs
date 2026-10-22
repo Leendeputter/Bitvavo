@@ -36,9 +36,10 @@ namespace Procurement.Suppliers.Mouser
             Pricing = CapabilityStatus.Supported,
             Availability = CapabilityStatus.Supported,
             Packaging = CapabilityStatus.Supported,
-            // Ordering stays mock-only even when UseMockData=false — Mouser's Order API needs a
-            // separate, additionally-approved API key from the Search API key used here, and its
-            // exact contract is unconfirmed. See CreateOrderAsync below.
+            // Ordering and OrderStatus are both real in real-mode now (21 okt 2026 — confirmed
+            // Swagger spec pasted by the user): a cart-based Order API (CreateRealOrderAsync) and a
+            // genuine order-lookup-by-sales-order-number endpoint (GetOrderStatusAsync), unlike
+            // Farnell's Order API, which has no status/history endpoint at all.
             Ordering = CapabilityStatus.Supported,
             OrderStatus = CapabilityStatus.Supported,
             Shipment = CapabilityStatus.ManualProcess,
@@ -295,11 +296,7 @@ namespace Procurement.Suppliers.Mouser
             if (string.IsNullOrWhiteSpace(idempotencyKey)) throw new ArgumentNullException(nameof(idempotencyKey));
 
             if (!_options.UseMockData)
-            {
-                throw new SupplierException(Code, SupplierErrorCode.UnknownError,
-                    "Mouser real-mode ordering is not implemented — it needs a separate Order API key and the contract is unconfirmed. " +
-                    "Set UseMockData=true for Mouser, or place this order manually.");
-            }
+                return CreateRealOrderAsync(request, idempotencyKey);
 
             if (OrdersByIdempotencyKey.TryGetValue(idempotencyKey, out var existing))
                 return Task.FromResult(existing.Result);
@@ -334,13 +331,113 @@ namespace Procurement.Suppliers.Mouser
             return Task.FromResult(result);
         }
 
+        /// <summary>
+        /// Order API spec pasted by the user 21 okt 2026 (confirmed Swagger, api.mouser.com — same
+        /// host/apiKey auth as Search, see MouserHttpClientWrapper). Cart-based, like Farnell's, but
+        /// simpler in one respect (no address picker built here): ShippingAddress is left out of the
+        /// request entirely, so Mouser falls back to "the default shipping address associated with
+        /// the account" per its own spec — same simplification choice as not yet knowing of a
+        /// Mouser-side equivalent to Farnell's "dit gaat bij Farnell wel eens fout" complaint. Worth
+        /// revisiting the same way if it turns out to matter in practice.
+        /// </summary>
+        private async Task<SupplierOrderResult> CreateRealOrderAsync(SupplierOrderRequest request, string idempotencyKey)
+        {
+            RequireHttpClient();
+            if (request.Lines == null || request.Lines.Count == 0)
+            {
+                throw new SupplierException(Code, SupplierErrorCode.InvalidQuantity, "Order has no lines.");
+            }
+
+            // 1. Add every line to a brand-new cart — CartKey deliberately omitted so Mouser mints a
+            // fresh one each time, rather than risking stale items from a previous failed attempt.
+            var cartRequest = new MouserCartItemRequestRoot
+            {
+                CartItems = request.Lines.Select(l => new MouserCartItemRequest
+                {
+                    MouserPartNumber = l.SupplierPartNumber,
+                    Quantity = l.Quantity
+                }).ToList()
+            };
+            var cartJson = await _httpClient.PostAsync("api/v1.0/cart/items/insert", JsonConvert.SerializeObject(cartRequest)).ConfigureAwait(false);
+            var cart = Deserialize<MouserCartResponseRoot>(cartJson);
+            ThrowIfMouserErrors(cart?.Errors);
+            if (string.IsNullOrEmpty(cart?.CartKey))
+            {
+                throw new SupplierException(Code, SupplierErrorCode.UnknownError, "Mouser cart/items/insert did not return a CartKey.");
+            }
+
+            // 2. Ask what shipping/payment options this cart+account combination allows — both are
+            // required to submit (PaymentTypeRequest.Method is a required field), so an account with
+            // neither configured fails here with a clear message rather than a confusing 400 later.
+            var initializeRequest = new MouserOrderInitializeRequestRoot
+            {
+                OrderInitialize = new MouserOrderInitializeRequest { CurrencyCode = request.Currency, CartKey = cart.CartKey }
+            };
+            var initializeJson = await _httpClient.PostAsync("api/v1.0/order/options/query", JsonConvert.SerializeObject(initializeRequest)).ConfigureAwait(false);
+            var initialize = Deserialize<MouserOrderInitializeResponseRoot>(initializeJson)?.OrderInitialize;
+            ThrowIfMouserErrors(initialize?.Errors);
+
+            // No "preferred"/"default" flag exists on either list in the confirmed spec (unlike
+            // Farnell's shippingPreferredMethod) — picking the first entry is this app's own
+            // assumption, not something Mouser's API states; re-check once real account data is seen.
+            var shippingMethod = initialize?.Shipping?.Methods?.FirstOrDefault();
+            if (shippingMethod == null)
+            {
+                throw new SupplierException(Code, SupplierErrorCode.UnknownError,
+                    "Mouser returned no usable shipping methods (order/options/query).");
+            }
+            var paymentType = initialize?.Payment?.PaymentTypes?.FirstOrDefault();
+            if (paymentType == null)
+            {
+                throw new SupplierException(Code, SupplierErrorCode.UnknownError,
+                    "Mouser account has no payment method on file (order/options/query returned none) — configure one in My Mouser before placing a real order.");
+            }
+
+            // 3. Submit for real. SubmitOrder defaults to false in Mouser's own spec — leaving it
+            // unset would silently return a preview instead of actually placing the order.
+            var orderRequest = new MouserOrderRequestRootType
+            {
+                Order = new MouserOrderRequestType
+                {
+                    CartKey = cart.CartKey,
+                    CurrencyCode = initialize?.CurrencyCode ?? request.Currency,
+                    PrimaryShipping = new MouserShippingMethod { Code = shippingMethod.Code },
+                    Payment = new MouserPaymentTypeRequest { Method = paymentType.Method, PoNumber = request.ErpPoNumber },
+                    SubmitOrder = true
+                }
+            };
+            var orderJson = await _httpClient.PostAsync("api/v1.0/order", JsonConvert.SerializeObject(orderRequest)).ConfigureAwait(false);
+            var order = Deserialize<MouserOrderRoot>(orderJson)?.Order;
+            ThrowIfMouserErrors(order?.Errors);
+            if (string.IsNullOrEmpty(order?.OrderId))
+            {
+                throw new SupplierException(Code, SupplierErrorCode.UnknownError, "Mouser order submission did not return an OrderID.");
+            }
+
+            return new SupplierOrderResult
+            {
+                Success = true,
+                SupplierOrderNumber = order.OrderId,
+                Status = PurchaseOrderStatus.Acknowledged,
+                OrderTotal = order.OrderTotal > 0 ? order.OrderTotal : request.Lines.Sum(l => l.Quantity * l.UnitPrice),
+                Currency = order.CurrencyCode ?? request.Currency ?? "EUR",
+                SubmittedAt = DateTime.UtcNow
+            };
+        }
+
+        private static void ThrowIfMouserErrors(List<MouserErrorDto> errors)
+        {
+            if (errors != null && errors.Count > 0)
+            {
+                throw new SupplierException(Code, SupplierErrorCode.UnknownError,
+                    $"Mouser API returned an error: {string.Join("; ", errors.Select(e => e.Message))}");
+            }
+        }
+
         public Task<Core.Models.SupplierOrderStatus> GetOrderStatusAsync(string supplierOrderNumber)
         {
             if (!_options.UseMockData)
-            {
-                throw new SupplierException(Code, SupplierErrorCode.UnknownError,
-                    "Mouser real-mode order status is not implemented — see CreateOrderAsync.");
-            }
+                return GetRealOrderStatusAsync(supplierOrderNumber);
 
             var placed = OrdersByIdempotencyKey.Values.FirstOrDefault(o => o.Result.SupplierOrderNumber == supplierOrderNumber);
             if (placed.Result == null)
@@ -356,6 +453,50 @@ namespace Procurement.Suppliers.Mouser
                 ConfirmedAt = DateTime.UtcNow,
                 Lines = placed.Lines.Select(l => MockOrderConfirmationBuilder.BuildLine(supplierOrderNumber, l)).ToList()
             });
+        }
+
+        /// <summary>GET /orderhistory/salesOrderNumber — a genuine order-status/history lookup, unlike Farnell's Order API, which has none at all.</summary>
+        private async Task<Core.Models.SupplierOrderStatus> GetRealOrderStatusAsync(string supplierOrderNumber)
+        {
+            RequireHttpClient();
+            var json = await _httpClient.GetAsync($"api/v1.0/orderhistory/salesOrderNumber?salesOrderNumber={Uri.EscapeDataString(supplierOrderNumber)}")
+                .ConfigureAwait(false);
+            var detail = Deserialize<MouserOrderDetailDto>(json);
+            if (detail == null || string.IsNullOrEmpty(detail.SalesOrderId))
+            {
+                throw new SupplierException(Code, SupplierErrorCode.ProductNotFound,
+                    $"Mouser found no order for sales order number '{supplierOrderNumber}'.");
+            }
+
+            return new Core.Models.SupplierOrderStatus
+            {
+                SupplierOrderNumber = supplierOrderNumber,
+                Status = MapOrderStatus(detail.OrderStatusName),
+                Lines = (detail.OrderLines ?? new List<MouserOrderLineItemDto>())
+                    .Where(l => l.ProductInfo != null)
+                    .Select(l => new SupplierOrderStatusLine
+                    {
+                        SupplierPartNumber = l.ProductInfo.MouserPartNumber,
+                        ConfirmedQuantity = l.Quantity,
+                        ConfirmedUnitPrice = l.UnitPrice
+                    })
+                    .ToList()
+            };
+        }
+
+        /// <summary>
+        /// OrderStatus's numeric code isn't documented anywhere in the confirmed spec, so this maps
+        /// the human-readable OrderStatusName instead, best-effort — re-check against a real
+        /// response once available and adjust the keyword list if Mouser's actual wording differs.
+        /// </summary>
+        private static PurchaseOrderStatus MapOrderStatus(string orderStatusName)
+        {
+            if (string.IsNullOrWhiteSpace(orderStatusName)) return PurchaseOrderStatus.Acknowledged;
+            if (orderStatusName.IndexOf("cancel", StringComparison.OrdinalIgnoreCase) >= 0) return PurchaseOrderStatus.Cancelled;
+            if (orderStatusName.IndexOf("complete", StringComparison.OrdinalIgnoreCase) >= 0) return PurchaseOrderStatus.Completed;
+            if (orderStatusName.IndexOf("ship", StringComparison.OrdinalIgnoreCase) >= 0) return PurchaseOrderStatus.Shipped;
+            if (orderStatusName.IndexOf("confirm", StringComparison.OrdinalIgnoreCase) >= 0) return PurchaseOrderStatus.Confirmed;
+            return PurchaseOrderStatus.Acknowledged;
         }
 
         public Task<bool> CancelOrderAsync(string supplierOrderNumber)

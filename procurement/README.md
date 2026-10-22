@@ -1392,3 +1392,43 @@ raken dat mock-modus zelf nooit aanraakt:
     `FarnellOptions.ApiKey` als de Product Search API — de documentatie wijst herhaaldelijk naar een
     aparte "Order API Registration"-pagina zonder te zeggen of die een nieuwe key uitgeeft; goedkoop
     te corrigeren zodra dat bekend is.
+- **Mouser real-mode ordering gebouwd, TME bevestigd read-only** (21 okt 2026, vier documenten
+  aangeleverd door de gebruiker: Mouser's eigen API-guide-PDF, Mouser's confirmed Swagger 2.0-spec,
+  TME's "API (V2.0 Current Version)"-overzicht, en een TME-registratie-instructie-PDF — "OK, hier de
+  info van mouser en tme. Ik denk dat tme alleen search ondersteunt zo te zien, ordering zou wel
+  mogelijk moeten zijn via EDI als ik het zo lees. Als deze documenten voldoende zijn dan ook graag
+  uitwerken").
+  - **Mouser**: de Swagger-spec gaf een volledig, machine-leesbaar contract — significant completer
+    dan wat voor Farnell beschikbaar was. Belangrijke correctie t.o.v. de bestaande code: de
+    API-guide-PDF zegt expliciet "your new API Key will show up for you to use with the Mouser Cart
+    and Order APIs" — **één** key voor Search én Cart én Order, niet de eerder aangenomen aparte
+    Order-key (`MouserOptions`/`MouserAdapter`/`MouserHttpClientWrapper`'s comments hierover
+    bijgewerkt). Zelfde host (`api.mouser.com`) en dezelfde `apiKey`-queryparameter-auth als Search,
+    dus geen aparte ordering-HTTP-client/interface nodig zoals bij DigiKey/Farnell —
+    `MouserHttpClientWrapper.GetAsync` (eerder een `NotSupportedException`, Search was POST-only)
+    is nu een echte implementatie, nodig voor Cart/Order's GET-endpoints.
+    - Flow in `MouserAdapter.CreateRealOrderAsync`: nieuwe cart aanmaken (`cart/items/insert`,
+      CartKey bewust weggelaten) → shipping-/betaalopties opvragen (`order/options/query`, eerste
+      optie uit elke lijst gekozen — geen "preferred"-vlag zoals bij Farnell, dus een eigen aanname)
+      → order echt indienen (`order`, met `SubmitOrder: true` — staat default op `false` in Mouser's
+      eigen spec, en zonder die expliciete override zou de order enkel een preview blijven, nooit
+      echt geplaatst worden).
+    - `GetOrderStatusAsync` is nu ook echt (`orderhistory/salesOrderNumber`) — Mouser heeft, anders
+      dan Farnell, wél een orderstatus-/geschiedenis-endpoint. De numerieke statuscode is nergens
+      gedocumenteerd, dus wordt de tekstuele `OrderStatusName` best-effort gemapt (keyword-match).
+    - **Belangrijke waarschuwing, letterlijk uit Mouser's eigen guide**: "The API Explorer page is
+      not a sandbox. Any orders that are created will be placed against your account" — er is
+      sowieso geen sandbox voor Cart/Order bij Mouser, dus elke real-mode order hier is een echte.
+    - Verzendadres bewust simpel gehouden: geen picker zoals bij Farnell, `ShippingAddress` wordt
+      gewoon weggelaten zodat Mouser het standaardadres van het account gebruikt — alleen uitbreiden
+      als hier dezelfde klacht als bij Farnell naar voren komt.
+  - **TME**: beide documenten bevestigen onafhankelijk van elkaar dat de TME API **enkel**
+    product-/catalogusdata biedt (zoeken, prijzen, voorraad, levertijd, parameters, documenten) — geen
+    order-plaatsing of orderstatus-endpoint in de hele spec. De tweede PDF bleek puur een
+    registratie-/token-aanmaak-handleiding, geen aanvullende API-documentatie. De eigen suggestie
+    ("via EDI") kan kloppen, maar EDI is een fundamenteel ander soort integratie (bestands-/
+    berichtenuitwisseling met een handelspartner, geen REST-aanroep) waar geen van beide documenten
+    iets over zegt — dat wordt dus niet gegokt. `TmeAdapter.Capabilities.Ordering`/`OrderStatus` staan
+    nu op `ManualProcess` i.p.v. `Supported`, zodat orders richting TME voortaan automatisch als
+    "handmatig plaatsen/volgen" worden behandeld in plaats van tegen een niet-bestaand endpoint aan
+    te lopen (zelfde correctie als eerder bij Farnell's `OrderStatus`).

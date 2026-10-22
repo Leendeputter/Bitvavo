@@ -7,13 +7,24 @@ namespace Procurement.Suppliers.Mouser
     /// </summary>
     public class MouserOptions
     {
-        /// <summary>Mouser's "Search API" key — self-service, obtained from mouser.com/api-hub/.</summary>
+        /// <summary>
+        /// A single API key covering Search, Cart and Order — confirmed via Mouser's own API guide
+        /// (pasted by the user, 21 okt 2026): generated from My Mouser account's "APIs" panel under
+        /// Personal Information, explicitly described there as usable "with the Mouser Cart and
+        /// Order APIs" too, not just Search. Supersedes an earlier assumption in this codebase that
+        /// ordering would need a second, separately-approved key.
+        /// </summary>
         public string ApiKey { get; set; }
 
         /// <summary>Mouser has no separate sandbox environment — kept only for UI/Supplier-row consistency with the other adapters, unused by MouserHttpClientWrapper.</summary>
         public bool IsSandbox { get; set; } = true;
 
-        /// <summary>When true, the adapter never calls the HTTP layer and returns fixed/deterministic mock data instead. Set to false only once ApiKey is real and the Order API contract (see MouserAdapter) has been confirmed — Mouser issues a *separate* Order API key from the Search API key used here.</summary>
+        /// <summary>
+        /// When true, the adapter never calls the HTTP layer and returns fixed/deterministic mock
+        /// data instead. Set to false only once ApiKey is real — and only when actually ready to
+        /// place a real order: Mouser's own API guide states plainly that there is no sandbox for
+        /// Cart/Order calls, real-mode here always hits the live account.
+        /// </summary>
         public bool UseMockData { get; set; } = true;
     }
 }
