@@ -531,6 +531,40 @@ namespace Procurement.Engine
         /// </summary>
         public async Task PlaceOrdersAsync(IReadOnlyList<int> purchaseRequestIds, string user)
         {
+            var candidates = await GatherOrderCandidatesAsync(purchaseRequestIds);
+
+            if (candidates.Count == 0)
+            {
+                await _auditLogger.LogAsync("PurchaseOrder", "-", "PLACE_ORDERS_NOTHING_TO_DO", "Success", userOrSystem: user);
+                return;
+            }
+
+            foreach (var group in candidates.GroupBy(c => c.Offer.SupplierCode))
+            {
+                await PlaceSupplierPurchaseOrderAsync(group.Key, group.ToList(), user);
+            }
+
+            foreach (var requestId in candidates.Select(c => c.Line.PurchaseRequestId).Distinct())
+            {
+                await RecomputeRequestStatusAfterOrderPlacementAsync(requestId);
+            }
+        }
+
+        /// <summary>
+        /// Read-only preview of which supplier(s) PlaceOrdersAsync would actually place orders
+        /// against for this same selection — used by MainForm to decide, before placing anything,
+        /// whether to show Farnell's ship-to-address picker (user request, 21 okt 2026). Shares
+        /// PlaceOrdersAsync's own candidate-gathering so the two can never disagree about what
+        /// counts as "about to be ordered".
+        /// </summary>
+        public async Task<IReadOnlyList<string>> PreviewSupplierCodesForOrderAsync(IReadOnlyList<int> purchaseRequestIds)
+        {
+            var candidates = await GatherOrderCandidatesAsync(purchaseRequestIds);
+            return candidates.Select(c => c.Offer.SupplierCode).Distinct().ToList();
+        }
+
+        private async Task<List<(PurchaseRequestLine Line, SupplierOffer Offer)>> GatherOrderCandidatesAsync(IReadOnlyList<int> purchaseRequestIds)
+        {
             var candidates = new List<(PurchaseRequestLine Line, SupplierOffer Offer)>();
 
             foreach (var requestId in purchaseRequestIds)
@@ -551,21 +585,7 @@ namespace Procurement.Engine
                 }
             }
 
-            if (candidates.Count == 0)
-            {
-                await _auditLogger.LogAsync("PurchaseOrder", "-", "PLACE_ORDERS_NOTHING_TO_DO", "Success", userOrSystem: user);
-                return;
-            }
-
-            foreach (var group in candidates.GroupBy(c => c.Offer.SupplierCode))
-            {
-                await PlaceSupplierPurchaseOrderAsync(group.Key, group.ToList(), user);
-            }
-
-            foreach (var requestId in candidates.Select(c => c.Line.PurchaseRequestId).Distinct())
-            {
-                await RecomputeRequestStatusAfterOrderPlacementAsync(requestId);
-            }
+            return candidates;
         }
 
         /// <summary>Spec §6 steps 9-11, now per supplier group instead of per line: ERP PO first (always, for every group), then the supplier-side submission (skipped as a manual process if the adapter doesn't support Ordering), then status reflected back to the ERP.</summary>

@@ -34,13 +34,34 @@ namespace Procurement.Suppliers.Farnell
             Pricing = CapabilityStatus.Supported,
             Availability = CapabilityStatus.Supported,
             Packaging = CapabilityStatus.Supported,
-            // Ordering stays mock-only even when UseMockData=false — see CreateOrderAsync below.
+            // Ordering is real in real-mode now (21 okt 2026 — Order API spec pasted by the user,
+            // see CreateRealOrderAsync below).
             Ordering = CapabilityStatus.Supported,
-            OrderStatus = CapabilityStatus.Supported,
+            // ManualProcess, not Supported: the Order API spec the user pasted (the full "APIs
+            // available for managing orders" list, confirmed by the user to be the complete list)
+            // has no order-status/order-history endpoint at all, only cart+submit. Processing Order
+            // Confirmations skips an adapter whose OrderStatus isn't Supported, so this keeps that
+            // step from attempting (and failing on) a call that doesn't exist, rather than Farnell
+            // orders staying mock-only here too.
+            OrderStatus = CapabilityStatus.ManualProcess,
             Shipment = CapabilityStatus.ManualProcess,
             Tracking = CapabilityStatus.ManualProcess,
             Invoice = CapabilityStatus.ManualProcess
         };
+
+        /// <summary>
+        /// Ship-to address chosen for the order currently being placed — set by the UI (MainForm,
+        /// before calling ProcurementEngine.PlaceOrdersAsync) after showing the user a picker built
+        /// from GetAvailableShipToAddressesAsync's live list, since Farnell's own default sometimes
+        /// isn't the right one (user, 21 okt 2026: "dit gaat bij Farnell wel eens fout"). Null means
+        /// "use whatever GetAvailableShipToAddressesAsync returns first" — the fallback a caller with
+        /// no picker UI (e.g. a future console tester, mirroring DigiKeyOrderTester) gets for free.
+        /// A single mutable property rather than a per-call parameter threaded through
+        /// ISupplierAdapter: this app places orders one at a time from a single-user WinForms UI
+        /// (same assumption ProcurementDbContext's own long-lived-single-instance design already
+        /// makes), so there is never a second order's selection to clash with.
+        /// </summary>
+        public string SelectedShipToAddressId { get; set; }
 
         public FarnellAdapter(FarnellOptions options, ISupplierHttpClient httpClient = null)
         {
@@ -255,14 +276,7 @@ namespace Procurement.Suppliers.Farnell
             if (string.IsNullOrWhiteSpace(idempotencyKey)) throw new ArgumentNullException(nameof(idempotencyKey));
 
             if (!_options.UseMockData)
-            {
-                // Same reasoning as DigiKeyAdapter.CreateOrderAsync: Farnell's real order-submission
-                // API contract is unconfirmed, so real-mode ordering stays unimplemented rather than
-                // risk a wrong guess against a live account.
-                throw new SupplierException(Code, SupplierErrorCode.UnknownError,
-                    "Farnell real-mode ordering is not implemented — the Ordering API contract is unconfirmed. " +
-                    "Set UseMockData=true for Farnell, or place this order manually.");
-            }
+                return CreateRealOrderAsync(request, idempotencyKey);
 
             if (OrdersByIdempotencyKey.TryGetValue(idempotencyKey, out var existing))
                 return Task.FromResult(existing.Result);
@@ -295,6 +309,157 @@ namespace Procurement.Suppliers.Farnell
 
             OrdersByIdempotencyKey[idempotencyKey] = (result, request.Lines);
             return Task.FromResult(result);
+        }
+
+        /// <summary>
+        /// Order API spec pasted by the user 21 okt 2026 (partner.element14.com/order, blocked for
+        /// this session — see README). Unlike DigiKey's Ordering v3 (one atomic POST), this is a
+        /// stateful cart: mint a JWT, add each line, explicitly clear any stale cart state first
+        /// (the spec has no "is this cart empty" check, and a previous failed attempt could have
+        /// left items behind — same idempotency concern CancelOrderAsync's mock-mode removal
+        /// already guards against, just for a different failure mode), pick a shipping address and
+        /// method, then review and submit.
+        /// </summary>
+        private async Task<SupplierOrderResult> CreateRealOrderAsync(SupplierOrderRequest request, string idempotencyKey)
+        {
+            RequireHttpClient();
+            if (!(_httpClient is IFarnellOrderingHttpClient orderingClient))
+            {
+                throw new SupplierException(Code, SupplierErrorCode.UnknownError,
+                    "FarnellAdapter's ISupplierHttpClient does not support the Order API (expected a FarnellHttpClientWrapper).");
+            }
+            if (string.IsNullOrWhiteSpace(_options.AccountId))
+            {
+                throw new SupplierException(Code, SupplierErrorCode.AuthenticationError,
+                    "Farnell AccountId (trade account number) is not configured — set it via Instellingen -> Suppliers.");
+            }
+            if (request.Lines == null || request.Lines.Count == 0)
+            {
+                throw new SupplierException(Code, SupplierErrorCode.InvalidQuantity, "Order has no lines.");
+            }
+
+            var jwt = await orderingClient.AuthenticateOrderingAsync(_options.AccountId).ConfigureAwait(false);
+
+            await orderingClient.PostOrderingAsync("cart/clear", null, jwt).ConfigureAwait(false);
+
+            var addItemRequest = new FarnellAddCartItemRequest
+            {
+                OrderItem = request.Lines.Select(l => new FarnellCartItemRequest
+                {
+                    Quantity = l.Quantity.ToString(),
+                    Sku = l.SupplierPartNumber
+                }).ToList()
+            };
+            await orderingClient.PostOrderingAsync("cart/addItem", JsonConvert.SerializeObject(addItemRequest), jwt)
+                .ConfigureAwait(false);
+
+            var addresses = await GetAvailableShipToAddressesViaAsync(orderingClient, jwt).ConfigureAwait(false);
+            if (addresses.Count == 0)
+            {
+                throw new SupplierException(Code, SupplierErrorCode.UnknownError,
+                    "Farnell account has no shipping addresses configured (GET /order/shipping_address returned none).");
+            }
+            var chosenAddressId = !string.IsNullOrEmpty(SelectedShipToAddressId)
+                ? SelectedShipToAddressId
+                : addresses[0].AddressId;
+            await orderingClient.PostOrderingAsync("order/shipping_address",
+                JsonConvert.SerializeObject(new FarnellConfirmAddressRequest { AddressId = chosenAddressId }), jwt)
+                .ConfigureAwait(false);
+
+            var methodsJson = await orderingClient.GetOrderingAsync("order/shipping_methods", jwt).ConfigureAwait(false);
+            var methodsResponse = Deserialize<FarnellShippingMethodsResponse>(methodsJson);
+            var methods = methodsResponse?.UsableShippingMode ?? new List<FarnellShippingMethodDto>();
+            var chosenMethod = methods.FirstOrDefault(m => string.Equals(m.ShippingPreferredMethod, "true", StringComparison.OrdinalIgnoreCase))
+                ?? methods.FirstOrDefault();
+            if (chosenMethod == null)
+            {
+                throw new SupplierException(Code, SupplierErrorCode.UnknownError,
+                    "Farnell returned no usable shipping methods (GET /order/shipping_methods).");
+            }
+            await orderingClient.PostOrderingAsync("order/shipping_method",
+                JsonConvert.SerializeObject(new FarnellConfirmShippingMethodRequest { ShippingMethodId = chosenMethod.ShippingMethodId }), jwt)
+                .ConfigureAwait(false);
+
+            var reviewJson = await orderingClient.GetOrderingAsync("order/order_review", jwt).ConfigureAwait(false);
+            var review = Deserialize<FarnellOrderReviewResponse>(reviewJson);
+            decimal.TryParse(review?.GrandTotal, out var grandTotal);
+
+            var submitJson = await orderingClient.PostOrderingAsync("order/order_submit",
+                JsonConvert.SerializeObject(new FarnellOrderSubmitRequest { PoNumberId = request.ErpPoNumber }), jwt)
+                .ConfigureAwait(false);
+            var submitResponse = Deserialize<FarnellOrderSubmitResponse>(submitJson);
+            if (string.IsNullOrEmpty(submitResponse?.OrderReference))
+            {
+                throw new SupplierException(Code, SupplierErrorCode.UnknownError,
+                    "Farnell order_submit did not return an orderReference.");
+            }
+
+            return new SupplierOrderResult
+            {
+                Success = true,
+                SupplierOrderNumber = submitResponse.OrderReference,
+                Status = PurchaseOrderStatus.Acknowledged,
+                OrderTotal = grandTotal > 0 ? grandTotal : request.Lines.Sum(l => l.Quantity * l.UnitPrice),
+                Currency = request.Currency ?? "EUR",
+                SubmittedAt = DateTime.UtcNow
+            };
+        }
+
+        /// <summary>
+        /// Live list of the trade account's saved ship-to addresses — used by MainForm to build the
+        /// picker it shows before calling ProcurementEngine.PlaceOrdersAsync (user request, 21 okt
+        /// 2026: pick per order, not a stored default, "dit gaat bij Farnell wel eens fout"). In
+        /// mock mode there is no real account to ask, so this returns a single synthetic entry —
+        /// callers don't need their own mock/real branch, and MainForm's picker still "works"
+        /// (effectively a no-op single choice) against a mock-mode Farnell.
+        /// </summary>
+        public async Task<IReadOnlyList<FarnellShipToAddress>> GetAvailableShipToAddressesAsync()
+        {
+            if (_options.UseMockData)
+            {
+                return new List<FarnellShipToAddress>
+                {
+                    new FarnellShipToAddress { AddressId = "MOCK", NickName = "Mock default address (UseMockData=true)" }
+                };
+            }
+
+            RequireHttpClient();
+            if (!(_httpClient is IFarnellOrderingHttpClient orderingClient))
+            {
+                throw new SupplierException(Code, SupplierErrorCode.UnknownError,
+                    "FarnellAdapter's ISupplierHttpClient does not support the Order API (expected a FarnellHttpClientWrapper).");
+            }
+            if (string.IsNullOrWhiteSpace(_options.AccountId))
+            {
+                throw new SupplierException(Code, SupplierErrorCode.AuthenticationError,
+                    "Farnell AccountId (trade account number) is not configured — set it via Instellingen -> Suppliers.");
+            }
+
+            var jwt = await orderingClient.AuthenticateOrderingAsync(_options.AccountId).ConfigureAwait(false);
+            return await GetAvailableShipToAddressesViaAsync(orderingClient, jwt).ConfigureAwait(false);
+        }
+
+        private async Task<IReadOnlyList<FarnellShipToAddress>> GetAvailableShipToAddressesViaAsync(
+            IFarnellOrderingHttpClient orderingClient, string jwt)
+        {
+            var json = await orderingClient.GetOrderingAsync("order/shipping_address", jwt).ConfigureAwait(false);
+            var response = Deserialize<FarnellShippingAddressListResponse>(json);
+            return (response?.Address ?? new List<FarnellShippingAddressDto>())
+                .Select(a => new FarnellShipToAddress
+                {
+                    AddressId = a.AddressId,
+                    NickName = a.NickName,
+                    OrganizationName = a.OrganizationName,
+                    Attention = a.Attention,
+                    AddressLine1 = a.AddressLine1,
+                    AddressLine2 = a.AddressLine2,
+                    AddressLine3 = a.AddressLine3,
+                    City = a.City,
+                    PostalCode = a.PostalCode,
+                    Region = a.Region,
+                    Country = a.Country
+                })
+                .ToList();
         }
 
         public Task<Core.Models.SupplierOrderStatus> GetOrderStatusAsync(string supplierOrderNumber)

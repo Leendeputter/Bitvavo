@@ -6,6 +6,7 @@ using System.Windows.Forms;
 using Procurement.Core.Entities;
 using Procurement.Core.Enums;
 using Procurement.Erp;
+using Procurement.Suppliers.Farnell;
 using Procurement.UI.Composition;
 using static Procurement.UI.Support.GridFormatting;
 
@@ -1112,6 +1113,13 @@ namespace Procurement.UI.Forms
             SetBusy(true);
             try
             {
+                var supplierCodes = await _composition.Engine.PreviewSupplierCodesForOrderAsync(requestIds);
+                if (!await EnsureFarnellShipToAddressSelectedAsync(supplierCodes))
+                {
+                    SetStatus("Geannuleerd — geen orders geplaatst.");
+                    return;
+                }
+
                 await _composition.Engine.PlaceOrdersAsync(requestIds, _composition.Session.UserName);
                 SetStatus("Order(s) geplaatst.");
             }
@@ -1126,6 +1134,39 @@ namespace Procurement.UI.Forms
                 // only refreshing on a clean run.
                 await LoadLocalRequestsAsync();
                 SetBusy(false);
+            }
+        }
+
+        /// <summary>
+        /// If this batch touches Farnell, shows a picker built from the live
+        /// GetAvailableShipToAddressesAsync list and sets FarnellAdapter.SelectedShipToAddressId
+        /// from it — asked fresh every time rather than falling back to a stored default (user
+        /// request, 21 okt 2026: "dit gaat bij Farnell wel eens fout... dan hoeven we de database
+        /// ook niet aan te passen"). Skipped entirely when there's zero or one address to choose
+        /// from (nothing to actually decide) or Farnell isn't part of this batch at all. Returns
+        /// false if the user cancelled the picker — PlaceOrdersAsync then places nothing at all for
+        /// this batch, including any non-Farnell suppliers in the same selection, rather than
+        /// partially proceed.
+        /// </summary>
+        private async System.Threading.Tasks.Task<bool> EnsureFarnellShipToAddressSelectedAsync(IReadOnlyList<string> supplierCodes)
+        {
+            if (!supplierCodes.Contains("FARNELL", StringComparer.OrdinalIgnoreCase)) return true;
+
+            var farnellAdapter = _composition.Adapters.OfType<FarnellAdapter>().FirstOrDefault();
+            if (farnellAdapter == null) return true;
+
+            var addresses = await farnellAdapter.GetAvailableShipToAddressesAsync();
+            if (addresses.Count <= 1)
+            {
+                farnellAdapter.SelectedShipToAddressId = addresses.FirstOrDefault()?.AddressId;
+                return true;
+            }
+
+            using (var dialog = new FarnellShipToAddressPickerForm(addresses))
+            {
+                if (dialog.ShowDialog(this) != DialogResult.OK) return false;
+                farnellAdapter.SelectedShipToAddressId = dialog.SelectedAddressId;
+                return true;
             }
         }
 

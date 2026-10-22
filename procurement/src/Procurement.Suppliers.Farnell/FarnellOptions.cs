@@ -11,6 +11,16 @@ namespace Procurement.Suppliers.Farnell
         public string ApiKey { get; set; }
         public bool IsSandbox { get; set; } = true;
 
+        /// <summary>
+        /// Farnell's "trade account number" (confirmed by the user, 21 okt 2026 — "Is dat ons
+        /// klantnummer bij Farnell?" — yes) — the Order API's "tradeAccount" field, required to mint
+        /// a JWT via POST /auth/token. Reuses the same generic Supplier.AccountId column DigiKey
+        /// already populates (not DigiKey-specific in the schema), same reasoning as Ordering's
+        /// BuyerContact/ShippingContact fields: avoids a new EF-mapped column (and the schema-regen
+        /// script that would trigger, which also wipes Supplier credentials).
+        /// </summary>
+        public string AccountId { get; set; }
+
         /// <summary>When true, the adapter never calls the HTTP layer and returns fixed/deterministic mock data instead. Set to false only once ApiKey is real and the Ordering API contract (see FarnellAdapter) has been confirmed.</summary>
         public bool UseMockData { get; set; } = true;
 

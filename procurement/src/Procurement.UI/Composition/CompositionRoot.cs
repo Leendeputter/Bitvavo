@@ -91,7 +91,11 @@ namespace Procurement.UI.Composition
             {
                 ApiKey = farnellSupplier?.ApiKey,
                 IsSandbox = farnellSupplier?.IsSandbox ?? true,
-                UseMockData = farnellSupplier?.UseMockData ?? true
+                UseMockData = farnellSupplier?.UseMockData ?? true,
+                // Farnell's Order API "tradeAccount" — confirmed by the user (21 okt 2026) to be
+                // their Farnell customer number, reusing the same generic AccountId column DigiKey
+                // already populates rather than adding a new one.
+                AccountId = farnellSupplier?.AccountId
             };
 
             // Mouser: ApiKey only (self-service Search API key, no OAuth). TME: reuses the

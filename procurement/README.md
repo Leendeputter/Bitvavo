@@ -1352,3 +1352,43 @@ raken dat mock-modus zelf nooit aanraakt:
     kiezen als er meerdere beschikbaar zijn — altijd de eerste/preferred, of instelbaar maken?
     (d) cart moet vermoedelijk expliciet geleegd worden (`POST /cart/clear`) vóór elke nieuwe
     orderpoging, om te voorkomen dat een eerder mislukte poging stale regels achterlaat.
+- **Farnell real-mode ordering gebouwd** (21 okt 2026, antwoorden op de drie openstaande vragen
+  hierboven): "1 ok, 2 ok, 3 Misschien dan toch bij iedere order laten vragen om het shipping
+  address, waarbij de default wel al ingevuld staat... dan hoeven we de database ook niet aan te
+  passen."
+  1. **Geen Order Status/History-API** — bevestigd door de gebruiker (screenshot van dezelfde
+     "APIs available for managing orders"-lijst): dit is de complete lijst. `FarnellAdapter.
+     Capabilities.OrderStatus` staat daarom nu op `ManualProcess` i.p.v. `Supported` — "Process
+     Order Confirmations" slaat Farnell-orders voortaan automatisch over i.p.v. tegen een
+     niet-bestaand endpoint aan te lopen (`ProcurementEngine.ProcessOrderConfirmationsAsync` checkt
+     al exact deze capability).
+  2. **`tradeAccount` = Farnell-klantnummer**, bevestigd. Hergebruikt het bestaande generieke
+     `Supplier.AccountId`-veld (nieuw `FarnellOptions.AccountId`, gevuld in `CompositionRoot` net
+     als bij DigiKey) — geen nieuwe kolom nodig.
+  3. **Verzendadres: altijd live gevraagd, geen opgeslagen default** — nieuwe
+     `FarnellShipToAddressPickerForm` (Procurement.UI), getoond door `MainForm.PlaceOrdersAsync`
+     vlak vóór `ProcurementEngine.PlaceOrdersAsync`, met het eerste adres uit de live
+     `GET /order/shipping_address`-lijst voorgeselecteerd. Enkel getoond als (a) de batch
+     daadwerkelijk Farnell-regels bevat — nieuwe, side-effect-vrije
+     `ProcurementEngine.PreviewSupplierCodesForOrderAsync` (hergebruikt dezelfde
+     candidate-verzamel-logica als `PlaceOrdersAsync` zelf, via een nieuwe gedeelde
+     `GatherOrderCandidatesAsync`-helper) bepaalt dat vooraf — en (b) er meer dan één adres
+     beschikbaar is (anders niets te kiezen). Annuleren van de dialoog annuleert de hele batch,
+     ook eventuele niet-Farnell-leveranciers erin, i.p.v. gedeeltelijk door te gaan. Geen nieuwe
+     databasekolom, zoals gevraagd.
+  - **Technisch**: nieuwe `IFarnellOrderingHttpClient` (mirrort DigiKey's
+    `IDigiKeyOrderingHttpClient`-patroon: generieke Get/Post bovenop `ISupplierHttpClient`, voor een
+    ander host+auth-schema dan de bestaande Product Search API) — maar **anders dan** DigiKey's
+    wrapper beheert deze het JWT bewust niet intern/gecached: Farnell's JWT heeft geen gedocumenteerd
+    refresh-/verloopgedrag, dus `FarnellAdapter` vraagt 'm expliciet één keer per orderpoging op
+    (`AuthenticateOrderingAsync`) en geeft 'm door aan elke volgende aanroep. Flow in
+    `FarnellAdapter.CreateRealOrderAsync`: auth → cart leegmaken (idempotentie, voor het geval een
+    vorige poging halverwege faalde) → regels toevoegen → adres kiezen/bevestigen → verzendmethode
+    kiezen (`shippingPreferredMethod` indien aanwezig, anders de eerste) → review → submit. Nieuwe
+    DTOs in `FarnellOrderDtos.cs` — bewust overal als `string` gedeclareerd (ook ogenschijnlijk
+    numerieke velden), omdat de door de gebruiker geplakte documentatie voor de meeste responses
+    geen echte voorbeeld-JSON toont, enkel veldnamen; defensief geparsed (`TryParse`) waar gebruikt.
+    **Open, onbevestigd aanname**: de Order API's `api_key`-header hergebruikt voorlopig dezelfde
+    `FarnellOptions.ApiKey` als de Product Search API — de documentatie wijst herhaaldelijk naar een
+    aparte "Order API Registration"-pagina zonder te zeggen of die een nieuwe key uitgeeft; goedkoop
+    te corrigeren zodra dat bekend is.
