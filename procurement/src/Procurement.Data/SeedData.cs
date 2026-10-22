@@ -79,10 +79,16 @@ namespace Procurement.Data
             SeedSupplier(context, "MOUSER", "Mouser Electronics", null, standardCapabilities);
             SeedSupplier(context, "TME", "TME (Transfer Multisort Elektronik)", null, standardCapabilities);
 
-            // Grote distributeurs zonder bevestigde publieke API — vermoedelijk alleen na een
-            // aparte account-/EDI-overeenkomst, contract nog niet bevestigd (zie README).
+            // Contract bevestigd (22 okt 2026, zie README) maar elk met een eigen kanttekening:
+            // Arrow is "voorbereid", niet vertrouwd (ArrowAdapter weigert bewust te gokken naar
+            // onbevestigde response-/request-velden voor search/pricing/ordering — alleen auth en
+            // orderstatus zijn echt); Rutronik is bevestigd puur read-only (geen ordering-endpoint
+            // in de hele API).
             SeedSupplier(context, "ARROW", "Arrow Electronics", null, standardCapabilities);
             SeedSupplier(context, "RUTRONIK", "Rutronik", null, standardCapabilities);
+
+            // Grote distributeurs zonder bevestigde publieke API — vermoedelijk alleen na een
+            // aparte account-/EDI-overeenkomst, contract nog niet bevestigd (zie README).
             SeedSupplier(context, "AVNET_SILICA", "Avnet / Silica", null, standardCapabilities);
             SeedSupplier(context, "KARL_KRUSE", "Karl Kruse", null, standardCapabilities);
             SeedSupplier(context, "RS_COMPONENTS", "RS Components", null, standardCapabilities);

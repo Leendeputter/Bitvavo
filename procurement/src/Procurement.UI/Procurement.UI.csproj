@@ -59,6 +59,8 @@
     <ProjectReference Include="..\Procurement.Suppliers.Farnell\Procurement.Suppliers.Farnell.csproj" />
     <ProjectReference Include="..\Procurement.Suppliers.Mouser\Procurement.Suppliers.Mouser.csproj" />
     <ProjectReference Include="..\Procurement.Suppliers.TME\Procurement.Suppliers.TME.csproj" />
+    <ProjectReference Include="..\Procurement.Suppliers.Arrow\Procurement.Suppliers.Arrow.csproj" />
+    <ProjectReference Include="..\Procurement.Suppliers.Rutronik\Procurement.Suppliers.Rutronik.csproj" />
     <ProjectReference Include="..\Procurement.Suppliers.Other\Procurement.Suppliers.Other.csproj" />
   </ItemGroup>
 

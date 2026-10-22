@@ -1432,3 +1432,60 @@ raken dat mock-modus zelf nooit aanraakt:
     nu op `ManualProcess` i.p.v. `Supported`, zodat orders richting TME voortaan automatisch als
     "handmatig plaatsen/volgen" worden behandeld in plaats van tegen een niet-bestaand endpoint aan
     te lopen (zelfde correctie als eerder bij Farnell's `OrderStatus`).
+- **Rutronik volledig gebouwd (read-only), Arrow voorbereid maar nog niet vertrouwd** (22 okt 2026,
+  drie documenten aangeleverd door de gebruiker: `arrow-api.txt`, `Rutronik_API.txt` en
+  `rutronik24_api_en.pdf` — "Hier ook nog Arrow, maar die is al 4 jaar niet geupdate, dat vind ik
+  een beetje verdacht. Daarnaast ook Rutronik, het lijkt er op dat we daar ook alleen kunnen
+  zoeken", gevolgd door "Arrow graag voorbereiden en Rutronik eveneens bouwen"). Beide zijn nu
+  eigen, dedicated adapters (`Procurement.Suppliers.Arrow`/`Procurement.Suppliers.Rutronik`,
+  zelfde structuur als DigiKey/Farnell/Mouser/TME) en **uit** `CompositionRoot`'s generieke
+  mock-fallback-lijst (`genericSupplierDefinitions`) gehaald.
+  - **Rutronik**: bevestigd, puur read-only webshop-API (`www.rutronik24.com/api/`), auth via een
+    simpele `apikey`-querystring-parameter (geen OAuth) — persoonlijk aan te vragen via Rutronik's
+    contactformulier. Drie GET-endpoints: `search/` (fuzzy zoeken op trefwoord, array met max. 10
+    hits), `pricerequest/` (klantspecifieke prijs/voorraad op Rutronik-sku of op
+    fabrikant+fabrikant-partnummer, één object), en `article/` ("designed for search engines",
+    exacte mpn-match, één object). `RutronikAdapter.SearchProductsAsync` probeert eerst `article/`
+    (exacte mpn-match past beter bij "zoek op ManufacturerPartNumber" dan het fuzzy `search/`) en
+    valt terug op `search/` als dat niets oplevert; `GetProductAsync`/`GetAvailabilityAsync`/
+    `GetPricingAsync`/`GetPackagingOptionsAsync` gebruiken allemaal `pricerequest/` met het eerder
+    gevonden sku. **Bevestigde (niet gegokte) type-inconsistentie** tussen de endpoints: Search en
+    Pricerequest geven `price`/`pricebreaks[].price`/`pricebreaks[].quantity` als native JSON-
+    getallen, maar Article geeft exact dezelfde velden terug als STRINGS (bv. `"price": "0.00179"`)
+    — te zien in het echte voorbeeldresponse dat de gebruiker plakte, dus `RutronikArticleResultDto`
+    heeft bewust andere (string) veldtypes dan `RutronikSearchResultDto`/`RutronikPriceRequestResultDto`.
+    Rutronik's `packaging`-veld (TRAY/BULK/REEL/TUBE, vrije tekst) wordt best-effort gemapt naar
+    `PackagingType` — "BULK" heeft geen directe match in die enum en valt terug op `Any` i.p.v. een
+    gegokte waarde. Geen enkel order-/status-endpoint bestaat in beide documenten, dus
+    `Ordering`/`OrderStatus`/`Shipment`/`Tracking`/`Invoice` staan op `ManualProcess` (zelfde
+    semantiek als TME: `ProcurementEngine` slaat de stap over en behandelt 'm als handmatig).
+  - **Arrow**: "voorbereid", bewust NIET vertrouwd voor echt gebruik — zie de uitgebreide doc comment
+    op `ArrowAdapter`. OAuth2 client_credentials-authenticatie (`POST security/oauth/token`, Basic
+    auth + een herhaalde `client_id`-header, precies zoals DigiKey's 2-legged flow) is volledig
+    geïmplementeerd en qua contract bevestigd. Het probleem zit in de rest van de documentatie: elk
+    voorbeeld van de Price/Avail-response (`pricingResponse`) en van de Orders-API's
+    `cart.lineItems`/`order.orderLines` toont uitsluitend een lege `{}`/`[]`-placeholder — de
+    prosatekst beschrijft wél wat voor data erin zit (prijs, voorraad, levertijd, RoHS/REACH, ...)
+    maar noemt nergens de daadwerkelijke JSON-veldnamen. Omdat dit een systeem is dat écht
+    inkooporders plaatst, wordt hier bewust niet gegokt: `SearchProductsAsync`/`GetProductAsync`/
+    `GetAvailabilityAsync`/`GetPricingAsync`/`GetPackagingOptionsAsync`/`CreateOrderAsync` gooien in
+    real-mode (`UseMockData=false`) allemaal een duidelijke `SupplierException` die exact uitlegt
+    welk deel van de spec onbevestigd is, i.p.v. verzonnen velden te proberen. **Eén uitzondering**:
+    `GetOrderStatusAsync` (`GET orders/{orderId}/updatedStatus`) is wél echt geïmplementeerd, omdat
+    de top-level velden daarvan (`orderStatus`/`orderId`/`salesOrderNumber`/`origSysDocumentRef`) wel
+    met naam genoemd worden in de spec — alleen de orderstatus-tekst zelf wordt (net als bij Mouser)
+    best-effort op keyword gemapt, omdat MyArrow's eigen documentatie de 4 statussen ("Pending
+    Review, Accepted, Rejected, Not Confirmed") alleen in proza noemt, nooit als letterlijke
+    JSON-string. `UseMockData` staat default op `true`, zoals bij elke andere adapter, dus er wordt
+    sowieso niets echt aangeroepen totdat de gebruiker zelf een ClientId/ClientSecret invult én dit
+    expliciet uitzet. **Openstaand**: bevestiging van de Arrow sales rep dat de Open APIs (vooral
+    Orders) nog actief ondersteund worden — dat was de kern van de eigen twijfel van de gebruiker
+    ("al 4 jaar niet geupdate") en is nog niet beantwoord; en een echt voorbeeldresponse van
+    `pricingResponse`/`cart.lineItems`/`order.orderLines` om de nog ontbrekende mapping alsnog af te
+    maken.
+  - **Technisch**: `Procurement.sln`, `Procurement.UI.csproj` en `Procurement.Tests.csproj`
+    hebben nu referenties naar de twee nieuwe projecten; `CompositionRoot`'s
+    `genericSupplierDefinitions` bevat ARROW/RUTRONIK niet meer. Nieuwe tests
+    `RutronikAdapterTests`/`ArrowAdapterTests`; `GenericMockSupplierAdapterTests`' voorbeelden
+    aangepast naar twee suppliers die nog wél generiek zijn (AVNET_SILICA/RS_COMPONENTS), aangezien
+    Arrow/Rutronik niet meer via die generieke mock lopen.

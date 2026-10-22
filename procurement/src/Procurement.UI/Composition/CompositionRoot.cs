@@ -7,6 +7,8 @@ using Procurement.Data;
 using Procurement.Data.Repositories;
 using Procurement.Engine;
 using Procurement.Erp;
+using Procurement.Suppliers.Arrow;
+using Procurement.Suppliers.Arrow.Http;
 using Procurement.Suppliers.DigiKey;
 using Procurement.Suppliers.DigiKey.Http;
 using Procurement.Suppliers.Farnell;
@@ -14,6 +16,8 @@ using Procurement.Suppliers.Farnell.Http;
 using Procurement.Suppliers.Mouser;
 using Procurement.Suppliers.Mouser.Http;
 using Procurement.Suppliers.Other;
+using Procurement.Suppliers.Rutronik;
+using Procurement.Suppliers.Rutronik.Http;
 using Procurement.Suppliers.TME;
 using Procurement.Suppliers.TME.Http;
 
@@ -118,6 +122,28 @@ namespace Procurement.UI.Composition
                 UseMockData = tmeSupplier?.UseMockData ?? true
             };
 
+            // Arrow: OAuth2 ClientId/ClientSecret (confirmed, 22 okt 2026) — "voorbereid" per the
+            // user's own framing, not yet trusted for real use (see ArrowAdapter's doc comment):
+            // auth and order-status are real, but search/pricing/order-placement still refuse to
+            // guess an unconfirmed response/request shape even with UseMockData=false. Rutronik:
+            // ApiKey only (plain query-string key, no OAuth) — confirmed, fully read-only.
+            var arrowSupplier = FindSupplier("ARROW");
+            var arrowOptions = new ArrowOptions
+            {
+                ClientId = arrowSupplier?.ClientId,
+                ClientSecret = arrowSupplier?.ClientSecret,
+                BillToId = arrowSupplier?.AccountId,
+                IsSandbox = arrowSupplier?.IsSandbox ?? true,
+                UseMockData = arrowSupplier?.UseMockData ?? true
+            };
+            var rutronikSupplier = FindSupplier("RUTRONIK");
+            var rutronikOptions = new RutronikOptions
+            {
+                ApiKey = rutronikSupplier?.ApiKey,
+                IsSandbox = rutronikSupplier?.IsSandbox ?? true,
+                UseMockData = rutronikSupplier?.UseMockData ?? true
+            };
+
             // The HTTP wrappers are cheap to construct (just an HttpClient + options) and are only
             // ever called when UseMockData is false, so they're always built rather than
             // conditionally wired — one less branch to get wrong here.
@@ -133,16 +159,17 @@ namespace Procurement.UI.Composition
             var farnellAdapter = new FarnellAdapter(farnellOptions, new FarnellHttpClientWrapper(farnellOptions));
             var mouserAdapter = new MouserAdapter(mouserOptions, new MouserHttpClientWrapper(mouserOptions));
             var tmeAdapter = new TmeAdapter(tmeOptions, new TmeHttpClientWrapper(tmeOptions));
+            var arrowAdapter = new ArrowAdapter(arrowOptions, new ArrowHttpClientWrapper(arrowOptions));
+            var rutronikAdapter = new RutronikAdapter(rutronikOptions, new RutronikHttpClientWrapper(rutronikOptions));
 
             // Distributors with no confirmed public API yet (likely account-/EDI-gated) all share
-            // one generic mock adapter (Procurement.Suppliers.Other) instead of seven near-copies
-            // of DigiKeyAdapter — see GenericMockSupplierAdapter's doc comment. Swap an entry out
-            // for a dedicated adapter (mirroring DigiKeyAdapter/MouserAdapter) once that
-            // distributor's real API/EDI contract is confirmed.
+            // one generic mock adapter (Procurement.Suppliers.Other) instead of near-copies of
+            // DigiKeyAdapter — see GenericMockSupplierAdapter's doc comment. Swap an entry out for
+            // a dedicated adapter (mirroring DigiKeyAdapter/MouserAdapter) once that distributor's
+            // real API/EDI contract is confirmed — as just happened for Arrow and Rutronik, both
+            // now built above instead of listed here.
             var genericSupplierDefinitions = new[]
             {
-                (Code: "ARROW", DatasheetHost: "www.arrow.com"),
-                (Code: "RUTRONIK", DatasheetHost: "www.rutronik.com"),
                 (Code: "AVNET_SILICA", DatasheetHost: "www.avnet.com"),
                 (Code: "KARL_KRUSE", DatasheetHost: "www.karlkruse.de"),
                 (Code: "RS_COMPONENTS", DatasheetHost: "www.rs-online.com"),
@@ -163,7 +190,7 @@ namespace Procurement.UI.Composition
                 return (ISupplierAdapter)new GenericMockSupplierAdapter(def.Code, def.DatasheetHost, options);
             });
 
-            Adapters = new List<ISupplierAdapter> { digiKeyAdapter, farnellAdapter, mouserAdapter, tmeAdapter }
+            Adapters = new List<ISupplierAdapter> { digiKeyAdapter, farnellAdapter, mouserAdapter, tmeAdapter, arrowAdapter, rutronikAdapter }
                 .Concat(genericAdapters)
                 .ToList();
 
