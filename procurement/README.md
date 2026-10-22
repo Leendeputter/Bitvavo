@@ -1324,3 +1324,31 @@ raken dat mock-modus zelf nooit aanraakt:
     gewenst, al met de hierboven gevonden documentatie begonnen kunnen worden (eventueel eerst de
     contact-/verzendgegevens-velden laten meelopen in `MouserOptions`, zelfde aanpak als bij
     DigiKey's `AccountId`/`ContactName`/etc.).
+- **Farnell Order API — spec aangeleverd (21 okt 2026, via `partner.element14.com/order`, geplakt
+  door de gebruiker omdat deze sessie dat domein niet zelf kan bereiken — egress-proxy wijst
+  `partner.element14.com` expliciet af, 403 "host not allowed", net als eerder bij
+  `developers.tme.eu`/`www.tme.eu`)**. In tegenstelling tot DigiKey's Ordering v3 (één atomaire
+  POST met regels + BuyerContact/ShippingContact ineen) is Farnell's Order API een **stateful,
+  cart-gebaseerde flow** van meerdere losse aanroepen tegen `https://api.farnell.com`:
+  1. `POST /auth/token` (header `api_key`, body `{"tradeAccount": "..."}`) → JWT in
+     `Authorization`-respons-veld. Geen OAuth-consentflow zoals DigiKey's "Ordering autoriseren..."
+     nodig — gewoon een JWT opnieuw aanvragen per keer, geen refresh-token-rotatie om te bewaren.
+  2. `POST /cart/addItem` per regel (`sku`, `quantity`, optioneel `customerPartNumber` — kan onze
+     `ErpArticleId` worden — en `lineNote`).
+  3. `GET /order/shipping_address` → lijst bestaande, **al op het account opgeslagen** adressen
+     (`addressId` + velden); `POST /order/shipping_address` met gekozen `addressId` bevestigt 'm.
+     Anders dan DigiKey: hier wordt geen vrij veld met straat/postcode/etc. meegestuurd, enkel een
+     ID uit een al bestaande lijst gekozen.
+  4. `GET /order/shipping_methods` → lijst (`shippingMethodID`, prijs,
+     `shippingPreferredMethod: true/false`); `POST /order/shipping_method` bevestigt de keuze.
+  5. `GET /order/order_review` → totalen/regels ter controle.
+  6. `POST /order/order_submit` (optioneel `poNumberId` — kan onze `ErpPoNumber`/
+     `IdempotencyKey` worden) → `{"orderReference": "<Order Confirmation Number>"}`.
+  - Open vragen, nog niet beantwoord/beslist: (a) **geen Order Status/Order History-endpoint
+    gezien** in wat is aangeleverd — enkel cart + submit; `GetOrderStatusAsync`/`CancelOrderAsync`
+    hebben dus nog geen bevestigd pad, mogelijk staat dat op een aparte pagina die nog niet geplakt
+    is; (b) welke `tradeAccount`-waarde gebruiken (nieuw `Supplier`-veld, of hergebruik van
+    `AccountId`, net als bij DigiKey?); (c) hoe het te gebruiken `addressId`/`shippingMethodID`
+    kiezen als er meerdere beschikbaar zijn — altijd de eerste/preferred, of instelbaar maken?
+    (d) cart moet vermoedelijk expliciet geleegd worden (`POST /cart/clear`) vóór elke nieuwe
+    orderpoging, om te voorkomen dat een eerder mislukte poging stale regels achterlaat.
