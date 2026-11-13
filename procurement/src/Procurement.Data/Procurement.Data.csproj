@@ -11,6 +11,9 @@
 
   <ItemGroup>
     <PackageReference Include="EntityFramework" Version="6.4.4" />
+    <!-- Same pinned version as Procurement.Erp/Procurement.UI. Used only by Secrets/*Repository,
+         which mirror UniPro2026's Dapper-based AppSecretsRepository/SecretAccessRepository. -->
+    <PackageReference Include="Dapper" Version="1.40.0" />
   </ItemGroup>
 
   <ItemGroup>

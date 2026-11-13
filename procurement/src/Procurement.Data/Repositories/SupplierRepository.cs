@@ -40,28 +40,9 @@ namespace Procurement.Data.Repositories
         });
 
         /// <summary>
-        /// Updates API credentials via the separate "Credentials bewerken" dialog (never the main
-        /// grid, which never shows a decrypted secret). Each parameter is write-only and optional —
-        /// a null/empty value leaves that credential unchanged, since the dialog never displays an
-        /// existing stored value back (there'd be nothing meaningful to show without decrypting it
-        /// onto the screen, which defeats the point) — so "leave the box empty" is how you keep the
-        /// current value, and typing something new is the only way to change or (by design) not
-        /// clear one; clearing a credential isn't supported from the UI yet.
-        /// </summary>
-        public Task UpdateCredentialsAsync(int id, string clientId, string clientSecret, string apiKey) => _context.RunGuardedAsync(async () =>
-        {
-            var supplier = await _context.Suppliers.FindAsync(id);
-            if (supplier == null) return;
-            if (!string.IsNullOrEmpty(clientId)) supplier.ClientId = clientId;
-            if (!string.IsNullOrEmpty(clientSecret)) supplier.ClientSecret = clientSecret;
-            if (!string.IsNullOrEmpty(apiKey)) supplier.ApiKey = apiKey;
-            await _context.SaveChangesAsync();
-        });
-
-        /// <summary>
         /// Updates the account/shipping-contact fields a real Ordering API call needs (see
         /// Supplier.cs) via Instellingen's "Verzendgegevens bewerken" dialog. Unlike
-        /// UpdateCredentialsAsync this isn't write-only: none of these are secrets, so the dialog
+        /// the supplier credentials (Beheer > App Secrets) this isn't write-only: none of these are secrets, so the dialog
         /// pre-fills the current values and every parameter here always overwrites (an intentionally
         /// cleared field arrives as "", not null, and is saved as such — there's no "leave unchanged"
         /// convention to preserve here the way there is for credentials).
@@ -85,19 +66,5 @@ namespace Procurement.Data.Repositories
                 supplier.CountryCode = countryCode;
                 await _context.SaveChangesAsync();
             });
-
-        /// <summary>
-        /// Persists the OAuth2 refresh token from a 3-legged consent flow (DigiKeyOrderingAuthorizer)
-        /// or an automatic rotation during token refresh (DigiKeyHttpClientWrapper) — both call this
-        /// by SupplierCode rather than Id, since neither has (or should need) a database-generated
-        /// row Id in scope, only the well-known code.
-        /// </summary>
-        public Task UpdateRefreshTokenAsync(string supplierCode, string refreshToken) => _context.RunGuardedAsync(async () =>
-        {
-            var supplier = await _context.Suppliers.FirstOrDefaultAsync(s => s.SupplierCode == supplierCode);
-            if (supplier == null) return;
-            supplier.RefreshToken = refreshToken;
-            await _context.SaveChangesAsync();
-        });
     }
 }

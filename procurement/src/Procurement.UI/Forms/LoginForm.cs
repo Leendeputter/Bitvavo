@@ -228,6 +228,8 @@ namespace Procurement.UI.Forms
 
                 ProcurementSession.SharedConnectionString = ProcurementConnectionStringHelper.BuildSharedConnectionString(
                     ProcurementSession.AdminConnectionString, ProcurementSession.TestMode);
+                ProcurementSession.SharedSecretsConnectionString = ProcurementConnectionStringHelper.BuildSharedSecretsConnectionString(
+                    ProcurementSession.AdminConnectionString);
                 ProcurementSession.CompanyId = selectedCompany.CompanyID;
                 ProcurementSession.CompanyName = selectedCompany.CompanyName;
 

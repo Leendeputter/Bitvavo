@@ -485,8 +485,9 @@ okt 2026): omdat het script écht *elke* `Procurement_`-tabel dropt en opnieuw a
 `Procurement_Supplier`, verdwijnen bij het draaien ervan ook alle al via Instellingen ingevoerde
 Client Id/Client Secret/ApiKey/refresh-token én account-/verzendgegevens van elke supplier — niet
 alleen lokale testaanvragen zoals eerder hier stond. Na het draaien van dit script dus altijd even
-**Credentials bewerken...** en **Verzendgegevens bewerken...** opnieuw invullen voor elke supplier
-die al echte sandbox-credentials had, vóórdat je verder test.
+**Verzendgegevens bewerken...** opnieuw invullen voor elke supplier die al echte sandbox-gegevens had,
+vóórdat je verder test. (Sinds 13 nov 2026 staan de credentials zelf in SharedSecrets en overleven
+ze dit script wél — zie "Supplier-credentials".)
 
 **Schone lei voor zowel `Unitron` als `Unitron_test`** (in plaats van de oude data behouden): het
 gegenereerde script begint met het opruimen van **alle** `Procurement_`-tabellen — ook de tabellen
@@ -543,13 +544,48 @@ kunnen op dezelfde manier toegevoegd worden — ofwel als groep-1-adapter (eigen
 is, ofwel als extra `GenericMockSupplierAdapter`-entry in `CompositionRoot.cs` (twee regels: een
 `SeedSupplier`-call en een entry in `genericSupplierDefinitions`) als voorbereiding zonder API.
 
-DigiKey/Mouser (ApiKey/ClientId+ClientSecret), Farnell (ApiKey), en TME (Token in `ClientId`,
-HMAC-secret in `ClientSecret` — hergebruikt dezelfde twee kolommen in plaats van er nog twee bij te
-maken, zie `TmeOptions`) staan versleuteld in `Procurement_Supplier`
-(`ClientIdEncrypted`/`ClientSecretEncrypted`/`ApiKeyEncrypted`) in plaats van in `App.config` of code
-— zo kan een rotatie/wijziging van een van deze sleutels zonder rebuild of redeploy via
-**Instellingen → Suppliers → "Credentials bewerken..."**, en staat er nergens een sleutel in leesbare
-vorm in de database of in source control.
+**Supplier-credentials (sinds 13 nov 2026: SharedSecrets, net als UniPro)**: alle API-sleutels
+(DigiKey Client ID/Secret + Ordering refresh-token, Farnell/Mouser/Rutronik API Key, TME Token + API
+Key, Arrow Client ID/Secret) staan versleuteld in de **gedeelde `SharedSecrets`-database** — dezelfde
+database en tabellen die UniPro2026 op 9 nov 2026 aanmaakte (`dbo.AppSecrets` + `dbo.SecretAccess`,
+zie UniPro's `Database/Migrations/2026-11-09_create-sharedsecrets-database.sql` en het handmatige
+`_manual-dba-steps/2026-11-09_sharedsecrets-permissions.sql`). Procurement maakt die database niet zelf
+aan; `Program.cs` controleert bij het opstarten alleen dat hij bereikbaar is en stopt anders met een
+duidelijke melding. Procurement's rijen hebben `ApplicationName = 'Procurement'` (UniPro's eigen rijen:
+`'UniPro'`), zodat beide apps de database delen zonder elkaars secrets te zien.
+
+- **Beheren**: menu **Beheer → App Secrets** (`AppSecretsForm`, een port van UniPro's gelijknamige
+  scherm). Links per secret "ingesteld"/"leeg" plus een wachtwoordveld (write-only: leeg laten =
+  ongewijzigd, een opgeslagen waarde wordt nooit teruggetoond); rechts de **SecretAccess**-grid: welke
+  Windows-gebruiker welke secret door de app mag laten gebruiken, met "Copy" om alle rechten van de
+  ene gebruiker naar andere te kopiëren. Het menu is (net als bij UniPro) alleen zichtbaar/te openen
+  met MAX-recht **`MGR.Activity.User Security`** op minimaal `USERSEC_READWRITE`
+  (`Security/AccessRights.cs`). De oude knop "Edit Credentials..." in Settings → Suppliers is weg.
+- **Lezen** (`Procurement.Data.Secrets.SecretSettings`, port van UniPro's `SecretSettings`): eerst een
+  environment variable als die gezet is (`PROCUREMENT_DIGIKEY_CLIENT_ID`, `PROCUREMENT_FARNELL_API_KEY`,
+  ... — handig op een dev-machine), anders uit SharedSecrets. Elke database-read controleert eerst
+  `SecretAccess` en geeft anders een duidelijke "geen toestemming"-fout. `CompositionRoot` leest alleen
+  secrets van suppliers met `UseMockData = false`; ontbreekt een recht, dan krijg je na het opstarten
+  één waarschuwing in plaats van dat de app niet start.
+- **DigiKey refresh-token**: wordt (net als vroeger) alleen door "Authorize Ordering..." en door de
+  automatische rotatie geschreven, nu als secret `DigiKeyRefreshToken`. Bijkomend voordeel: de
+  SQL-login van MAX heeft via UniPro's rechten-script `db_datawriter` op SharedSecrets, dus de
+  rotatie kan nu wél worden opgeslagen (vroeger ontbrak UPDATE-recht op `Procurement_Supplier` voor
+  de login van het testtooltje). Na een nieuwe autorisatie moet een beheerder wel zorgen dat wie
+  DigiKey gebruikt een recht op `DigiKeyRefreshToken` heeft.
+- **Eenmalige verhuizing** (`LegacySupplierCredentialMigration`, draait bij elke start maar doet
+  alleen iets als er nog oude waarden zijn die niet in SharedSecrets staan): leest de oude
+  `Procurement_Supplier.*Encrypted`-kolommen met de oude `PROCUREMENT_SECRET_KEY`, schrijft ze naar
+  SharedSecrets met de nieuwe sleutel, en geeft de gebruiker die de verhuizing draait meteen
+  leesrecht. Zonder `PROCUREMENT_SECRET_KEY` op die machine slaat hij over met een melding — dan
+  gewoon opnieuw invullen via Beheer → App Secrets. De oude kolommen blijven bewust staan (niet
+  gewist, niet gedropt), zelfde voorzichtigheid als UniPro bij zijn oude `UniPro2026_AppSecrets`.
+- **Samenvoegen met UniPro later**: de klassen hebben bewust UniPro's namen en vorm
+  (`AppSecretsRepository`, `SecretAccessRepository`, `SecretAccessEntry`, `SecretSettings`,
+  `AppSecretsForm`, `AccessRights.MgrUserSecurity`) en dezelfde sleutel (`UNIPRO_SECRET_KEY`), dus bij
+  het samenvoegen hoeft er niets opnieuw versleuteld te worden: Procurement's secret-namen toevoegen
+  aan UniPro's lijst en één `UPDATE dbo.AppSecrets/SecretAccess SET ApplicationName = 'UniPro' WHERE
+  ApplicationName = 'Procurement'` is genoeg.
 
 **Account-/verzendgegevens per leverancier** (`Supplier.AccountId`/`ContactName`/`ContactEmail`/
 `ContactTelephone`/`AddressLine1`/`AddressLine2`/`City`/`Province`/`PostalCode`/`CountryCode`, sep
@@ -562,24 +598,20 @@ ingevulde dialoog: **Instellingen → Suppliers → "Verzendgegevens bewerken...
 Suppliers-grid zelf getoond (tien extra kolommen voor iets dat je een handvol keer ooit instelt, is
 pure ruis).
 
-**Hoe dat versleutelen werkt** (`Procurement.Core.Security.SecretProtector`): AES-256, met de
-sleutel gelezen uit de omgevingsvariabele **`PROCUREMENT_SECRET_KEY`** — die staat dus zelf nergens
-in de database of in `App.config`. Zet 'm (dezelfde waarde) op elke machine die deze app draait, bv.
-als System Environment Variable of via GPO. Dit is bewust geen volwaardige secrets-manager (geen
-rotatie-tooling, geen audit van wie de sleutel gebruikt heeft, zoals Azure Key Vault wél zou geven)
-— het lost het concrete probleem op (geen credentials in platte tekst in de database/source control)
-tegen vrijwel geen extra bouwkosten. Mocht dit ooit naar een echte secrets-manager moeten, is dat een
-kleine, geïsoleerde wijziging (enkel `SecretProtector.GetKey()`), niets in de rest van de app hoeft
-dan te veranderen.
+**Hoe dat versleutelen werkt** (`Procurement.Core.Security.SecretProtector`, identiek aan UniPro's):
+AES-256, met de sleutel gelezen uit de omgevingsvariabele **`UNIPRO_SECRET_KEY`** — dezelfde als
+UniPro gebruikt (tot 13 nov 2026 had Procurement een eigen `PROCUREMENT_SECRET_KEY`; die is alleen nog
+nodig voor de eenmalige verhuizing hierboven). De sleutel staat dus zelf nergens in de database of in
+`App.config`; zet 'm (dezelfde waarde) op elke machine die UniPro of deze app draait, bv. als System
+Environment Variable of via GPO. Bewust geen volwaardige secrets-manager — overstappen naar bv. Azure
+Key Vault raakt alleen `SecretProtector.GetKey()`.
 
 Twee dingen die *niet* hetzelfde zijn, ondanks dat ze allebei "de sleutel wijzigen" heten:
-- **De credentials zelf wijzigen** (bv. na een DigiKey/Farnell-sleutelrotatie) — dat hoort vaak voor
-  te komen, en is precies waarom dit uit `App.config` gehaald is: een paar klikken in Instellingen,
-  geen rebuild.
-- **`PROCUREMENT_SECRET_KEY` zelf wijzigen** — dat is geen routinehandeling: alle al opgeslagen
-  credentials worden daarmee onleesbaar (er is geen sleutel-versionering), dus dat betekent ze
-  allemaal opnieuw invoeren via Instellingen. Behandel dat als een incident-response-scenario, niet
-  als iets om regelmatig te doen.
+- **De credentials zelf wijzigen** (bv. na een DigiKey/Farnell-sleutelrotatie) — hoort vaak voor te
+  komen: een paar klikken in Beheer → App Secrets, geen rebuild.
+- **`UNIPRO_SECRET_KEY` zelf wijzigen** — geen routinehandeling: alle opgeslagen secrets van UniPro
+  **én** Procurement worden daarmee onleesbaar (geen sleutel-versionering), dus alles opnieuw
+  invoeren. Behandel dat als een incident-response-scenario.
 
 **HTTP-laag (leesacties, groep 1)**: `Http/*HttpClientWrapper.cs` in elk van de vier projecten doet
 echte HTTP-aanroepen tegen de publiek gedocumenteerde Product Information API van die supplier zodra
@@ -697,11 +729,13 @@ eerst een echte PO naar MAX (`ProcurementEngine.PlaceSupplierPurchaseOrderAsync`
 supplier-kant sandbox/mock is — niet geschikt dus om de eerste echte DigiKey-sandboxorder mee te
 testen. Dit losse console-tooltje (`src/Procurement.Tools.DigiKeyOrderTester`) roept
 `DigiKeyAdapter.CreateOrderAsync` rechtstreeks aan, met de al-opgeslagen, al-geautoriseerde
-DigiKey-credentials/refresh-token uit `Procurement_Supplier` (alleen-lezen toegang tot die ene tabel,
-nooit enige MAX-tabel). Draai het met:
+DigiKey-credentials/refresh-token uit SharedSecrets (sinds 13 nov 2026, via dezelfde `SecretSettings` als
+de app — de Windows-gebruiker die het draait heeft dus een SecretAccess-recht op `DigiKeyClientId`,
+`DigiKeyClientSecret` en `DigiKeyRefreshToken` nodig) en de overige DigiKey-gegevens uit
+`Procurement_Supplier`, nooit enige MAX-tabel. Draai het met:
 
 ```
-set PROCUREMENT_SECRET_KEY=<dezelfde sleutel als de hoofdapplicatie>
+set UNIPRO_SECRET_KEY=<dezelfde sleutel als UniPro en de hoofdapplicatie>
 set PROCUREMENT_TEST_CONNECTION_STRING=<connection string naar de echte Unitron-database>
 Procurement.Tools.DigiKeyOrderTester.exe <DigiKeyPartNumber> [quantity] [unitPrice]
 Procurement.Tools.DigiKeyOrderTester.exe status <SalesOrderId>
@@ -710,7 +744,7 @@ Procurement.Tools.DigiKeyOrderTester.exe status <SalesOrderId>
 De eerste vorm roept `CreateOrderAsync` aan (een nieuwe testorder plaatsen); de tweede
 (`status <SalesOrderId>`, okt 2026) roept het nieuwe `GetOrderStatusAsync` aan met een al bestaand
 `SalesOrderId` (bv. het nummer dat de eerste vorm teruggaf). Beide vereisen dat "Ordering
-autoriseren..." al minstens één keer succesvol is doorlopen (anders is `Supplier.RefreshToken` leeg en
+autoriseren..." al minstens één keer succesvol is doorlopen (anders is `DigiKeyRefreshToken` leeg en
 stopt het tooltje meteen met een duidelijke melding). Print het volledige resultaat
 (`SupplierOrderNumber`/`Status`/`OrderTotal`, of per status-regel `ConfirmedQuantity`/
 `ConfirmedUnitPrice`/`EstimatedShipDate`) of de `SupplierException` as-is — geen assertions, puur om te
@@ -1489,3 +1523,23 @@ raken dat mock-modus zelf nooit aanraakt:
     `RutronikAdapterTests`/`ArrowAdapterTests`; `GenericMockSupplierAdapterTests`' voorbeelden
     aangepast naar twee suppliers die nog wél generiek zijn (AVNET_SILICA/RS_COMPONENTS), aangezien
     Arrow/Rutronik niet meer via die generieke mock lopen.
+- **Supplier-credentials verhuisd naar SharedSecrets, beheer via Beheer → App Secrets** (13 nov 2026 —
+  "Ik wil nu starten om in Procurement de secret keys op dezelfde manier op te slaan als we dat voor
+  UniPro hebben opgezet met een aparte database en een beheer menu", met als achtergrond dat
+  Procurement later in UniPro opgaat). Gebaseerd op UniPro's eigen broncode (aangeleverde zip van
+  UniPro2026): zelfde database, tabellen, klassen, sleutel en MAX-recht. Zie "Supplier-credentials"
+  hierboven voor de volledige uitleg. Nieuw: `Procurement.Data/Secrets/` (`AppSecretsRepository`,
+  `SecretAccessRepository`, `SecretSettings`; Dapper toegevoegd aan Procurement.Data, zelfde vastgepinde
+  1.40.0), `Procurement.Core/Models/SecretAccessEntry.cs`, `Procurement.UI/Forms/AppSecretsForm.cs`,
+  `Procurement.UI/Security/AccessRights.cs`, `Procurement.UI/Composition/LegacySupplierCredentialMigration.cs`,
+  `ProcurementSession.SharedSecretsConnectionString`. Gewijzigd: `SecretProtector` (sleutel nu
+  `UNIPRO_SECRET_KEY`, plus `DecryptLegacy`), `Supplier` (ontsleutelde properties weg, versleutelde
+  kolommen blijven als legacy), `CompositionRoot`, `SettingsForm` (knop "Edit Credentials..." weg;
+  "Authorize Ordering..." leest/schrijft nu SharedSecrets), `ShellForm` (menu Beheer), `Program.cs`
+  (SharedSecrets-check + verhuizing), `DigiKeyOrderTester`. Geen nieuwe kolom in een `Procurement_`-
+  tabel, dus geen schema-regen nodig.
+  - **Nog niet gebouwd/getest** (geen .NET-toolchain in deze omgeving): eerste build + start door de
+    gebruiker. Te controleren bij die eerste start: (1) de verhuismelding met welke waarden verhuisd
+    zijn (vereist dat zowel `UNIPRO_SECRET_KEY` als `PROCUREMENT_SECRET_KEY` op die machine staan);
+    (2) Beheer-menu zichtbaar voor wie MGR User Security heeft; (3) een DigiKey sandbox-search met
+    `UseMockData=false` werkt nog.

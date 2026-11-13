@@ -42,7 +42,7 @@ namespace Procurement.Suppliers.DigiKey.Http
             if (string.IsNullOrEmpty(options.ClientId) || string.IsNullOrEmpty(options.ClientSecret))
             {
                 throw new SupplierException(DigiKeyAdapter.Code, SupplierErrorCode.AuthenticationError,
-                    "Vul eerst Client Id/Client Secret in via \"Credentials bewerken...\" voordat je Ordering autoriseert.");
+                    "Vul eerst Client Id/Client Secret in via Beheer > App Secrets voordat je Ordering autoriseert.");
             }
 
             var host = options.IsSandbox ? "https://sandbox-api.digikey.com" : "https://api.digikey.com";

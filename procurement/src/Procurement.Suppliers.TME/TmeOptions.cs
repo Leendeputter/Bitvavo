@@ -1,10 +1,8 @@
 namespace Procurement.Suppliers.TME
 {
     /// <summary>
-    /// Token/ApiKey are populated by CompositionRoot from the encrypted Supplier row
-    /// (Procurement.Core.Security.SecretProtector, editable via Instellingen's "Credentials
-    /// bewerken" dialog: Token maps to Supplier.ClientId, ApiKey (the HMAC secret) maps to
-    /// Supplier.ClientSecret) — never from App.config or source control.
+    /// Token/ApiKey are populated by CompositionRoot from the SharedSecrets database
+    /// (Procurement.Data.Secrets.SecretSettings, same as UniPro; edited via Beheer > App Secrets) — never from App.config or source control.
     /// </summary>
     public class TmeOptions
     {

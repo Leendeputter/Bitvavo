@@ -1,5 +1,6 @@
 using System;
 using System.Data.Entity;
+using System.Data.SqlClient;
 using System.Data.Entity.Core.Objects;
 using System.Data.Entity.Infrastructure;
 using System.IO;
@@ -142,6 +143,31 @@ namespace Procurement.UI
                 }
 
                 SeedData.EnsureSeeded(context);
+
+                // Supplier credentials live in the shared SharedSecrets database since 13 nov 2026
+                // (same as UniPro). That database is created by UniPro's own migration
+                // (2026-11-09_create-sharedsecrets-database.sql) — this app doesn't create it, it
+                // only checks it's there and reachable, the same way the block above checks its own
+                // tables.
+                string sharedSecretsProblem = CheckSharedSecrets();
+                if (sharedSecretsProblem != null)
+                {
+                    MessageBox.Show(
+                        "De SharedSecrets-database (waar de supplier-credentials staan, gedeeld met UniPro) is niet bereikbaar.\n\n"
+                        + "Deze wordt aangemaakt door UniPro's migratie 2026-11-09_create-sharedsecrets-database.sql, "
+                        + "met daarna het handmatige rechten-script uit _manual-dba-steps voor de SQL-login van MAX. "
+                        + "Zie de README, sectie \"Supplier-credentials\".\n\n"
+                        + sharedSecretsProblem,
+                        "SharedSecrets ontbreekt", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                var migrationMessages = LegacySupplierCredentialMigration.Run(context);
+                if (migrationMessages.Count > 0)
+                {
+                    MessageBox.Show(string.Join("\n\n", migrationMessages),
+                        "Supplier-credentials", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
             }
 
             var composition = new CompositionRoot();
@@ -151,6 +177,26 @@ namespace Procurement.UI
             // uncloseable/unminimizable as a peer window, and meant it opened automatically instead
             // of only via the menu. See ShellForm's own class comment.
             Application.Run(new ShellForm(composition));
+        }
+
+        /// <summary>Null when SharedSecrets.dbo.AppSecrets and dbo.SecretAccess are both reachable, otherwise what went wrong.</summary>
+        private static string CheckSharedSecrets()
+        {
+            try
+            {
+                using (var cn = new SqlConnection(ProcurementSession.SharedSecretsConnectionString))
+                using (var cmd = new SqlCommand(
+                    "SELECT COUNT(*) FROM sys.tables WHERE name IN ('AppSecrets', 'SecretAccess') AND schema_id = SCHEMA_ID('dbo')", cn))
+                {
+                    cn.Open();
+                    var tableCount = (int)cmd.ExecuteScalar();
+                    return tableCount == 2 ? null : "De database bestaat, maar dbo.AppSecrets en/of dbo.SecretAccess ontbreken.";
+                }
+            }
+            catch (Exception ex)
+            {
+                return ex.Message;
+            }
         }
 
         // Every Procurement_-prefixed table this app currently creates — dropped ahead of recreating

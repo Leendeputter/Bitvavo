@@ -1,9 +1,8 @@
 namespace Procurement.Suppliers.Farnell
 {
     /// <summary>
-    /// ApiKey is populated by CompositionRoot from the encrypted Supplier row
-    /// (Procurement.Core.Security.SecretProtector, editable via Instellingen's "Credentials
-    /// bewerken" dialog) — never from App.config or source control. Never write it to the audit
+    /// ApiKey is populated by CompositionRoot from the SharedSecrets database
+    /// (Procurement.Data.Secrets.SecretSettings, same as UniPro; edited via Beheer > App Secrets) — never from App.config or source control. Never write it to the audit
     /// log either.
     /// </summary>
     public class FarnellOptions

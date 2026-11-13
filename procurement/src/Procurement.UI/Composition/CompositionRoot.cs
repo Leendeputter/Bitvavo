@@ -5,6 +5,7 @@ using Procurement.Core.Interfaces;
 using Procurement.Core.Session;
 using Procurement.Data;
 using Procurement.Data.Repositories;
+using Procurement.Data.Secrets;
 using Procurement.Engine;
 using Procurement.Erp;
 using Procurement.Suppliers.Arrow;
@@ -45,6 +46,13 @@ namespace Procurement.UI.Composition
         public MaxErpConnector ErpConnector { get; }
         public MaxOrderRepository MaxOrderRepository { get; }
 
+        /// <summary>
+        /// Non-fatal problems found while building the app (so far: a supplier secret this user has
+        /// no SecretAccess grant for). ShellForm shows them once after startup.
+        /// </summary>
+        public IReadOnlyList<string> StartupWarnings => _startupWarnings;
+        private readonly List<string> _startupWarnings = new List<string>();
+
         public CompositionRoot()
         {
             Session = new ProcurementSessionContext();
@@ -64,22 +72,43 @@ namespace Procurement.UI.Composition
 
             // Blocking on purpose: this is startup-only, single-user, and reads 2 rows — the same
             // trade-off Program.cs already makes with its own synchronous schema check right before
-            // this constructor runs. IsSandbox/UseMockData/credentials all now come from the
+            // this constructor runs. IsSandbox/UseMockData now come from the
             // Supplier row (editable via Instellingen -> Suppliers) instead of being hardcoded here,
             // so flipping a supplier out of mock mode there actually takes effect on next restart.
             var suppliers = SupplierRepository.GetAllAsync().GetAwaiter().GetResult();
             Supplier FindSupplier(string code) => suppliers.FirstOrDefault(s => s.SupplierCode == code);
+
+            // Supplier credentials come from the SharedSecrets database (SecretSettings, same as
+            // UniPro — user request 13 nov 2026), and only for suppliers that actually run in real
+            // mode: a mock-mode supplier never uses its credentials, so there's no reason to make
+            // every user hold a SecretAccess grant for it. Each read also enforces SecretAccess;
+            // a missing grant becomes a startup warning (that supplier then fails with a clear
+            // "credentials missing" on first real use) instead of stopping the whole app.
+            bool IsReal(Supplier supplier) => supplier != null && !supplier.UseMockData;
+            string Secret(Supplier supplier, System.Func<string> read)
+            {
+                if (!IsReal(supplier)) return null;
+                try
+                {
+                    return read();
+                }
+                catch (System.UnauthorizedAccessException ex)
+                {
+                    _startupWarnings.Add(ex.Message);
+                    return null;
+                }
+            }
 
             var digiKeySupplier = FindSupplier("DIGIKEY");
             var farnellSupplier = FindSupplier("FARNELL");
 
             var digiKeyOptions = new DigiKeyOptions
             {
-                ClientId = digiKeySupplier?.ClientId,
-                ClientSecret = digiKeySupplier?.ClientSecret,
+                ClientId = Secret(digiKeySupplier, () => SecretSettings.DigiKeyClientId),
+                ClientSecret = Secret(digiKeySupplier, () => SecretSettings.DigiKeyClientSecret),
                 IsSandbox = digiKeySupplier?.IsSandbox ?? true,
                 UseMockData = digiKeySupplier?.UseMockData ?? true,
-                RefreshToken = digiKeySupplier?.RefreshToken,
+                RefreshToken = Secret(digiKeySupplier, () => SecretSettings.DigiKeyRefreshToken),
                 AccountId = digiKeySupplier?.AccountId,
                 ContactName = digiKeySupplier?.ContactName,
                 ContactEmail = digiKeySupplier?.ContactEmail,
@@ -93,7 +122,7 @@ namespace Procurement.UI.Composition
             };
             var farnellOptions = new FarnellOptions
             {
-                ApiKey = farnellSupplier?.ApiKey,
+                ApiKey = Secret(farnellSupplier, () => SecretSettings.FarnellApiKey),
                 IsSandbox = farnellSupplier?.IsSandbox ?? true,
                 UseMockData = farnellSupplier?.UseMockData ?? true,
                 // Farnell's Order API "tradeAccount" — confirmed by the user (21 okt 2026) to be
@@ -102,22 +131,21 @@ namespace Procurement.UI.Composition
                 AccountId = farnellSupplier?.AccountId
             };
 
-            // Mouser: ApiKey only (self-service Search API key, no OAuth). TME: reuses the
-            // ClientId/ClientSecret columns for its Token/HMAC-secret pair (Token = ClientId,
-            // ApiKey secret = ClientSecret) rather than adding yet more Supplier columns — see
-            // TmeOptions's doc comment.
+            // Mouser: ApiKey only (self-service Search API key, no OAuth). TME: Token + HMAC
+            // signing secret, now two separately named secrets (TmeToken/TmeApiKey) instead of
+            // the old reuse of the ClientId/ClientSecret columns.
             var mouserSupplier = FindSupplier("MOUSER");
             var mouserOptions = new MouserOptions
             {
-                ApiKey = mouserSupplier?.ApiKey,
+                ApiKey = Secret(mouserSupplier, () => SecretSettings.MouserApiKey),
                 IsSandbox = mouserSupplier?.IsSandbox ?? true,
                 UseMockData = mouserSupplier?.UseMockData ?? true
             };
             var tmeSupplier = FindSupplier("TME");
             var tmeOptions = new TmeOptions
             {
-                Token = tmeSupplier?.ClientId,
-                ApiKey = tmeSupplier?.ClientSecret,
+                Token = Secret(tmeSupplier, () => SecretSettings.TmeToken),
+                ApiKey = Secret(tmeSupplier, () => SecretSettings.TmeApiKey),
                 IsSandbox = tmeSupplier?.IsSandbox ?? true,
                 UseMockData = tmeSupplier?.UseMockData ?? true
             };
@@ -130,8 +158,8 @@ namespace Procurement.UI.Composition
             var arrowSupplier = FindSupplier("ARROW");
             var arrowOptions = new ArrowOptions
             {
-                ClientId = arrowSupplier?.ClientId,
-                ClientSecret = arrowSupplier?.ClientSecret,
+                ClientId = Secret(arrowSupplier, () => SecretSettings.ArrowClientId),
+                ClientSecret = Secret(arrowSupplier, () => SecretSettings.ArrowClientSecret),
                 BillToId = arrowSupplier?.AccountId,
                 IsSandbox = arrowSupplier?.IsSandbox ?? true,
                 UseMockData = arrowSupplier?.UseMockData ?? true
@@ -139,7 +167,7 @@ namespace Procurement.UI.Composition
             var rutronikSupplier = FindSupplier("RUTRONIK");
             var rutronikOptions = new RutronikOptions
             {
-                ApiKey = rutronikSupplier?.ApiKey,
+                ApiKey = Secret(rutronikSupplier, () => SecretSettings.RutronikApiKey),
                 IsSandbox = rutronikSupplier?.IsSandbox ?? true,
                 UseMockData = rutronikSupplier?.UseMockData ?? true
             };
@@ -151,10 +179,21 @@ namespace Procurement.UI.Composition
             // Some OAuth providers issue a new refresh token every time the old one is used to get a
             // fresh access token — without persisting that, the rotated value would only live for
             // this process's lifetime, and the next run would fail to refresh with the (by then
-            // revoked) token still in the database. Fire-and-forget: a failed persist here just means
-            // "Ordering autoriseren..." needs to be run again next time, not a crash worth blocking on.
+            // revoked) token still in the database. Now written to SharedSecrets (whose permission
+            // script grants the app's SQL login db_datawriter — the old Procurement_Supplier write
+            // sometimes lacked UPDATE rights). Swallowed on failure: that just means "Authorize
+            // Ordering..." needs to be run again next time, not a crash worth blocking on.
             digiKeyHttpClientWrapper.OnRefreshTokenRotated = newRefreshToken =>
-                { _ = SupplierRepository.UpdateRefreshTokenAsync("DIGIKEY", newRefreshToken); };
+            {
+                try
+                {
+                    SecretSettings.SaveDigiKeyRefreshToken(newRefreshToken);
+                }
+                catch
+                {
+                    // See comment above.
+                }
+            };
             var digiKeyAdapter = new DigiKeyAdapter(digiKeyOptions, digiKeyHttpClientWrapper);
             var farnellAdapter = new FarnellAdapter(farnellOptions, new FarnellHttpClientWrapper(farnellOptions));
             var mouserAdapter = new MouserAdapter(mouserOptions, new MouserHttpClientWrapper(mouserOptions));
@@ -181,9 +220,8 @@ namespace Procurement.UI.Composition
                 var supplier = FindSupplier(def.Code);
                 var options = new GenericMockSupplierOptions
                 {
-                    ClientId = supplier?.ClientId,
-                    ClientSecret = supplier?.ClientSecret,
-                    ApiKey = supplier?.ApiKey,
+                    // No secrets defined for these yet (no confirmed API, mock only) — add them to
+                    // SecretSettings.Definitions once one gets a real adapter.
                     IsSandbox = supplier?.IsSandbox ?? true,
                     UseMockData = supplier?.UseMockData ?? true
                 };

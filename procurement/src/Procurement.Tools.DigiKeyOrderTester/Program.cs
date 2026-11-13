@@ -1,12 +1,14 @@
 using System;
 using System.Collections.Generic;
+using System.Data.SqlClient;
 using System.Globalization;
 using System.Threading.Tasks;
 using Procurement.Core.Exceptions;
 using Procurement.Core.Models;
-using Procurement.Core.Security;
+using Procurement.Core.Session;
 using Procurement.Data;
 using Procurement.Data.Repositories;
+using Procurement.Data.Secrets;
 using Procurement.Suppliers.DigiKey;
 using Procurement.Suppliers.DigiKey.Http;
 
@@ -17,8 +19,10 @@ namespace Procurement.Tools.DigiKeyOrderTester
     /// MainForm's "Order plaatsen"/"Orderbevestiging verwerken" use, but without going through
     /// ProcurementEngine/MaxErpConnector first — so this never writes a PO into MAX, nor requires one
     /// to already exist locally for a status lookup. Only reads the already-authorized DIGIKEY row
-    /// from Procurement_Supplier (ClientId/ClientSecret/RefreshToken/AccountId/contact fields), all
-    /// via the exact same SecretProtector-backed properties the real app uses.
+    /// from Procurement_Supplier (IsSandbox/AccountId/contact fields) plus the DigiKey secrets from
+    /// the SharedSecrets database (ClientId/ClientSecret/RefreshToken), via the exact same
+    /// SecretSettings the real app uses — so the Windows user running this needs a SecretAccess
+    /// grant for those three, same as in the app.
     /// </summary>
     internal static class Program
     {
@@ -31,7 +35,7 @@ namespace Procurement.Tools.DigiKeyOrderTester
                 Console.WriteLine("  Procurement.Tools.DigiKeyOrderTester.exe status <SalesOrderId>");
                 Console.WriteLine();
                 Console.WriteLine("Vereiste omgevingsvariabelen:");
-                Console.WriteLine("  PROCUREMENT_SECRET_KEY            - dezelfde sleutel als de hoofdapplicatie gebruikt.");
+                Console.WriteLine("  UNIPRO_SECRET_KEY                 - dezelfde sleutel als UniPro en de hoofdapplicatie gebruiken.");
                 Console.WriteLine("  PROCUREMENT_TEST_CONNECTION_STRING - connection string naar de echte 'Unitron'-database.");
                 return 1;
             }
@@ -43,6 +47,11 @@ namespace Procurement.Tools.DigiKeyOrderTester
                 return 1;
             }
 
+            // Same server/login, SharedSecrets catalog — mirrors LoginForm/ProcurementConnectionStringHelper.
+            ProcurementSession.SharedSecretsConnectionString =
+                new SqlConnectionStringBuilder(connectionString) { InitialCatalog = "SharedSecrets" }.ConnectionString;
+            ProcurementSession.UserName = Environment.UserName;
+
             using (var context = new ProcurementDbContext(connectionString))
             {
                 var supplierRepository = new SupplierRepository(context);
@@ -52,17 +61,29 @@ namespace Procurement.Tools.DigiKeyOrderTester
                     Console.WriteLine("Geen Supplier-rij gevonden met SupplierCode 'DIGIKEY'.");
                     return 1;
                 }
-                if (string.IsNullOrEmpty(supplier.RefreshToken))
+                string clientId, clientSecret, refreshToken;
+                try
                 {
-                    Console.WriteLine("Supplier.RefreshToken is leeg - doorloop eerst \"Ordering autoriseren...\" in Instellingen.");
+                    clientId = SecretSettings.DigiKeyClientId;
+                    clientSecret = SecretSettings.DigiKeyClientSecret;
+                    refreshToken = SecretSettings.DigiKeyRefreshToken;
+                }
+                catch (UnauthorizedAccessException ex)
+                {
+                    Console.WriteLine(ex.Message);
+                    return 1;
+                }
+                if (string.IsNullOrEmpty(refreshToken))
+                {
+                    Console.WriteLine("DigiKeyRefreshToken is leeg - doorloop eerst \"Authorize Ordering...\" in Settings.");
                     return 1;
                 }
 
                 var options = new DigiKeyOptions
                 {
-                    ClientId = supplier.ClientId,
-                    ClientSecret = supplier.ClientSecret,
-                    RefreshToken = supplier.RefreshToken,
+                    ClientId = clientId,
+                    ClientSecret = clientSecret,
+                    RefreshToken = refreshToken,
                     IsSandbox = supplier.IsSandbox,
                     UseMockData = false,
                     AccountId = supplier.AccountId,
@@ -81,34 +102,22 @@ namespace Procurement.Tools.DigiKeyOrderTester
 
                 using (var httpClient = new DigiKeyHttpClientWrapper(options))
                 {
-                    // Blocking (not fire-and-forget like CompositionRoot's version) since this
-                    // short-lived process would otherwise risk exiting before the write lands.
-                    // Swallowed on failure (e.g. a read-only test connection string without UPDATE
-                    // rights on Procurement_Supplier) rather than left to abort the whole attempt —
-                    // losing the rotated token only risks needing to redo "Ordering autoriseren..."
-                    // before the *next* run, it shouldn't block *this* one.
+                    // Blocking, since this short-lived process would otherwise risk exiting before
+                    // the write lands. Now goes to SharedSecrets (db_datawriter for the MAX login per
+                    // UniPro's permission script) instead of Procurement_Supplier, which this tool's
+                    // login couldn't UPDATE — hence the old "paste this UPDATE in SSMS" fallback is gone.
                     httpClient.OnRefreshTokenRotated = newToken =>
                     {
                         Console.WriteLine("Refresh-token is geroteerd tijdens deze aanroep, wordt teruggeschreven...");
                         try
                         {
-                            supplierRepository.UpdateRefreshTokenAsync("DIGIKEY", newToken).GetAwaiter().GetResult();
+                            SecretSettings.SaveDigiKeyRefreshToken(newToken);
                         }
                         catch (Exception ex)
                         {
-                            // Printed as a ready-to-paste UPDATE instead of just a warning: the test
-                            // connection string's login apparently can't write Procurement_Supplier,
-                            // but SSMS (used for the schema script) clearly can — this sidesteps
-                            // waiting on IT/DBA for a permission grant. Encrypted here (not left to
-                            // SSMS) since the column only ever holds SecretProtector-encrypted values,
-                            // same key as everything else (PROCUREMENT_SECRET_KEY).
-                            var encrypted = SecretProtector.Encrypt(newToken).Replace("'", "''");
                             Console.WriteLine($"WAARSCHUWING: kon het nieuwe refresh-token niet opslaan ({ex.Message}).");
-                            Console.WriteLine("Dit gaat door met dit nieuwe token, maar zonder het op te slaan werkt de");
-                            Console.WriteLine("VOLGENDE run niet meer. Plak dit in SSMS om het alsnog op te slaan:");
-                            Console.WriteLine();
-                            Console.WriteLine($"UPDATE dbo.Procurement_Supplier SET RefreshTokenEncrypted = '{encrypted}' WHERE SupplierCode = 'DIGIKEY';");
-                            Console.WriteLine();
+                            Console.WriteLine("Deze run gaat door, maar de VOLGENDE run werkt pas weer na opnieuw");
+                            Console.WriteLine("\"Authorize Ordering...\" in Settings.");
                         }
                     };
 

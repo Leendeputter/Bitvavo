@@ -1,9 +1,8 @@
 namespace Procurement.Suppliers.DigiKey
 {
     /// <summary>
-    /// ClientId/ClientSecret are populated by CompositionRoot from the encrypted Supplier row
-    /// (Procurement.Core.Security.SecretProtector, editable via Instellingen's "Credentials
-    /// bewerken" dialog) — never from App.config or source control. Never write them to the audit
+    /// ClientId/ClientSecret are populated by CompositionRoot from the SharedSecrets database
+    /// (Procurement.Data.Secrets.SecretSettings, same as UniPro; edited via Beheer > App Secrets) — never from App.config or source control. Never write them to the audit
     /// log either (DbAuditLogger already masks common secret key names, but keep this in mind for
     /// any new fields added here).
     /// </summary>
@@ -52,7 +51,7 @@ namespace Procurement.Suppliers.DigiKey
         /// flow the fields above are for. Null until "Ordering autoriseren..." has been run once in
         /// Instellingen; DigiKeyHttpClientWrapper.PostOrderAsync throws a clear error instead of
         /// guessing if a real order is attempted before that. Populated by CompositionRoot from
-        /// Supplier.RefreshToken (SecretProtector-encrypted, same as ClientId/ClientSecret/ApiKey) —
+        /// SharedSecrets ("DigiKeyRefreshToken", via SecretSettings, same as ClientId/ClientSecret) —
         /// mutated in place (not just read once) since a successful token refresh can rotate it, and
         /// DigiKeyHttpClientWrapper needs OnRefreshTokenRotated wired up to persist that back to the
         /// database or the rotated value would only live for this process's lifetime.

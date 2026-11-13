@@ -2,6 +2,7 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 using Procurement.UI.Composition;
+using Procurement.UI.Security;
 using static Procurement.UI.Support.GridFormatting;
 
 namespace Procurement.UI.Forms
@@ -35,6 +36,7 @@ namespace Procurement.UI.Forms
         // existing window forward instead of opening a confusing second copy of this app's main
         // work surface, with its own separate in-progress Query/selection state.
         private MainForm _mainForm;
+        private ToolStripMenuItem _beheerMenu;
 
         public ShellForm(CompositionRoot composition)
         {
@@ -90,8 +92,15 @@ namespace Procurement.UI.Forms
             optionsMenu.DropDownItems.Add("Settings...", null, (s, e) => ShowSettings());
             optionsMenu.DropDownItems.Add("Audit Log...", null, (s, e) => ShowAuditLog());
 
+            // Beheer > App Secrets (user request, 13 nov 2026: secrets "op dezelfde manier als
+            // UniPro, met een aparte database en een beheer menu"). Same menu name, item name and
+            // access right as UniPro2026's own Beheer menu, so the two line up when merged. Hidden
+            // in OnLoad for users without MGR User Security (and demanded again on click, like UniPro).
+            _beheerMenu = new ToolStripMenuItem("Beheer");
+            _beheerMenu.DropDownItems.Add("App Secrets", null, (s, e) => ShowAppSecrets());
+
             // Activity before Options (user request, 20 okt 2026).
-            menuStrip.Items.AddRange(new ToolStripItem[] { activityMenu, optionsMenu });
+            menuStrip.Items.AddRange(new ToolStripItem[] { activityMenu, optionsMenu, _beheerMenu });
             MainMenuStrip = menuStrip;
 
             Controls.Add(menuStrip);
@@ -112,6 +121,57 @@ namespace Procurement.UI.Forms
                 if (control is MdiClient mdiClient)
                     mdiClient.BackColor = ClassicScreenBackColor;
             }
+
+            _beheerMenu.Visible = HasBeheerAccess();
+
+            if (_composition.StartupWarnings.Count > 0)
+            {
+                MessageBox.Show(this,
+                    string.Join("\n\n", _composition.StartupWarnings),
+                    "Let op", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
+        /// <summary>A failing rights lookup hides the menu rather than crashing startup.</summary>
+        private static bool HasBeheerAccess()
+        {
+            try
+            {
+                return SecurityHelper.HasAccess(AccessRights.MgrUserSecurity, MAX50.SecLevel.USERSEC_READWRITE);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private void ShowAppSecrets()
+        {
+            try
+            {
+                SecurityHelper.DemandAccess(AccessRights.MgrUserSecurity, MAX50.SecLevel.USERSEC_READWRITE);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                MessageBox.Show(this, ex.Message, "Geen rechten", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            // One instance at a time, like UniPro's OpenOrActivateForm<AppSecretsForm>().
+            foreach (var child in MdiChildren)
+            {
+                if (child is AppSecretsForm existing)
+                {
+                    if (existing.WindowState == FormWindowState.Minimized)
+                        existing.WindowState = FormWindowState.Normal;
+                    existing.Activate();
+                    return;
+                }
+            }
+
+            var form = new AppSecretsForm { MdiParent = this };
+            form.FormClosed += (s, e) => form.Dispose();
+            form.Show();
         }
 
         private void ShowPurchaseRequests()

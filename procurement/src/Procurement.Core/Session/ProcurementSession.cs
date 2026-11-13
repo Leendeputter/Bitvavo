@@ -26,6 +26,13 @@ namespace Procurement.Core.Session
         /// <summary>Connection string for this app's own tables — the "Unitron" (or "Unitron_test") database.</summary>
         public static string SharedConnectionString { get; set; }
 
+        /// <summary>
+        /// Connection string for the SharedSecrets database (dbo.AppSecrets/dbo.SecretAccess) — the
+        /// same database UniPro2026 uses (AppSession.SharedSecretsConnectionString), same server as
+        /// "Unitron", no "_test" suffix: test vs. live is part of the secret's name, not the database.
+        /// </summary>
+        public static string SharedSecretsConnectionString { get; set; }
+
         public static long CompanyId { get; set; }
         public static string CompanyName { get; set; }
 

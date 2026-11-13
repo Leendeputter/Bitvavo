@@ -1,9 +1,8 @@
 namespace Procurement.Suppliers.Mouser
 {
     /// <summary>
-    /// ApiKey is populated by CompositionRoot from the encrypted Supplier row
-    /// (Procurement.Core.Security.SecretProtector, editable via Instellingen's "Credentials
-    /// bewerken" dialog) — never from App.config or source control.
+    /// ApiKey is populated by CompositionRoot from the SharedSecrets database
+    /// (Procurement.Data.Secrets.SecretSettings, same as UniPro; edited via Beheer > App Secrets) — never from App.config or source control.
     /// </summary>
     public class MouserOptions
     {

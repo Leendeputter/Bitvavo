@@ -5,6 +5,7 @@ using System.Windows.Forms;
 using Procurement.Core.Entities;
 using Procurement.Core.Exceptions;
 using Procurement.Data.Repositories;
+using Procurement.Data.Secrets;
 using Procurement.Suppliers.DigiKey;
 using Procurement.Suppliers.DigiKey.Http;
 using static Procurement.UI.Support.GridFormatting;
@@ -93,9 +94,6 @@ namespace Procurement.UI.Forms
             var saveButton = new Button { Text = "Save", AutoSize = true };
             ApplyClassicButtonStyle(saveButton);
             saveButton.Click += async (s, e) => await SaveSuppliersAsync();
-            var credentialsButton = new Button { Text = "Edit Credentials...", AutoSize = true };
-            ApplyClassicButtonStyle(credentialsButton);
-            credentialsButton.Click += async (s, e) => await EditCredentialsForSelectedSupplierAsync();
             var shippingButton = new Button { Text = "Edit Shipping Details...", AutoSize = true };
             ApplyClassicButtonStyle(shippingButton);
             shippingButton.Click += async (s, e) => await EditOrderingContactForSelectedSupplierAsync();
@@ -103,7 +101,6 @@ namespace Procurement.UI.Forms
             ApplyClassicButtonStyle(authorizeOrderingButton);
             authorizeOrderingButton.Click += async (s, e) => await AuthorizeDigiKeyOrderingAsync();
             buttonPanel.Controls.Add(saveButton);
-            buttonPanel.Controls.Add(credentialsButton);
             buttonPanel.Controls.Add(shippingButton);
             buttonPanel.Controls.Add(authorizeOrderingButton);
 
@@ -223,16 +220,15 @@ namespace Procurement.UI.Forms
                 if (_suppliersGrid.Columns[column] != null)
                     _suppliersGrid.Columns[column].ReadOnly = true;
             // IsSandbox/UseMockData are directly editable here (saved by SaveSuppliersAsync below).
-            // Credentials never appear in this grid at all, encrypted or not — a raw ciphertext
-            // column would be noise, and a decrypted one would put a secret in plain view on
-            // screen; both are edited exclusively through the write-only "Credentials bewerken"
-            // dialog instead (EditCredentialsForSelectedSupplier). The account/shipping-contact
+            // Credentials never appear in this grid at all: since 13 nov 2026 they live in the
+            // SharedSecrets database and are edited only via Beheer > App Secrets (same as UniPro);
+            // the legacy *Encrypted columns are hidden below. The account/shipping-contact
             // fields aren't secret, but ten extra columns here would be pure clutter for something
             // edited a handful of times ever — same reasoning, different (read/write, pre-filled)
             // dialog: "Verzendgegevens bewerken" (EditOrderingContactForSelectedSupplierAsync).
             foreach (var column in new[]
             {
-                "Capabilities", "ClientIdEncrypted", "ClientSecretEncrypted", "ApiKeyEncrypted", "ClientId", "ClientSecret", "ApiKey",
+                "Capabilities", "ClientIdEncrypted", "ClientSecretEncrypted", "ApiKeyEncrypted", "RefreshTokenEncrypted",
                 "AccountId", "ContactName", "ContactEmail", "ContactTelephone", "AddressLine1", "AddressLine2", "City", "Province", "PostalCode", "CountryCode"
             })
                 if (_suppliersGrid.Columns[column] != null)
@@ -309,87 +305,9 @@ namespace Procurement.UI.Forms
         }
 
         /// <summary>
-        /// Credentials worden bewust nooit in de suppliers-grid getoond (versleuteld of niet) —
-        /// dit losse, write-only dialoogvenster is de enige plek waar ze bewerkt worden. Velden
-        /// staan altijd leeg bij openen (een bestaande waarde wordt nooit teruggetoond, ook niet
-        /// ontsleuteld) en leeg laten = ongewijzigd laten; alleen invullen overschrijft. Welke
-        /// velden een supplier daadwerkelijk gebruikt verschilt (DigiKey: ClientId+ClientSecret;
-        /// Farnell/Mouser: enkel ApiKey; TME: Token in ClientId, HMAC-secret in ClientSecret;
-        /// overige distributeurs: nog geen bevestigde API, velden liggen klaar voor later) — het
-        /// dialoogvenster toont voor elke supplier gewoon alle drie velden, niet-toepasselijke
-        /// velden blijven dan leeg.
-        /// </summary>
-        private async System.Threading.Tasks.Task EditCredentialsForSelectedSupplierAsync()
-        {
-            if (_suppliersGrid.CurrentRow == null)
-            {
-                MessageBox.Show(this, "Selecteer eerst een supplier.", "Geen selectie", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            var supplierId = (int)_suppliersGrid.CurrentRow.Cells["Id"].Value;
-            var supplierCode = (string)_suppliersGrid.CurrentRow.Cells["SupplierCode"].Value;
-
-            using (var dialog = new Form
-            {
-                Text = $"Edit Credentials – {supplierCode}",
-                Width = 420,
-                Height = 260,
-                StartPosition = FormStartPosition.CenterParent,
-                FormBorderStyle = FormBorderStyle.FixedDialog,
-                MinimizeBox = false,
-                MaximizeBox = false,
-                BackColor = ClassicScreenBackColor
-            })
-            {
-                var layout = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 2, AutoSize = true, Padding = new Padding(10) };
-                var clientIdBox = new TextBox { Width = 220 };
-                var clientSecretBox = new TextBox { Width = 220, PasswordChar = '●' };
-                var apiKeyBox = new TextBox { Width = 220, PasswordChar = '●' };
-                AddRow(layout, "Client Id / Token (DigiKey/TME):", clientIdBox);
-                AddRow(layout, "Client Secret (DigiKey/TME):", clientSecretBox);
-                AddRow(layout, "Api Key (Farnell/Mouser):", apiKeyBox);
-
-                var hint = new Label
-                {
-                    Dock = DockStyle.Top,
-                    Height = 40,
-                    Padding = new Padding(10, 0, 10, 0),
-                    Text = "Leave blank = unchanged. Existing values are never shown here."
-                };
-
-                var buttonPanel = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(10) };
-                var saveButton = new Button { Text = "Save", AutoSize = true, DialogResult = DialogResult.OK };
-                ApplyClassicButtonStyle(saveButton);
-                var cancelButton = new Button { Text = "Cancel", AutoSize = true, DialogResult = DialogResult.Cancel };
-                ApplyClassicButtonStyle(cancelButton);
-                buttonPanel.Controls.Add(cancelButton);
-                buttonPanel.Controls.Add(saveButton);
-
-                dialog.Controls.Add(layout);
-                dialog.Controls.Add(hint);
-                dialog.Controls.Add(buttonPanel);
-                dialog.AcceptButton = saveButton;
-                dialog.CancelButton = cancelButton;
-
-                if (dialog.ShowDialog(this) != DialogResult.OK) return;
-
-                try
-                {
-                    await _supplierRepository.UpdateCredentialsAsync(supplierId, clientIdBox.Text, clientSecretBox.Text, apiKeyBox.Text);
-                    MessageBox.Show(this, "Credentials opgeslagen.", "Opgeslagen", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show(this, ex.Message, "Fout", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                }
-            }
-        }
-
-        /// <summary>
         /// Account/shipping-contact info a real Ordering API call needs (see Supplier.cs) — per
         /// supplier, since a different supplier's Ordering API could need a completely different
-        /// account reference or ship-to address. Unlike "Credentials bewerken" this dialog does
+        /// account reference or ship-to address. Unlike the secrets (Beheer > App Secrets) this dialog does
         /// pre-fill the current values (nothing here is a secret) and always overwrites on save.
         /// </summary>
         private async System.Threading.Tasks.Task EditOrderingContactForSelectedSupplierAsync()
@@ -476,7 +394,8 @@ namespace Procurement.UI.Forms
         /// DigiKeyOrderingAuthorizer) — only DigiKey needs this (Product Information's 2-legged
         /// client-credentials flow needs no interactive step at all), so this button is a no-op
         /// for any other selected supplier rather than something every supplier row supports.
-        /// Persists the resulting refresh token via UpdateRefreshTokenAsync; CompositionRoot picks
+        /// Persists the resulting refresh token in SharedSecrets (SecretSettings.SaveDigiKeyRefreshToken,
+        /// secret "DigiKeyRefreshToken"); CompositionRoot picks
         /// it up the next time the app starts (this dialog doesn't attempt to hot-swap the
         /// already-running DigiKeyHttpClientWrapper's in-memory options).
         /// </summary>
@@ -498,12 +417,21 @@ namespace Procurement.UI.Forms
             var current = await _supplierRepository.GetByCodeAsync(supplierCode);
             if (current == null) return;
 
-            var options = new DigiKeyOptions
+            DigiKeyOptions options;
+            try
             {
-                ClientId = current.ClientId,
-                ClientSecret = current.ClientSecret,
-                IsSandbox = current.IsSandbox
-            };
+                options = new DigiKeyOptions
+                {
+                    ClientId = SecretSettings.DigiKeyClientId,
+                    ClientSecret = SecretSettings.DigiKeyClientSecret,
+                    IsSandbox = current.IsSandbox
+                };
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                MessageBox.Show(this, ex.Message, "Geen rechten", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
 
             var authorizer = new DigiKeyOrderingAuthorizer();
             var state = Guid.NewGuid().ToString("N");
@@ -527,12 +455,18 @@ namespace Procurement.UI.Forms
             {
                 var code = DigiKeyOrderingAuthorizer.ExtractAuthorizationCode(pasted, state);
                 var refreshToken = await authorizer.ExchangeAuthorizationCodeAsync(options, code);
-                await _supplierRepository.UpdateRefreshTokenAsync(supplierCode, refreshToken);
+                SecretSettings.SaveDigiKeyRefreshToken(refreshToken);
                 MessageBox.Show(this, "DigiKey Ordering is geautoriseerd. Herstart de applicatie om de nieuwe autorisatie te gebruiken.", "Gelukt", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (SupplierException ex)
             {
                 MessageBox.Show(this, ex.Message, "Fout", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            catch (Exception ex)
+            {
+                // e.g. SharedSecrets unreachable or UNIPRO_SECRET_KEY not set while saving the token.
+                MessageBox.Show(this, $"De autorisatie is gelukt, maar het refresh-token kon niet worden opgeslagen:\n\n{ex.Message}",
+                    "Fout", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 

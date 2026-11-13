@@ -25,5 +25,22 @@ namespace Procurement.UI.Composition
 
             return builder.ConnectionString;
         }
+
+        /// <summary>
+        /// SharedSecrets — the shared secrets database UniPro2026 created on 9 nov 2026 (same server
+        /// as Unitron). Mirrors UniPro's ConnectionStringHelper.BuildSharedSecretsConnectionString
+        /// exactly, including NOT adding a "_test" suffix: test vs. live is part of a secret's name.
+        /// </summary>
+        public const string SharedSecretsCatalogName = "SharedSecrets";
+
+        public static string BuildSharedSecretsConnectionString(string adminConnectionString)
+        {
+            var builder = new SqlConnectionStringBuilder(adminConnectionString)
+            {
+                InitialCatalog = SharedSecretsCatalogName
+            };
+
+            return builder.ConnectionString;
+        }
     }
 }
