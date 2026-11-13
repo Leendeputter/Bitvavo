@@ -49,81 +49,119 @@ namespace Procurement.UI.Forms
             });
         }
 
+        /// <summary>
+        /// Resizable, Dock/flow-based layout (user feedback, 13 nov 2026: "De tekst van de knoppen van
+        /// beheer scherm vallen weg en het scherm is ook niet groter te maken"). The first version
+        /// copied UniPro's fixed Designer pixel positions, but ApplyClassicButtonStyle's padding
+        /// doesn't fit in a fixed 23px-high button, so the captions got clipped. Buttons now AutoSize
+        /// like everywhere else in Procurement, and the two halves share the width via a SplitContainer.
+        /// </summary>
         private void InitializeComponent()
         {
             Text = "App Secrets" + (ProcurementSession.TestMode ? " — TEST MODE" : string.Empty);
-            ClientSize = new Size(1060, 528);
-            FormBorderStyle = FormBorderStyle.FixedSingle;
-            MaximizeBox = false;
+            ClientSize = new Size(1080, 560);
+            MinimumSize = new Size(800, 400);
             BackColor = ProcurementSession.TestMode ? Color.LightYellow : ClassicScreenBackColor;
 
+            var split = new SplitContainer
+            {
+                Dock = DockStyle.Fill,
+                Orientation = Orientation.Vertical
+            };
+            // Set after the form has its real size: SplitterDistance on a not-yet-sized
+            // SplitContainer (default 150px wide) throws an out-of-range exception.
+            Load += (s, e) => split.SplitterDistance = Math.Min(580, Math.Max(200, split.Width - 300));
+
+            // Left half: instructions, scrollable list of secrets, Save/Close.
             var instructions = new Label
             {
-                Location = new Point(12, 9),
-                Size = new Size(560, 50),
+                Dock = DockStyle.Top,
+                Height = 44,
+                Padding = new Padding(4, 6, 4, 0),
                 Text = "Leave a field empty to keep the current value unchanged. Filled-in values are encrypted and saved "
                      + "(SharedSecrets database, shared with UniPro), and will never be shown on this screen again."
             };
 
             _secretsPanel = new Panel
             {
+                Dock = DockStyle.Fill,
                 AutoScroll = true,
                 BorderStyle = BorderStyle.FixedSingle,
-                Location = new Point(12, 62),
-                Size = new Size(560, 380)
+                BackColor = Color.White
             };
 
-            var saveButton = new Button { Text = "Save", Location = new Point(416, 454), Size = new Size(75, 23) };
-            ApplyClassicButtonStyle(saveButton);
-            saveButton.Click += (s, e) => RunGuarded(SaveSecrets);
-
-            var closeButton = new Button { Text = "Close", Location = new Point(497, 454), Size = new Size(75, 23) };
+            var leftButtons = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Bottom,
+                AutoSize = true,
+                FlowDirection = FlowDirection.RightToLeft,
+                Padding = new Padding(0, 6, 0, 0)
+            };
+            var closeButton = new Button { Text = "Close", AutoSize = true };
             ApplyClassicButtonStyle(closeButton);
             closeButton.Click += (s, e) => Close();
+            var saveButton = new Button { Text = "Save", AutoSize = true };
+            ApplyClassicButtonStyle(saveButton);
+            saveButton.Click += (s, e) => RunGuarded(SaveSecrets);
+            leftButtons.Controls.Add(closeButton);
+            leftButtons.Controls.Add(saveButton);
 
+            split.Panel1.Padding = new Padding(10);
+            split.Panel1.Controls.Add(_secretsPanel);
+            split.Panel1.Controls.Add(instructions);
+            split.Panel1.Controls.Add(leftButtons);
+
+            // Right half: SecretAccess grid plus copy/save controls.
             var accessGroup = new GroupBox
             {
                 Text = "Secret Access per user - who may use which setting",
-                Location = new Point(588, 9),
-                Size = new Size(460, 507)
+                Dock = DockStyle.Fill,
+                Padding = new Padding(8)
             };
 
             _accessGrid = new DataGridView
             {
-                Location = new Point(10, 22),
-                Size = new Size(440, 406),
+                Dock = DockStyle.Fill,
                 AllowUserToResizeRows = false,
                 AutoGenerateColumns = false,
-                RowHeadersWidth = 20
+                RowHeadersWidth = 20,
+                BackgroundColor = Color.White
             };
             EnableDoubleBuffering(_accessGrid);
             ApplyClassicHeaderStyle(_accessGrid);
 
-            var copyFromLabel = new Label { Text = "From:", Location = new Point(10, 437), Size = new Size(34, 18) };
-            _copyFromCombo = new ComboBox { Location = new Point(44, 434), Size = new Size(128, 21) };
-            var copyToLabel = new Label { Text = "To:", Location = new Point(178, 437), Size = new Size(35, 18) };
-            _copyToBox = new TextBox { Location = new Point(216, 434), Size = new Size(130, 20) };
-            var copyButton = new Button { Text = "Copy", Location = new Point(350, 433), Size = new Size(100, 23) };
+            var accessButtons = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Bottom,
+                AutoSize = true,
+                WrapContents = true,
+                Padding = new Padding(0, 6, 0, 0)
+            };
+            var copyFromLabel = new Label { Text = "Copy rights from:", AutoSize = true, Margin = new Padding(3, 8, 3, 3) };
+            _copyFromCombo = new ComboBox { Width = 130, Margin = new Padding(3, 5, 3, 3) };
+            var copyToLabel = new Label { Text = "to:", AutoSize = true, Margin = new Padding(3, 8, 3, 3) };
+            _copyToBox = new TextBox { Width = 130, Margin = new Padding(3, 5, 3, 3) };
+            var copyButton = new Button { Text = "Copy", AutoSize = true };
             ApplyClassicButtonStyle(copyButton);
             copyButton.Click += (s, e) => RunGuarded(CopyAccess);
-
-            var saveAccessButton = new Button { Text = "Save rights", Location = new Point(350, 470), Size = new Size(100, 23) };
+            var saveAccessButton = new Button { Text = "Save rights", AutoSize = true };
             ApplyClassicButtonStyle(saveAccessButton);
             saveAccessButton.Click += (s, e) => RunGuarded(SaveAccess);
+            accessButtons.Controls.Add(copyFromLabel);
+            accessButtons.Controls.Add(_copyFromCombo);
+            accessButtons.Controls.Add(copyToLabel);
+            accessButtons.Controls.Add(_copyToBox);
+            accessButtons.Controls.Add(copyButton);
+            accessButtons.Controls.Add(saveAccessButton);
+            accessButtons.SetFlowBreak(copyButton, true);
 
             accessGroup.Controls.Add(_accessGrid);
-            accessGroup.Controls.Add(copyFromLabel);
-            accessGroup.Controls.Add(_copyFromCombo);
-            accessGroup.Controls.Add(copyToLabel);
-            accessGroup.Controls.Add(_copyToBox);
-            accessGroup.Controls.Add(copyButton);
-            accessGroup.Controls.Add(saveAccessButton);
+            accessGroup.Controls.Add(accessButtons);
 
-            Controls.Add(instructions);
-            Controls.Add(_secretsPanel);
-            Controls.Add(saveButton);
-            Controls.Add(closeButton);
-            Controls.Add(accessGroup);
+            split.Panel2.Padding = new Padding(10);
+            split.Panel2.Controls.Add(accessGroup);
+
+            Controls.Add(split);
         }
 
         /// <summary>One row per secret (label, status, input). Non-editable secrets (DigiKey's refresh token) get a status but no input box.</summary>
