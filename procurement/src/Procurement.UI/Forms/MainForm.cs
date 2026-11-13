@@ -9,6 +9,7 @@ using Procurement.Erp;
 using Procurement.Suppliers.Farnell;
 using Procurement.UI.Composition;
 using static Procurement.UI.Support.GridFormatting;
+using Procurement.UI.Support;
 
 namespace Procurement.UI.Forms
 {
@@ -75,6 +76,7 @@ namespace Procurement.UI.Forms
         {
             _composition = composition ?? throw new ArgumentNullException(nameof(composition));
             InitializeComponent();
+            GridColumnSettingsHelper.Attach(this); // remembers column widths per user, like UniPro
             // Niets wordt automatisch geladen bij het openen — de grid blijft leeg tot de
             // gebruiker zelf op "Query" klikt (dat geldt ook voor de al lokaal gesynchroniseerde
             // aanvragen, die enkel na een expliciete actie opnieuw worden getoond).
@@ -156,6 +158,7 @@ namespace Procurement.UI.Forms
 
             _requestsGrid = new DataGridView
             {
+                Name = "requestsGrid",
                 // Fill instead of a fixed height (user request, 20 okt 2026 — "mag lager, ten gunste
                 // van de PR's": the offers grid below rarely needs more than ~5 rows, so it gets a
                 // fixed, modest height instead, and this grid — which can hold many more PRs — gets
@@ -190,6 +193,7 @@ namespace Procurement.UI.Forms
 
             _offersGrid = new DataGridView
             {
+                Name = "offersGrid",
                 // Fixed, modest height instead of Fill (user request, 20 okt 2026 — "Over het
                 // algemeen zullen we niet meer dan een stuk of 5 offers per PR hebben"): room for a
                 // header plus about 7 rows before scrolling, comfortably above that typical ~5, in

@@ -7,6 +7,7 @@ using Procurement.Core.Models;
 using Procurement.Data.Repositories;
 using Procurement.Erp;
 using static Procurement.UI.Support.GridFormatting;
+using Procurement.UI.Support;
 
 namespace Procurement.UI.Forms
 {
@@ -50,6 +51,7 @@ namespace Procurement.UI.Forms
             _purchaseRequestRepository = purchaseRequestRepository ?? throw new ArgumentNullException(nameof(purchaseRequestRepository));
             _maxOrderRepository = maxOrderRepository ?? throw new ArgumentNullException(nameof(maxOrderRepository));
             InitializeComponent();
+            GridColumnSettingsHelper.Attach(this); // remembers column widths per user, like UniPro
             Load += async (s, e) => await RefreshAsync();
         }
 
@@ -105,6 +107,7 @@ namespace Procurement.UI.Forms
             var poLabel = new Label { Text = "All Purchase Orders:", Dock = DockStyle.Top, Height = 20, Padding = new Padding(4) };
             _ordersGrid = new DataGridView
             {
+                Name = "ordersGrid",
                 Dock = DockStyle.Top,
                 Height = 260,
                 ReadOnly = true,
@@ -121,6 +124,7 @@ namespace Procurement.UI.Forms
             var linesLabel = new Label { Text = "Lines of Selected PO:", Dock = DockStyle.Top, Height = 20, Padding = new Padding(4) };
             _linesGrid = new DataGridView
             {
+                Name = "linesGrid",
                 Dock = DockStyle.Fill,
                 ReadOnly = true,
                 AllowUserToAddRows = false,

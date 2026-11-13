@@ -8,6 +8,7 @@ using Procurement.Core.Models;
 using Procurement.Core.Session;
 using Procurement.Data.Secrets;
 using static Procurement.UI.Support.GridFormatting;
+using Procurement.UI.Support;
 
 namespace Procurement.UI.Forms
 {
@@ -42,6 +43,7 @@ namespace Procurement.UI.Forms
             InitializeComponent();
             BuildSecretRows();
             BuildAccessGrid();
+            GridColumnSettingsHelper.Attach(this); // remembers column widths per user, like UniPro
             Load += (s, e) => RunGuarded(() =>
             {
                 RefreshStatuses();
@@ -121,6 +123,7 @@ namespace Procurement.UI.Forms
 
             _accessGrid = new DataGridView
             {
+                Name = "accessGrid",
                 Dock = DockStyle.Fill,
                 AllowUserToResizeRows = false,
                 AutoGenerateColumns = false,

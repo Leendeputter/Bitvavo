@@ -1543,3 +1543,13 @@ raken dat mock-modus zelf nooit aanraakt:
     zijn (vereist dat zowel `UNIPRO_SECRET_KEY` als `PROCUREMENT_SECRET_KEY` op die machine staan);
     (2) Beheer-menu zichtbaar voor wie MGR User Security heeft; (3) een DigiKey sandbox-search met
     `UseMockData=false` werkt nog.
+- **Kolombreedtes onthouden per gebruiker, zoals in UniPro** (13 nov 2026 — "Kun je ook inbouwen dat
+  grid-breedtes onthouden worden zoals in UniPro"). Nieuw `Support/GridColumnSettingsHelper.cs`: zelfde
+  opslag en sleutelformaat als UniPro's `GridColumnSettingsHelper` (user-scoped instelling
+  `GridColumnWidths` in user.config, `{Form}.{Grid}.{Kolom}=breedte`), dus lokaal per Windows-gebruiker,
+  niet in de database. Eén aanroep per scherm (`GridColumnSettingsHelper.Attach(this)` in de
+  constructor van elk scherm met een grid); elke grid heeft daarvoor nu een `Name`. Verschillen met
+  UniPro, omdat Procurement z'n kolommen in code (en vaak bij elke refresh opnieuw) opbouwt: breedtes
+  worden na elke binding opnieuw toegepast, en alleen kolommen die je zelf versleept of op de
+  scheidingslijn dubbelklikt worden onthouden, zodat de bewust meerekkende (Fill-)kolommen blijven
+  meegroeien met het venster. Opslaan gebeurt bij het sluiten van het scherm.

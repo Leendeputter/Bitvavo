@@ -4,6 +4,7 @@ using System.Windows.Forms;
 using Procurement.Core.Enums;
 using Procurement.Data.Repositories;
 using static Procurement.UI.Support.GridFormatting;
+using Procurement.UI.Support;
 
 namespace Procurement.UI.Forms
 {
@@ -20,6 +21,7 @@ namespace Procurement.UI.Forms
         {
             _repository = repository ?? throw new ArgumentNullException(nameof(repository));
             InitializeComponent();
+            GridColumnSettingsHelper.Attach(this); // remembers column widths per user, like UniPro
             Load += async (s, e) => await RefreshAsync();
         }
 
@@ -49,6 +51,7 @@ namespace Procurement.UI.Forms
 
             _grid = new DataGridView
             {
+                Name = "grid",
                 Dock = DockStyle.Fill,
                 ReadOnly = true,
                 AllowUserToAddRows = false,

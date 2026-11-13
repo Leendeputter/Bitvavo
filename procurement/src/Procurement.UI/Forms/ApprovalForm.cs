@@ -3,6 +3,7 @@ using System.Linq;
 using System.Windows.Forms;
 using Procurement.Engine;
 using static Procurement.UI.Support.GridFormatting;
+using Procurement.UI.Support;
 
 namespace Procurement.UI.Forms
 {
@@ -21,6 +22,7 @@ namespace Procurement.UI.Forms
         {
             _engine = engine ?? throw new ArgumentNullException(nameof(engine));
             InitializeComponent();
+            GridColumnSettingsHelper.Attach(this); // remembers column widths per user, like UniPro
             Load += async (s, e) => await RefreshAsync();
         }
 
@@ -41,6 +43,7 @@ namespace Procurement.UI.Forms
 
             _grid = new DataGridView
             {
+                Name = "grid",
                 Dock = DockStyle.Fill,
                 ReadOnly = true,
                 AllowUserToAddRows = false,

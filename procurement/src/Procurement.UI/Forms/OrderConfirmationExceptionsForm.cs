@@ -3,6 +3,7 @@ using System.Linq;
 using System.Windows.Forms;
 using Procurement.Core.Models;
 using static Procurement.UI.Support.GridFormatting;
+using Procurement.UI.Support;
 
 namespace Procurement.UI.Forms
 {
@@ -20,6 +21,7 @@ namespace Procurement.UI.Forms
         public OrderConfirmationExceptionsForm(IReadOnlyList<OrderConfirmationException> exceptions)
         {
             InitializeComponent();
+            GridColumnSettingsHelper.Attach(this); // remembers column widths per user, like UniPro
             _grid.DataSource = exceptions.Select(e => new
             {
                 e.ErpPoNumber,
@@ -63,6 +65,7 @@ namespace Procurement.UI.Forms
 
             _grid = new DataGridView
             {
+                Name = "grid",
                 Dock = DockStyle.Fill,
                 ReadOnly = true,
                 AllowUserToAddRows = false,

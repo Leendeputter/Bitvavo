@@ -9,6 +9,7 @@ using Procurement.Data.Secrets;
 using Procurement.Suppliers.DigiKey;
 using Procurement.Suppliers.DigiKey.Http;
 using static Procurement.UI.Support.GridFormatting;
+using Procurement.UI.Support;
 
 namespace Procurement.UI.Forms
 {
@@ -39,6 +40,7 @@ namespace Procurement.UI.Forms
             _policyRepository = policyRepository ?? throw new ArgumentNullException(nameof(policyRepository));
             _supplierRepository = supplierRepository ?? throw new ArgumentNullException(nameof(supplierRepository));
             InitializeComponent();
+            GridColumnSettingsHelper.Attach(this); // remembers column widths per user, like UniPro
             Load += async (s, e) => await RefreshAllAsync();
         }
 
@@ -76,6 +78,7 @@ namespace Procurement.UI.Forms
             var page = new TabPage("Suppliers");
             _suppliersGrid = new DataGridView
             {
+                Name = "suppliersGrid",
                 Dock = DockStyle.Fill,
                 AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
                 AllowUserToAddRows = false
@@ -115,6 +118,7 @@ namespace Procurement.UI.Forms
             var page = new TabPage("Supplier preferences");
             _supplierPreferenceGrid = new DataGridView
             {
+                Name = "supplierPreferenceGrid",
                 Dock = DockStyle.Fill,
                 AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
                 AllowUserToAddRows = true
@@ -136,6 +140,7 @@ namespace Procurement.UI.Forms
             var page = new TabPage("Packaging policy");
             _packagingPolicyGrid = new DataGridView
             {
+                Name = "packagingPolicyGrid",
                 Dock = DockStyle.Fill,
                 AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
                 AllowUserToAddRows = true
@@ -191,6 +196,7 @@ namespace Procurement.UI.Forms
             var page = new TabPage("Supplier capabilities");
             _capabilitiesGrid = new DataGridView
             {
+                Name = "capabilitiesGrid",
                 Dock = DockStyle.Fill,
                 ReadOnly = true,
                 AllowUserToAddRows = false,
