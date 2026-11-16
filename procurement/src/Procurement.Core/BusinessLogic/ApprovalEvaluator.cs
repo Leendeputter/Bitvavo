@@ -82,17 +82,12 @@ namespace Procurement.Core.BusinessLogic
         }
 
         /// <summary>
-        /// Reference price for the "Max price variance" check: the article's known cost price in MAX
-        /// (user request, 16 nov 2026: "gerelateerd aan de bekende kostprijs in MAX van het artikel"),
-        /// i.e. Order_Master.COST_10 / CSTCNV_10 as synced onto the line — the same unit cost the
-        /// Purchase Requests grid uses for Ext. Cost. Replaces the earlier "average of the other
-        /// offers". Null (check skipped) when MAX has no usable cost, e.g. a manual test request.
+        /// Reference price for the "Max price variance" check: the article's cost price in MAX,
+        /// Part_Master.COST_01 (user request, 16 nov 2026: "gerelateerd aan de bekende kostprijs in
+        /// MAX van het artikel" / "de prijs uit de PartMaster, dat is de waarheid"). Replaces the
+        /// earlier "average of the other offers". Null (check skipped) when MAX has no usable cost.
         /// </summary>
-        public static decimal? GetMaxReferenceUnitPrice(PurchaseRequestLine line)
-        {
-            if (line?.Cost == null || line.Cost.Value <= 0m) return null;
-            if (line.CostConv == null || line.CostConv.Value == 0m) return null;
-            return line.Cost.Value / line.CostConv.Value;
-        }
+        public static decimal? GetReferenceUnitPrice(decimal? maxPartCost) =>
+            maxPartCost.HasValue && maxPartCost.Value > 0m ? maxPartCost : null;
     }
 }

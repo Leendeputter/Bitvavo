@@ -115,27 +115,16 @@ namespace Procurement.Tests.BusinessLogic
         }
 
         [Fact]
-        public void MaxReferenceUnitPrice_IsCostDividedByCostConv()
+        public void ReferenceUnitPrice_IsMaxPartCost()
         {
-            var line = BuildLine();
-            line.Cost = 12.5m;
-            line.CostConv = 100m;
-
-            Assert.Equal(0.125m, ApprovalEvaluator.GetMaxReferenceUnitPrice(line));
+            Assert.Equal(0.125m, ApprovalEvaluator.GetReferenceUnitPrice(0.125m));
         }
 
-        [Theory]
-        [InlineData(null, 1)]
-        [InlineData(0, 1)]
-        [InlineData(10, null)]
-        [InlineData(10, 0)]
-        public void MaxReferenceUnitPrice_WithoutUsableMaxCost_IsNull(int? cost, int? costConv)
+        [Fact]
+        public void ReferenceUnitPrice_WithoutUsableMaxCost_IsNull()
         {
-            var line = BuildLine();
-            line.Cost = cost;
-            line.CostConv = costConv;
-
-            Assert.Null(ApprovalEvaluator.GetMaxReferenceUnitPrice(line));
+            Assert.Null(ApprovalEvaluator.GetReferenceUnitPrice(null));
+            Assert.Null(ApprovalEvaluator.GetReferenceUnitPrice(0m));
         }
     }
 }

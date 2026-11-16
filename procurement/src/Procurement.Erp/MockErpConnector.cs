@@ -70,6 +70,9 @@ namespace Procurement.Erp
             await _purchaseOrderRepository.UpdateStatusByErpPoNumberAsync(erpPoNumber, parsedStatus);
         }
 
+        /// <summary>No MAX in mock mode, so no cost price: the price-variance check is skipped.</summary>
+        public Task<decimal?> GetPartCostAsync(string partId) => Task.FromResult<decimal?>(null);
+
         public async Task ApplyOrderConfirmationAsync(PurchaseOrder order, SupplierOrderStatus supplierStatus)
         {
             if (order == null) throw new ArgumentNullException(nameof(order));

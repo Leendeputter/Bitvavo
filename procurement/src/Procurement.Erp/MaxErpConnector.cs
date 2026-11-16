@@ -392,6 +392,9 @@ namespace Procurement.Erp
             ? _inner.UpdatePurchaseOrderStatusAsync(erpPoNumber, status)
             : _maxPurchaseOrderRepository.UpdateStatusAsync(erpPoNumber, status);
 
+        /// <summary>Part_Master.COST_01 (user, 16 nov 2026: "de prijs uit de PartMaster, dat is de waarheid").</summary>
+        public Task<decimal?> GetPartCostAsync(string partId) => _maxOrderRepository.GetPartCostAsync(partId);
+
         /// <summary>
         /// Local tracking (ConfirmedQuantity/ConfirmedUnitPrice/PurchaseOrderDelivery, PO status)
         /// always gets updated, same as mock mode — the real-mode-only extra step is writing MAX's

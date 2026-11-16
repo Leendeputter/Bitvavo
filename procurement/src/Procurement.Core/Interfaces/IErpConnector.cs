@@ -32,5 +32,11 @@ namespace Procurement.Core.Interfaces
         /// OrderConfirmationException, not by this method refusing to apply anything.
         /// </summary>
         Task ApplyOrderConfirmationAsync(PurchaseOrder order, SupplierOrderStatus supplierStatus);
+
+        /// <summary>
+        /// The article's cost price in the ERP (MAX: Part_Master.COST_01), reference for the
+        /// approval policy's price-variance check. Null when unknown.
+        /// </summary>
+        Task<decimal?> GetPartCostAsync(string partId);
     }
 }

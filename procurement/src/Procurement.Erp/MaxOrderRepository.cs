@@ -196,6 +196,26 @@ WHERE dbo.Order_Master.ORDNUM_10 IN ({string.Join(",", paramNames)})";
             }
         }
 
+        /// <summary>
+        /// Part_Master.COST_01 — the article's cost price in MAX, "de waarheid" (user, 16 nov 2026),
+        /// used as the reference for the approval policy's "Max price variance" check. Live lookup
+        /// per line at sourcing time, not a stored column, same reasoning as
+        /// GetPreferredVendorIdsByPartIdsAsync below. Null when the part isn't found or has no cost.
+        /// </summary>
+        public async Task<decimal?> GetPartCostAsync(string partId)
+        {
+            if (string.IsNullOrWhiteSpace(partId)) return null;
+
+            const string sql = "SELECT COST_01 FROM dbo.Part_Master WHERE PRTNUM_01 = @partId";
+            using (var conn = new SqlConnection(_session.AdminConnectionString))
+            using (var cmd = new SqlCommand(sql, conn))
+            {
+                cmd.Parameters.AddWithValue("@partId", partId.Trim());
+                await conn.OpenAsync();
+                return ToNullableDecimal(await cmd.ExecuteScalarAsync());
+            }
+        }
+
         // Same SQL Server 2100-parameter-per-command ceiling as the other batched lookups above —
         // 1 parameter per PartId here, same headroom as GetByOrderNumbersAsync.
         private const int GetPreferredVendorIdsBatchSize = 2000;

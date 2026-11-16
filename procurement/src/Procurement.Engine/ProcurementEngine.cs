@@ -307,7 +307,7 @@ namespace Procurement.Engine
             }
 
             var preference = await _policyRepository.GetSupplierPreferenceAsync(selectionResult.SelectedOffer.SupplierCode);
-            var referencePrice = ApprovalEvaluator.GetMaxReferenceUnitPrice(line);
+            var referencePrice = ApprovalEvaluator.GetReferenceUnitPrice(await _erp.GetPartCostAsync(line.ErpArticleId));
             var evaluation = ApprovalEvaluator.Evaluate(selectionResult.SelectedOffer, line, approvalPolicy, preference, referencePrice);
 
             if (evaluation.IsAutoApproved)
