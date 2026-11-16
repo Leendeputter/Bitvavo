@@ -1,117 +1,65 @@
 using System;
+using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
 using Procurement.Data.Repositories;
-using static Procurement.UI.Support.GridFormatting;
 using Procurement.UI.Support;
+using static Procurement.UI.Support.GridFormatting;
 
 namespace Procurement.UI.Forms
 {
-    /// <summary>Audit-log viewer (spec §8.7).</summary>
-    public class AuditLogForm : Form
+    /// <summary>
+    /// Audit-log viewer (spec §8.7). Built with the Visual Studio Designer (AuditLogForm.Designer.cs,
+    /// user request, 16 nov 2026), UniPro control naming and ClassicStyle. Grid columns come from the
+    /// DataSource, so their widths are set in code; no Fill mode, so columns keep their width when the
+    /// window is maximized (user rule, 16 nov 2026). Double-clicking a row shows the full, untruncated
+    /// text (Error/RequestPayload/ResponsePayload often hold a full HTTP error body).
+    /// </summary>
+    public partial class AuditLogForm : Form
     {
-        private readonly ProcurementEventRepository _repository;
+        private static readonly string[] DetailFields =
+        {
+            "Timestamp", "EntityType", "EntityId", "EventType", "SupplierCode", "Status",
+            "UserOrSystem", "RequestPayload", "ResponsePayload", "Error"
+        };
 
-        private TextBox _entityTypeBox;
-        private TextBox _eventTypeBox;
-        private TextBox _supplierCodeBox;
-        private DateTimePicker _fromPicker;
-        private DateTimePicker _toPicker;
-        private CheckBox _fromEnabled;
-        private CheckBox _toEnabled;
-        private DataGridView _grid;
+        private readonly ProcurementEventRepository _repository;
 
         public AuditLogForm(ProcurementEventRepository repository)
         {
             _repository = repository ?? throw new ArgumentNullException(nameof(repository));
             InitializeComponent();
+            ClassicStyle.ApplyClassicStyle(this);
+            this.BackColor = ClassicStyle.ClassicScreenBackColor;
+            EnableRowNumberHeaders(dgv_auditlog);
+
+            dtp_from.Value = DateTime.Today.AddDays(-7);
+            dtp_to.Value = DateTime.Today.AddDays(1);
+
             GridColumnSettingsHelper.Attach(this); // remembers column widths per user, like UniPro
-            Load += async (s, e) => await SearchAsync();
+            Load += AuditLogForm_Load;
         }
 
-        private void InitializeComponent()
-        {
-            Text = "Audit Log";
-            Width = 1200;
-            Height = 650;
-            // CenterScreen, not CenterParent — shown owner-less via a plain Show() (independent
-            // top-level window, user request, 20 okt 2026), so there's no Owner to center against.
-            // StartPosition is moot for an MDI child (ShellForm.ShowAuditLog() sets MdiParent, user
-            // request, 20 okt 2026 — "MDI-container?") — WinForms always places MDI children with its
-            // own cascading layout regardless of this setting; left as CenterScreen only because
-            // nothing depends on changing it. (The inner detail dialog opened from within this form
-            // stays CenterParent, since that one is genuinely a modal dialog, not an MDI child.)
-            StartPosition = FormStartPosition.CenterScreen;
-            // Pale blue, matching MAX's own "MRP Detail" screenshot (user request, 20 okt 2026) — see
-            // GridFormatting.ClassicScreenBackColor's own comment for why this replaced an earlier,
-            // visually-no-op SystemColors.Control attempt.
-            BackColor = ClassicScreenBackColor;
+        private async void AuditLogForm_Load(object sender, EventArgs e) => await SearchAsync();
 
-            var filterPanel = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 70, FlowDirection = FlowDirection.LeftToRight };
+        private async void bt_search_Click(object sender, EventArgs e) => await SearchAsync();
 
-            filterPanel.Controls.Add(new Label { Text = "EntityType:", AutoSize = true, Padding = new Padding(0, 8, 2, 0) });
-            _entityTypeBox = new TextBox { Width = 130 };
-            filterPanel.Controls.Add(_entityTypeBox);
+        private void chk_from_CheckedChanged(object sender, EventArgs e) => dtp_from.Enabled = chk_from.Checked;
 
-            filterPanel.Controls.Add(new Label { Text = "EventType:", AutoSize = true, Padding = new Padding(8, 8, 2, 0) });
-            _eventTypeBox = new TextBox { Width = 160 };
-            filterPanel.Controls.Add(_eventTypeBox);
+        private void chk_to_CheckedChanged(object sender, EventArgs e) => dtp_to.Enabled = chk_to.Checked;
 
-            filterPanel.Controls.Add(new Label { Text = "Supplier:", AutoSize = true, Padding = new Padding(8, 8, 2, 0) });
-            _supplierCodeBox = new TextBox { Width = 100 };
-            filterPanel.Controls.Add(_supplierCodeBox);
-
-            _fromEnabled = new CheckBox { Text = "From:", AutoSize = true, Padding = new Padding(8, 4, 2, 0) };
-            _fromPicker = new DateTimePicker { Width = 130, Value = DateTime.Today.AddDays(-7), Enabled = false };
-            _fromEnabled.CheckedChanged += (s, e) => _fromPicker.Enabled = _fromEnabled.Checked;
-            filterPanel.Controls.Add(_fromEnabled);
-            filterPanel.Controls.Add(_fromPicker);
-
-            _toEnabled = new CheckBox { Text = "To:", AutoSize = true, Padding = new Padding(8, 4, 2, 0) };
-            _toPicker = new DateTimePicker { Width = 130, Value = DateTime.Today.AddDays(1), Enabled = false };
-            _toEnabled.CheckedChanged += (s, e) => _toPicker.Enabled = _toEnabled.Checked;
-            filterPanel.Controls.Add(_toEnabled);
-            filterPanel.Controls.Add(_toPicker);
-
-            var searchButton = new Button { Text = "Search", AutoSize = true, Margin = new Padding(8, 4, 0, 0) };
-            ApplyClassicButtonStyle(searchButton);
-            searchButton.Click += async (s, e) => await SearchAsync();
-            filterPanel.Controls.Add(searchButton);
-
-            _grid = new DataGridView
-            {
-                Name = "grid",
-                Dock = DockStyle.Fill,
-                ReadOnly = true,
-                AllowUserToAddRows = false,
-                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-                SelectionMode = DataGridViewSelectionMode.RowHeaderSelect,
-                MultiSelect = false
-            };
-            EnableDoubleBuffering(_grid);
-            EnableRowNumberHeaders(_grid);
-            ApplyClassicHeaderStyle(_grid);
-            // Error/RequestPayload/ResponsePayload routinely hold a full HTTP error body (e.g. a
-            // DigiKey 403's JSON) that the grid's own column width truncates — dubbelklik geeft de
-            // volledige, niet-afgekapte tekst in een los venster i.p.v. de kolom handmatig te moeten
-            // verbreden of de cel te moeten kopiëren om de rest te kunnen lezen.
-            _grid.CellDoubleClick += (s, e) => ShowRowDetail(e.RowIndex);
-
-            Controls.Add(_grid);
-            Controls.Add(filterPanel);
-        }
+        private void dgv_auditlog_CellDoubleClick(object sender, DataGridViewCellEventArgs e) => ShowRowDetail(e.RowIndex);
 
         private void ShowRowDetail(int rowIndex)
         {
-            if (rowIndex < 0 || rowIndex >= _grid.Rows.Count) return;
+            if (rowIndex < 0 || rowIndex >= dgv_auditlog.Rows.Count) return;
 
-            var row = _grid.Rows[rowIndex];
-            var fields = new[] { "Timestamp", "EntityType", "EntityId", "EventType", "SupplierCode", "Status", "UserOrSystem", "RequestPayload", "ResponsePayload", "Error" };
-            // FormattedValue (not Value) so Timestamp matches the grid's own DateTimeFormat instead
-            // of DateTime's culture-default ToString().
+            var row = dgv_auditlog.Rows[rowIndex];
+            // FormattedValue (not Value) so Timestamp matches the grid's own DateTimeFormat.
             var text = string.Join(Environment.NewLine + Environment.NewLine,
-                fields.Select(f => $"{f}:{Environment.NewLine}{row.Cells[f].FormattedValue}"));
+                DetailFields.Select(f => $"{f}:{Environment.NewLine}{row.Cells[f].FormattedValue}"));
 
+            // Small throw-away detail dialog, built in code on purpose (no separate Designer form needed).
             using (var dialog = new Form
             {
                 Text = "Audit Log Detail",
@@ -120,7 +68,7 @@ namespace Procurement.UI.Forms
                 StartPosition = FormStartPosition.CenterParent,
                 MinimizeBox = false,
                 MaximizeBox = false,
-                BackColor = ClassicScreenBackColor
+                BackColor = ClassicStyle.ClassicScreenBackColor
             })
             {
                 var textBox = new TextBox
@@ -130,14 +78,12 @@ namespace Procurement.UI.Forms
                     ReadOnly = true,
                     ScrollBars = ScrollBars.Vertical,
                     WordWrap = true,
-                    Font = new System.Drawing.Font("Consolas", 9f),
+                    Font = new Font("Consolas", 9f),
                     Text = text
                 };
-                var buttonPanel = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(8) };
-                var closeButton = new Button { Text = "Close", AutoSize = true, DialogResult = DialogResult.OK };
-                ApplyClassicButtonStyle(closeButton);
-                var copyButton = new Button { Text = "Copy to Clipboard", AutoSize = true };
-                ApplyClassicButtonStyle(copyButton);
+                var buttonPanel = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 43, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(8) };
+                var closeButton = new Button { Text = "Close", Size = new Size(90, 27), DialogResult = DialogResult.OK };
+                var copyButton = new Button { Text = "Copy to Clipboard", Size = new Size(120, 27) };
                 copyButton.Click += (s, e) => Clipboard.SetText(text);
                 buttonPanel.Controls.Add(closeButton);
                 buttonPanel.Controls.Add(copyButton);
@@ -145,6 +91,7 @@ namespace Procurement.UI.Forms
                 dialog.Controls.Add(textBox);
                 dialog.Controls.Add(buttonPanel);
                 dialog.AcceptButton = closeButton;
+                ClassicStyle.ApplyClassicStyle(dialog);
                 dialog.ShowDialog(this);
             }
         }
@@ -152,13 +99,13 @@ namespace Procurement.UI.Forms
         private async System.Threading.Tasks.Task SearchAsync()
         {
             var events = await _repository.SearchAsync(
-                entityType: string.IsNullOrWhiteSpace(_entityTypeBox.Text) ? null : _entityTypeBox.Text,
-                eventType: string.IsNullOrWhiteSpace(_eventTypeBox.Text) ? null : _eventTypeBox.Text,
-                supplierCode: string.IsNullOrWhiteSpace(_supplierCodeBox.Text) ? null : _supplierCodeBox.Text,
-                from: _fromEnabled.Checked ? _fromPicker.Value : (DateTime?)null,
-                to: _toEnabled.Checked ? _toPicker.Value : (DateTime?)null);
+                entityType: string.IsNullOrWhiteSpace(txt_entityType.Text) ? null : txt_entityType.Text,
+                eventType: string.IsNullOrWhiteSpace(txt_eventType.Text) ? null : txt_eventType.Text,
+                supplierCode: string.IsNullOrWhiteSpace(txt_supplier.Text) ? null : txt_supplier.Text,
+                from: chk_from.Checked ? dtp_from.Value : (DateTime?)null,
+                to: chk_to.Checked ? dtp_to.Value : (DateTime?)null);
 
-            _grid.DataSource = events.Select(e => new
+            dgv_auditlog.DataSource = events.Select(e => new
             {
                 e.Timestamp,
                 e.EntityType,
@@ -171,20 +118,18 @@ namespace Procurement.UI.Forms
                 e.ResponsePayload,
                 e.Error
             }).ToList();
-            ApplyDateTimeColumns(_grid, "Timestamp");
-            // RequestPayload/ResponsePayload/Error are the genuinely free-text columns here (per
-            // ShowRowDetail's own comment, routinely a full HTTP error body) — left in Fill with a
-            // floor; everything else gets an explicit width (user request, 20 okt 2026).
-            SetCharacterBasedColumnWidth(_grid, "Timestamp", 19);
-            SetCharacterBasedColumnWidth(_grid, "EntityType", 16);
-            SetCharacterBasedColumnWidth(_grid, "EntityId", 14);
-            SetCharacterBasedColumnWidth(_grid, "EventType", 26);
-            SetCharacterBasedColumnWidth(_grid, "SupplierCode", 12);
-            SetCharacterBasedColumnWidth(_grid, "Status", 10);
-            SetCharacterBasedColumnWidth(_grid, "UserOrSystem", 12);
-            SetMinimumWidth(_grid, "RequestPayload", 160);
-            SetMinimumWidth(_grid, "ResponsePayload", 160);
-            SetMinimumWidth(_grid, "Error", 160);
+            ApplyDateTimeColumns(dgv_auditlog, "Timestamp");
+            SetCharacterBasedColumnWidth(dgv_auditlog, "Timestamp", 19);
+            SetCharacterBasedColumnWidth(dgv_auditlog, "EntityType", 16);
+            SetCharacterBasedColumnWidth(dgv_auditlog, "EntityId", 14);
+            SetCharacterBasedColumnWidth(dgv_auditlog, "EventType", 26);
+            SetCharacterBasedColumnWidth(dgv_auditlog, "SupplierCode", 12);
+            SetCharacterBasedColumnWidth(dgv_auditlog, "Status", 10);
+            SetCharacterBasedColumnWidth(dgv_auditlog, "UserOrSystem", 12);
+            // Free-text columns: fixed width too; double-click a row for the full text.
+            SetCharacterBasedColumnWidth(dgv_auditlog, "RequestPayload", 30);
+            SetCharacterBasedColumnWidth(dgv_auditlog, "ResponsePayload", 30);
+            SetCharacterBasedColumnWidth(dgv_auditlog, "Error", 40);
         }
     }
 }
