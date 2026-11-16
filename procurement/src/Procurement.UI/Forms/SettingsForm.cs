@@ -17,22 +17,15 @@ namespace Procurement.UI.Forms
     /// Instellingen (spec §8.6): SupplierPreference, PackagingPolicy en ApprovalPolicy zijn hier
     /// als data te beheren in plaats van hard-coded in de code, plus een read-only weergave van
     /// de supplier capability-matrix (§5).
+    /// Built with the Visual Studio Designer (user request, 16 nov 2026): the tabs, grids and
+    /// buttons are in SettingsForm.Designer.cs; the two small modal dialogs (shipping details,
+    /// DigiKey redirect paste) are still built in code below.
     /// </summary>
-    public class SettingsForm : Form
+    public partial class SettingsForm : Form
     {
         private readonly PolicyRepository _policyRepository;
         private readonly SupplierRepository _supplierRepository;
 
-        private DataGridView _supplierPreferenceGrid;
-        private DataGridView _packagingPolicyGrid;
-        private DataGridView _capabilitiesGrid;
-        private DataGridView _suppliersGrid;
-
-        private NumericUpDown _maxOrderValueBox;
-        private NumericUpDown _maxPriceVarianceBox;
-        private CheckBox _allowExternalSupplierBox;
-        private CheckBox _allowNonOriginalPackagingBox;
-        private CheckBox _allowAlternativePartBox;
         private ApprovalPolicy _approvalPolicy;
 
         public SettingsForm(PolicyRepository policyRepository, SupplierRepository supplierRepository)
@@ -40,174 +33,27 @@ namespace Procurement.UI.Forms
             _policyRepository = policyRepository ?? throw new ArgumentNullException(nameof(policyRepository));
             _supplierRepository = supplierRepository ?? throw new ArgumentNullException(nameof(supplierRepository));
             InitializeComponent();
+            ClassicStyle.ApplyClassicStyle(this);
+            this.BackColor = ClassicStyle.ClassicScreenBackColor;
+            foreach (var grid in new[] { dgv_suppliers, dgv_supplierPreferences, dgv_packagingPolicies, dgv_capabilities })
+                EnableRowNumberHeaders(grid);
             GridColumnSettingsHelper.Attach(this); // remembers column widths per user, like UniPro
-            Load += async (s, e) => await RefreshAllAsync();
+            Load += SettingsForm_Load;
         }
 
-        private void InitializeComponent()
-        {
-            Text = "Settings";
-            Width = 900;
-            Height = 600;
-            // CenterScreen, not CenterParent — shown owner-less via a plain Show() (independent
-            // top-level window, user request, 20 okt 2026), so there's no Owner to center against.
-            // StartPosition is moot for an MDI child (ShellForm.ShowSettings() sets MdiParent, user
-            // request, 20 okt 2026 — "MDI-container?") — WinForms always places MDI children with its
-            // own cascading layout regardless of this setting; left as CenterScreen only because
-            // nothing depends on changing it. (Inner dialogs opened from within this form —
-            // credential/contact editors, etc. — stay CenterParent, since those are genuinely modal
-            // dialogs, not MDI children themselves.)
-            StartPosition = FormStartPosition.CenterScreen;
-            // Pale blue, matching MAX's own "MRP Detail" screenshot (user request, 20 okt 2026) — see
-            // GridFormatting.ClassicScreenBackColor's own comment for why this replaced an earlier,
-            // visually-no-op SystemColors.Control attempt.
-            BackColor = ClassicScreenBackColor;
+        private async void SettingsForm_Load(object sender, EventArgs e) => await RefreshAllAsync();
 
-            var tabs = new TabControl { Dock = DockStyle.Fill };
-            tabs.TabPages.Add(BuildSuppliersTab());
-            tabs.TabPages.Add(BuildSupplierPreferenceTab());
-            tabs.TabPages.Add(BuildPackagingPolicyTab());
-            tabs.TabPages.Add(BuildApprovalPolicyTab());
-            tabs.TabPages.Add(BuildCapabilitiesTab());
+        private async void bt_saveSuppliers_Click(object sender, EventArgs e) => await SaveSuppliersAsync();
 
-            Controls.Add(tabs);
-        }
+        private async void bt_editShipping_Click(object sender, EventArgs e) => await EditOrderingContactForSelectedSupplierAsync();
 
-        private TabPage BuildSuppliersTab()
-        {
-            var page = new TabPage("Suppliers");
-            _suppliersGrid = new DataGridView
-            {
-                Name = "suppliersGrid",
-                Dock = DockStyle.Fill,
-                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-                AllowUserToAddRows = false
-            };
-            EnableDoubleBuffering(_suppliersGrid);
-            EnableRowNumberHeaders(_suppliersGrid);
-            ApplyClassicHeaderStyle(_suppliersGrid);
-            var hint = new Label
-            {
-                Dock = DockStyle.Top,
-                Height = 30,
-                Padding = new Padding(4),
-                Text = "VendorId: MAX Part_Vendor.VENID_07 for this supplier (e.g. Farnell = 0349, DigiKey = 10194) — used to translate the Part_Vendor cross-reference table into recognized supplier mappings."
-            };
-            var buttonPanel = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true };
-            var saveButton = new Button { Text = "Save", AutoSize = true };
-            ApplyClassicButtonStyle(saveButton);
-            saveButton.Click += async (s, e) => await SaveSuppliersAsync();
-            var shippingButton = new Button { Text = "Edit Shipping Details...", AutoSize = true };
-            ApplyClassicButtonStyle(shippingButton);
-            shippingButton.Click += async (s, e) => await EditOrderingContactForSelectedSupplierAsync();
-            var authorizeOrderingButton = new Button { Text = "Authorize Ordering...", AutoSize = true };
-            ApplyClassicButtonStyle(authorizeOrderingButton);
-            authorizeOrderingButton.Click += async (s, e) => await AuthorizeDigiKeyOrderingAsync();
-            buttonPanel.Controls.Add(saveButton);
-            buttonPanel.Controls.Add(shippingButton);
-            buttonPanel.Controls.Add(authorizeOrderingButton);
+        private async void bt_authorizeOrdering_Click(object sender, EventArgs e) => await AuthorizeDigiKeyOrderingAsync();
 
-            page.Controls.Add(_suppliersGrid);
-            page.Controls.Add(hint);
-            page.Controls.Add(buttonPanel);
-            return page;
-        }
+        private async void bt_savePreferences_Click(object sender, EventArgs e) => await SaveSupplierPreferencesAsync();
 
-        private TabPage BuildSupplierPreferenceTab()
-        {
-            var page = new TabPage("Supplier preferences");
-            _supplierPreferenceGrid = new DataGridView
-            {
-                Name = "supplierPreferenceGrid",
-                Dock = DockStyle.Fill,
-                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-                AllowUserToAddRows = true
-            };
-            EnableDoubleBuffering(_supplierPreferenceGrid);
-            EnableRowNumberHeaders(_supplierPreferenceGrid);
-            ApplyClassicHeaderStyle(_supplierPreferenceGrid);
-            var saveButton = new Button { Text = "Save", Dock = DockStyle.Bottom, AutoSize = true };
-            ApplyClassicButtonStyle(saveButton);
-            saveButton.Click += async (s, e) => await SaveSupplierPreferencesAsync();
+        private async void bt_savePackaging_Click(object sender, EventArgs e) => await SavePackagingPoliciesAsync();
 
-            page.Controls.Add(_supplierPreferenceGrid);
-            page.Controls.Add(saveButton);
-            return page;
-        }
-
-        private TabPage BuildPackagingPolicyTab()
-        {
-            var page = new TabPage("Packaging policy");
-            _packagingPolicyGrid = new DataGridView
-            {
-                Name = "packagingPolicyGrid",
-                Dock = DockStyle.Fill,
-                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-                AllowUserToAddRows = true
-            };
-            EnableDoubleBuffering(_packagingPolicyGrid);
-            EnableRowNumberHeaders(_packagingPolicyGrid);
-            ApplyClassicHeaderStyle(_packagingPolicyGrid);
-            var hint = new Label
-            {
-                Dock = DockStyle.Top,
-                Height = 30,
-                Padding = new Padding(4),
-                Text = "AllowedPackaging: comma-separated list of enum names, e.g. OriginalReel,CutTape"
-            };
-            var saveButton = new Button { Text = "Save", Dock = DockStyle.Bottom, AutoSize = true };
-            ApplyClassicButtonStyle(saveButton);
-            saveButton.Click += async (s, e) => await SavePackagingPoliciesAsync();
-
-            page.Controls.Add(_packagingPolicyGrid);
-            page.Controls.Add(hint);
-            page.Controls.Add(saveButton);
-            return page;
-        }
-
-        private TabPage BuildApprovalPolicyTab()
-        {
-            var page = new TabPage("Approval policy");
-            var layout = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 2, AutoSize = true, Padding = new Padding(10) };
-
-            _maxOrderValueBox = new NumericUpDown { Maximum = 1000000, DecimalPlaces = 2, Width = 150 };
-            _maxPriceVarianceBox = new NumericUpDown { Maximum = 100, DecimalPlaces = 1, Width = 150 };
-            _allowExternalSupplierBox = new CheckBox();
-            _allowNonOriginalPackagingBox = new CheckBox();
-            _allowAlternativePartBox = new CheckBox();
-
-            AddRow(layout, "Max order value for auto-approval:", _maxOrderValueBox);
-            AddRow(layout, "Max price variance (%):", _maxPriceVarianceBox);
-            AddRow(layout, "External supplier allowed:", _allowExternalSupplierBox);
-            AddRow(layout, "Non-original packaging allowed:", _allowNonOriginalPackagingBox);
-            AddRow(layout, "Alternative part allowed:", _allowAlternativePartBox);
-
-            var saveButton = new Button { Text = "Save", Dock = DockStyle.Bottom, AutoSize = true };
-            ApplyClassicButtonStyle(saveButton);
-            saveButton.Click += async (s, e) => await SaveApprovalPolicyAsync();
-
-            page.Controls.Add(layout);
-            page.Controls.Add(saveButton);
-            return page;
-        }
-
-        private TabPage BuildCapabilitiesTab()
-        {
-            var page = new TabPage("Supplier capabilities");
-            _capabilitiesGrid = new DataGridView
-            {
-                Name = "capabilitiesGrid",
-                Dock = DockStyle.Fill,
-                ReadOnly = true,
-                AllowUserToAddRows = false,
-                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill
-            };
-            EnableDoubleBuffering(_capabilitiesGrid);
-            EnableRowNumberHeaders(_capabilitiesGrid);
-            ApplyClassicHeaderStyle(_capabilitiesGrid);
-            page.Controls.Add(_capabilitiesGrid);
-            return page;
-        }
+        private async void bt_saveApproval_Click(object sender, EventArgs e) => await SaveApprovalPolicyAsync();
 
         private static void AddRow(TableLayoutPanel layout, string label, Control control)
         {
@@ -221,10 +67,10 @@ namespace Procurement.UI.Forms
         private async System.Threading.Tasks.Task RefreshAllAsync()
         {
             var suppliersForGrid = await _supplierRepository.GetAllAsync();
-            _suppliersGrid.DataSource = new BindingList<Supplier>(suppliersForGrid.ToList());
+            dgv_suppliers.DataSource = new BindingList<Supplier>(suppliersForGrid.ToList());
             foreach (var column in new[] { "Id", "SupplierCode", "Name" })
-                if (_suppliersGrid.Columns[column] != null)
-                    _suppliersGrid.Columns[column].ReadOnly = true;
+                if (dgv_suppliers.Columns[column] != null)
+                    dgv_suppliers.Columns[column].ReadOnly = true;
             // IsSandbox/UseMockData are directly editable here (saved by SaveSuppliersAsync below).
             // Credentials never appear in this grid at all: since 13 nov 2026 they live in the
             // SharedSecrets database and are edited only via Beheer > App Secrets (same as UniPro);
@@ -237,56 +83,53 @@ namespace Procurement.UI.Forms
                 "Capabilities", "ClientIdEncrypted", "ClientSecretEncrypted", "ApiKeyEncrypted", "RefreshTokenEncrypted",
                 "AccountId", "ContactName", "ContactEmail", "ContactTelephone", "AddressLine1", "AddressLine2", "City", "Province", "PostalCode", "CountryCode"
             })
-                if (_suppliersGrid.Columns[column] != null)
-                    _suppliersGrid.Columns[column].Visible = false;
-            // Explicit widths (user request, 20 okt 2026) — Name is the one genuinely free-text
-            // column here, left in Fill with a floor.
-            SetCharacterBasedColumnWidth(_suppliersGrid, "Id", 6);
-            SetCharacterBasedColumnWidth(_suppliersGrid, "SupplierCode", 14);
-            SetMinimumWidth(_suppliersGrid, "Name", 140);
-            SetCharacterBasedColumnWidth(_suppliersGrid, "VendorId", 10);
-            SetCharacterBasedColumnWidth(_suppliersGrid, "IsSandbox", 10);
-            SetCharacterBasedColumnWidth(_suppliersGrid, "UseMockData", 12);
+                if (dgv_suppliers.Columns[column] != null)
+                    dgv_suppliers.Columns[column].Visible = false;
+            // Fixed widths, no Fill (user rule, 16 nov 2026: columns don't stretch when maximized).
+            SetCharacterBasedColumnWidth(dgv_suppliers, "Id", 6);
+            SetCharacterBasedColumnWidth(dgv_suppliers, "SupplierCode", 14);
+            SetCharacterBasedColumnWidth(dgv_suppliers, "Name", 30);
+            SetCharacterBasedColumnWidth(dgv_suppliers, "VendorId", 10);
+            SetCharacterBasedColumnWidth(dgv_suppliers, "IsSandbox", 10);
+            SetCharacterBasedColumnWidth(dgv_suppliers, "UseMockData", 12);
 
             var preferences = await _policyRepository.GetSupplierPreferencesAsync();
-            _supplierPreferenceGrid.DataSource = new BindingList<SupplierPreference>(preferences.ToList());
-            if (_supplierPreferenceGrid.Columns["Id"] != null)
-                _supplierPreferenceGrid.Columns["Id"].ReadOnly = true;
-            SetCharacterBasedColumnWidth(_supplierPreferenceGrid, "Id", 6);
-            SetCharacterBasedColumnWidth(_supplierPreferenceGrid, "SupplierCode", 14);
-            SetCharacterBasedColumnWidth(_supplierPreferenceGrid, "Priority", 10);
-            SetCharacterBasedColumnWidth(_supplierPreferenceGrid, "Active", 10);
-            SetCharacterBasedColumnWidth(_supplierPreferenceGrid, "AllowedForAutoOrder", 14);
+            dgv_supplierPreferences.DataSource = new BindingList<SupplierPreference>(preferences.ToList());
+            if (dgv_supplierPreferences.Columns["Id"] != null)
+                dgv_supplierPreferences.Columns["Id"].ReadOnly = true;
+            SetCharacterBasedColumnWidth(dgv_supplierPreferences, "Id", 6);
+            SetCharacterBasedColumnWidth(dgv_supplierPreferences, "SupplierCode", 14);
+            SetCharacterBasedColumnWidth(dgv_supplierPreferences, "Priority", 10);
+            SetCharacterBasedColumnWidth(dgv_supplierPreferences, "Active", 10);
+            SetCharacterBasedColumnWidth(dgv_supplierPreferences, "AllowedForAutoOrder", 14);
 
             var packagingPolicies = await _policyRepository.GetPackagingPoliciesAsync();
-            _packagingPolicyGrid.DataSource = new BindingList<PackagingPolicy>(packagingPolicies.ToList());
-            if (_packagingPolicyGrid.Columns["Id"] != null)
-                _packagingPolicyGrid.Columns["Id"].ReadOnly = true;
+            dgv_packagingPolicies.DataSource = new BindingList<PackagingPolicy>(packagingPolicies.ToList());
+            if (dgv_packagingPolicies.Columns["Id"] != null)
+                dgv_packagingPolicies.Columns["Id"].ReadOnly = true;
             // The NotMapped List<PackagingType> convenience property also gets auto-bound; only
             // the underlying CSV string column is meant to be edited here.
-            if (_packagingPolicyGrid.Columns["AllowedPackaging"] != null)
-                _packagingPolicyGrid.Columns["AllowedPackaging"].Visible = false;
-            if (_packagingPolicyGrid.Columns["AllowedPackagingCsv"] != null)
-                _packagingPolicyGrid.Columns["AllowedPackagingCsv"].HeaderText = "AllowedPackaging (csv)";
-            ApplyQuantityColumns(_packagingPolicyGrid, "MinimumQuantity");
-            // AllowedPackagingCsv is the one genuinely variable-length column here (a comma-separated
-            // list), left in Fill with a floor.
-            SetCharacterBasedColumnWidth(_packagingPolicyGrid, "Id", 6);
-            SetMinimumWidth(_packagingPolicyGrid, "ComponentCategory", 140);
-            SetCharacterBasedColumnWidth(_packagingPolicyGrid, "MinimumQuantity", 12);
-            SetCharacterBasedColumnWidth(_packagingPolicyGrid, "PreferredPackaging", 16);
-            SetMinimumWidth(_packagingPolicyGrid, "AllowedPackagingCsv", 160);
-            SetCharacterBasedColumnWidth(_packagingPolicyGrid, "OriginalReelRequired", 14);
+            if (dgv_packagingPolicies.Columns["AllowedPackaging"] != null)
+                dgv_packagingPolicies.Columns["AllowedPackaging"].Visible = false;
+            if (dgv_packagingPolicies.Columns["AllowedPackagingCsv"] != null)
+                dgv_packagingPolicies.Columns["AllowedPackagingCsv"].HeaderText = "AllowedPackaging (csv)";
+            ApplyQuantityColumns(dgv_packagingPolicies, "MinimumQuantity");
+            SetCharacterBasedColumnWidth(dgv_packagingPolicies, "Id", 6);
+            SetCharacterBasedColumnWidth(dgv_packagingPolicies, "ComponentCategory", 20);
+            SetCharacterBasedColumnWidth(dgv_packagingPolicies, "MinimumQuantity", 12);
+            SetCharacterBasedColumnWidth(dgv_packagingPolicies, "PreferredPackaging", 16);
+            SetCharacterBasedColumnWidth(dgv_packagingPolicies, "AllowedPackagingCsv", 30);
+            SetCharacterBasedColumnWidth(dgv_packagingPolicies, "OriginalReelRequired", 14);
 
             _approvalPolicy = await _policyRepository.GetApprovalPolicyAsync() ?? new ApprovalPolicy();
-            _maxOrderValueBox.Value = _approvalPolicy.MaxOrderValueForAutoApproval;
-            _maxPriceVarianceBox.Value = _approvalPolicy.MaxPriceVariancePercentage;
-            _allowExternalSupplierBox.Checked = _approvalPolicy.AllowExternalSupplier;
-            _allowNonOriginalPackagingBox.Checked = _approvalPolicy.AllowNonOriginalPackaging;
-            _allowAlternativePartBox.Checked = _approvalPolicy.AllowAlternativePart;
+            nud_maxOrderValue.Value = _approvalPolicy.MaxOrderValueForAutoApproval;
+            nud_maxPriceVariance.Value = _approvalPolicy.MaxPriceVariancePercentage;
+            chk_allowExternalSupplier.Checked = _approvalPolicy.AllowExternalSupplier;
+            chk_allowNonOriginalPackaging.Checked = _approvalPolicy.AllowNonOriginalPackaging;
+            chk_allowAlternativePart.Checked = _approvalPolicy.AllowAlternativePart;
 
             var suppliers = await _supplierRepository.GetAllAsync();
-            _capabilitiesGrid.DataSource = suppliers
+            dgv_capabilities.DataSource = suppliers
                 .SelectMany(s => s.Capabilities.Select(c => new
                 {
                     Supplier = s.SupplierCode,
@@ -295,14 +138,14 @@ namespace Procurement.UI.Forms
                 }))
                 .OrderBy(x => x.Supplier).ThenBy(x => x.Capability)
                 .ToList();
-            SetCharacterBasedColumnWidth(_capabilitiesGrid, "Supplier", 14);
-            SetCharacterBasedColumnWidth(_capabilitiesGrid, "Capability", 16);
-            SetCharacterBasedColumnWidth(_capabilitiesGrid, "Status", 16);
+            SetCharacterBasedColumnWidth(dgv_capabilities, "Supplier", 14);
+            SetCharacterBasedColumnWidth(dgv_capabilities, "Capability", 16);
+            SetCharacterBasedColumnWidth(dgv_capabilities, "Status", 16);
         }
 
         private async System.Threading.Tasks.Task SaveSuppliersAsync()
         {
-            var items = (BindingList<Supplier>)_suppliersGrid.DataSource;
+            var items = (BindingList<Supplier>)dgv_suppliers.DataSource;
             foreach (var item in items)
                 await _supplierRepository.UpdateSettingsAsync(item.Id, item.VendorId, item.IsSandbox, item.UseMockData);
 
@@ -318,14 +161,14 @@ namespace Procurement.UI.Forms
         /// </summary>
         private async System.Threading.Tasks.Task EditOrderingContactForSelectedSupplierAsync()
         {
-            if (_suppliersGrid.CurrentRow == null)
+            if (dgv_suppliers.CurrentRow == null)
             {
                 MessageBox.Show(this, "Selecteer eerst een supplier.", "Geen selectie", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
-            var supplierId = (int)_suppliersGrid.CurrentRow.Cells["Id"].Value;
-            var supplierCode = (string)_suppliersGrid.CurrentRow.Cells["SupplierCode"].Value;
+            var supplierId = (int)dgv_suppliers.CurrentRow.Cells["Id"].Value;
+            var supplierCode = (string)dgv_suppliers.CurrentRow.Cells["SupplierCode"].Value;
             var current = await _supplierRepository.GetByCodeAsync(supplierCode);
             if (current == null) return;
 
@@ -338,7 +181,7 @@ namespace Procurement.UI.Forms
                 FormBorderStyle = FormBorderStyle.FixedDialog,
                 MinimizeBox = false,
                 MaximizeBox = false,
-                BackColor = ClassicScreenBackColor
+                BackColor = ClassicStyle.ClassicScreenBackColor
             })
             {
                 var layout = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 2, AutoSize = true, Padding = new Padding(10) };
@@ -365,9 +208,7 @@ namespace Procurement.UI.Forms
 
                 var buttonPanel = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(10) };
                 var saveButton = new Button { Text = "Save", AutoSize = true, DialogResult = DialogResult.OK };
-                ApplyClassicButtonStyle(saveButton);
                 var cancelButton = new Button { Text = "Cancel", AutoSize = true, DialogResult = DialogResult.Cancel };
-                ApplyClassicButtonStyle(cancelButton);
                 buttonPanel.Controls.Add(cancelButton);
                 buttonPanel.Controls.Add(saveButton);
 
@@ -379,6 +220,7 @@ namespace Procurement.UI.Forms
                 dialog.AcceptButton = saveButton;
                 dialog.CancelButton = cancelButton;
 
+                ClassicStyle.ApplyClassicStyle(dialog);
                 if (dialog.ShowDialog(this) != DialogResult.OK) return;
 
                 try
@@ -407,13 +249,13 @@ namespace Procurement.UI.Forms
         /// </summary>
         private async System.Threading.Tasks.Task AuthorizeDigiKeyOrderingAsync()
         {
-            if (_suppliersGrid.CurrentRow == null)
+            if (dgv_suppliers.CurrentRow == null)
             {
                 MessageBox.Show(this, "Selecteer eerst een supplier.", "Geen selectie", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
-            var supplierCode = (string)_suppliersGrid.CurrentRow.Cells["SupplierCode"].Value;
+            var supplierCode = (string)dgv_suppliers.CurrentRow.Cells["SupplierCode"].Value;
             if (!string.Equals(supplierCode, DigiKeyAdapter.Code, StringComparison.OrdinalIgnoreCase))
             {
                 MessageBox.Show(this, "\"Ordering autoriseren\" is alleen van toepassing op DigiKey.", "Niet van toepassing", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -496,7 +338,7 @@ namespace Procurement.UI.Forms
                 FormBorderStyle = FormBorderStyle.FixedDialog,
                 MinimizeBox = false,
                 MaximizeBox = false,
-                BackColor = ClassicScreenBackColor
+                BackColor = ClassicStyle.ClassicScreenBackColor
             })
             {
                 var hint = new Label
@@ -513,9 +355,7 @@ namespace Procurement.UI.Forms
 
                 var buttonPanel = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(10) };
                 var okButton = new Button { Text = "OK", AutoSize = true, DialogResult = DialogResult.OK };
-                ApplyClassicButtonStyle(okButton);
                 var cancelButton = new Button { Text = "Cancel", AutoSize = true, DialogResult = DialogResult.Cancel };
-                ApplyClassicButtonStyle(cancelButton);
                 buttonPanel.Controls.Add(cancelButton);
                 buttonPanel.Controls.Add(okButton);
 
@@ -525,13 +365,14 @@ namespace Procurement.UI.Forms
                 dialog.AcceptButton = okButton;
                 dialog.CancelButton = cancelButton;
 
+                ClassicStyle.ApplyClassicStyle(dialog);
                 return dialog.ShowDialog(this) == DialogResult.OK ? textBox.Text : null;
             }
         }
 
         private async System.Threading.Tasks.Task SaveSupplierPreferencesAsync()
         {
-            var items = ((BindingList<SupplierPreference>)_supplierPreferenceGrid.DataSource)
+            var items = ((BindingList<SupplierPreference>)dgv_supplierPreferences.DataSource)
                 .Where(p => !string.IsNullOrWhiteSpace(p.SupplierCode)).ToList();
             foreach (var item in items)
                 await _policyRepository.SaveSupplierPreferenceAsync(item);
@@ -542,7 +383,7 @@ namespace Procurement.UI.Forms
 
         private async System.Threading.Tasks.Task SavePackagingPoliciesAsync()
         {
-            var items = ((BindingList<PackagingPolicy>)_packagingPolicyGrid.DataSource)
+            var items = ((BindingList<PackagingPolicy>)dgv_packagingPolicies.DataSource)
                 .Where(p => !string.IsNullOrWhiteSpace(p.ComponentCategory)).ToList();
             foreach (var item in items)
                 await _policyRepository.SavePackagingPolicyAsync(item);
@@ -553,11 +394,11 @@ namespace Procurement.UI.Forms
 
         private async System.Threading.Tasks.Task SaveApprovalPolicyAsync()
         {
-            _approvalPolicy.MaxOrderValueForAutoApproval = _maxOrderValueBox.Value;
-            _approvalPolicy.MaxPriceVariancePercentage = _maxPriceVarianceBox.Value;
-            _approvalPolicy.AllowExternalSupplier = _allowExternalSupplierBox.Checked;
-            _approvalPolicy.AllowNonOriginalPackaging = _allowNonOriginalPackagingBox.Checked;
-            _approvalPolicy.AllowAlternativePart = _allowAlternativePartBox.Checked;
+            _approvalPolicy.MaxOrderValueForAutoApproval = nud_maxOrderValue.Value;
+            _approvalPolicy.MaxPriceVariancePercentage = nud_maxPriceVariance.Value;
+            _approvalPolicy.AllowExternalSupplier = chk_allowExternalSupplier.Checked;
+            _approvalPolicy.AllowNonOriginalPackaging = chk_allowNonOriginalPackaging.Checked;
+            _approvalPolicy.AllowAlternativePart = chk_allowAlternativePart.Checked;
 
             await _policyRepository.SaveApprovalPolicyAsync(_approvalPolicy);
             MessageBox.Show(this, "Approval policy opgeslagen.", "Opgeslagen", MessageBoxButtons.OK, MessageBoxIcon.Information);
