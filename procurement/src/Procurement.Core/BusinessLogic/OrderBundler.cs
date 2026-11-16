@@ -12,8 +12,11 @@ namespace Procurement.Core.BusinessLogic
     /// volle reel van 5000 stuks, maar voorkomen dat er 10x een reel van 5000 stuks besteld wordt").
     /// Sourcing still rounds each line up on its own (an offer per line); at Place Order the lines
     /// with the same supplier part number are summed and rounded up to MOQ/order multiple ONCE.
-    /// MAX keeps one PO line per request line (own quantity and date); the rounding surplus goes on
-    /// the line with the earliest required date. The supplier gets one order line with the total.
+    /// MAX and the supplier both get ONE line with the total (user, 16 nov 2026: "Wat we bestellen
+    /// bij de leverancier moet hetzelfde zijn als wat in MAX terecht komt"), on the earliest required
+    /// date; all bundled PRs are deleted in MAX. Locally each request line keeps its own tracking
+    /// PurchaseOrderLine (all pointing at that one MAX line), with the rounding surplus on the
+    /// earliest one, so "is this request line ordered" keeps working per line.
     /// </summary>
     public static class OrderBundler
     {

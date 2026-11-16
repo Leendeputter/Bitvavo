@@ -1575,7 +1575,10 @@ raken dat mock-modus zelf nooit aanraakt:
   samenvoegen tot 1 inkoop van een volle reel van 5000 stuks, maar voorkomen dat er 10x een reel van
   5000 stuks besteld wordt"). Sourcing rondt nog per regel af (offer per regel), maar bij Place Order
   worden geselecteerde regels met hetzelfde supplier part number opgeteld en één keer afgerond op
-  MOQ/ordermultiple (`OrderBundler`). MAX: één PO-regel per aanvraag (eigen aantal en datum), het
-  afrondingsoverschot op de regel met de vroegste vraagdatum. Leverancier: één orderregel met het
-  totaal. Een orderbevestiging per part number wordt over de gebundelde PO-regels verdeeld
-  (`OrderBundler.ConfirmationForLine`). Alleen binnen de selectie van Place Order.
+  MOQ/ordermultiple (`OrderBundler`). MAX en leverancier krijgen allebei één regel met het totaal
+  ("Wat we bestellen bij de leverancier moet hetzelfde zijn als wat in MAX terecht komt"), op de
+  vroegste vraagdatum; alle gebundelde PR's worden in MAX verwijderd. Lokaal houdt elke aanvraagregel
+  een eigen tracking-PurchaseOrderLine (allemaal naar dezelfde MAX-regel, overschot op de vroegste),
+  zodat "is deze regel besteld" per regel blijft werken. Een orderbevestiging wordt lokaal over die
+  regels verdeeld (`OrderBundler.ConfirmationForLine`) en in MAX één keer per PO-regel verwerkt.
+  Alleen binnen de selectie van Place Order.

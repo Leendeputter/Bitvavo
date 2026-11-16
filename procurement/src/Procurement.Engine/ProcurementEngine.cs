@@ -664,8 +664,9 @@ namespace Procurement.Engine
         /// PO lines for one supplier group. Request lines with the same supplier part number are a
         /// bundle (user request, 16 nov 2026): their requested quantities are summed and rounded up to
         /// MOQ/order multiple once instead of per line, so 10 lines of 100 pieces with a 5000 MOQ
-        /// become one reel of 5000, not ten. Each request line keeps its own PO line (own quantity and
-        /// date in MAX); the rounding surplus goes on the line with the earliest required date. A
+        /// become one reel of 5000, not ten. Draft lines stay per request line (local tracking), earliest
+        /// required date first with the rounding surplus on it; MaxPurchaseOrderRepository and the
+        /// supplier request below merge each bundle into one line with the total. A
         /// single line is a bundle of one, which gives the same quantity as its offer. Unit price: the
         /// price of the bundle's offer with the largest quantity (closest price break to the total).
         /// </summary>

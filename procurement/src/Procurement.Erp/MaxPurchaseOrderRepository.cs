@@ -1,11 +1,11 @@
 using System;
+using System.Collections.Generic;
 using System.Data.SqlClient;
 using System.Linq;
 using System.Threading.Tasks;
 using Dapper;
 using MAX50;
 using MaxOrder;
-using Procurement.Core.BusinessLogic;
 using Procurement.Core.Entities;
 using Procurement.Core.Interfaces;
 using Procurement.Core.Models;
@@ -163,20 +163,40 @@ namespace Procurement.Erp
                     var headerBuyerId = await _maxOrderRepository.GetBuyerIdByWindowsUsernameAsync(_session.UserName);
                     if (string.IsNullOrWhiteSpace(headerBuyerId)) headerBuyerId = "000";
 
-                    foreach (var draftLine in draft.Lines)
+                    // One MAX PO line per supplier part number (user, 16 nov 2026: "Wat we bestellen
+                    // bij de leverancier moet hetzelfde zijn als wat in MAX terecht komt. Als we dus 1
+                    // reel van 5000 bestellen, dan wil ik in MAX 1 PO zijn met een aantal van 5000").
+                    // A bundle of request lines for the same article (see OrderBundler) becomes one
+                    // PO line with the total quantity, on the first draft line of the bundle — the
+                    // engine orders a bundle earliest required date first — and every bundled PR is
+                    // deleted from MAX afterwards.
+                    foreach (var bundle in draft.Lines.GroupBy(l => l.SupplierPartNumber))
                     {
-                        var requestLine = await _purchaseRequestRepository.GetLineByIdAsync(draftLine.PurchaseRequestLineId);
-                        if (requestLine == null)
-                            throw new InvalidOperationException($"PurchaseRequestLine {draftLine.PurchaseRequestLineId} niet gevonden — kan geen MAX PO-regel aanmaken.");
+                        var bundleLines = bundle.ToList();
+                        var requestLines = new List<PurchaseRequestLine>();
+                        foreach (var bundleLine in bundleLines)
+                        {
+                            var bundledRequestLine = await _purchaseRequestRepository.GetLineByIdAsync(bundleLine.PurchaseRequestLineId);
+                            if (bundledRequestLine == null)
+                                throw new InvalidOperationException($"PurchaseRequestLine {bundleLine.PurchaseRequestLineId} niet gevonden — kan geen MAX PO-regel aanmaken.");
 
-                        // Second, authoritative existence check right before the actual MAX write —
-                        // MaxErpConnector.ReconcileAgainstMaxAsync only runs on a Query click, so
-                        // there's a window between the last Query and this button press where the PR
-                        // could have been deleted in MAX in the meantime (user request, sep 2026: "MAX
-                        // is altijd leidend"). BuildPurchaseOrderLine below only ever reads the locally
-                        // cached snapshot of requestLine, never MAX live, so without this AddPODetail
-                        // would happily create a real PO for a PR that no longer exists.
-                        await EnsurePurchaseRequisitionStillExistsAsync(admin, requestLine);
+                            // Second, authoritative existence check right before the actual MAX write —
+                            // MaxErpConnector.ReconcileAgainstMaxAsync only runs on a Query click, so
+                            // the PR could have been deleted in MAX in the meantime ("MAX is altijd
+                            // leidend"). Checked for every bundled PR before anything is written.
+                            await EnsurePurchaseRequisitionStillExistsAsync(admin, bundledRequestLine);
+                            requestLines.Add(bundledRequestLine);
+                        }
+
+                        var requestLine = requestLines[0];
+                        var draftLine = new PurchaseOrderDraftLine
+                        {
+                            PurchaseRequestLineId = bundleLines[0].PurchaseRequestLineId,
+                            SupplierPartNumber = bundle.Key,
+                            Quantity = bundleLines.Sum(l => l.Quantity),
+                            UnitPrice = bundleLines[0].UnitPrice,
+                            LineTotal = bundleLines.Sum(l => l.LineTotal)
+                        };
 
                         // Stock/Buyer/Planner are confirmed to come from the article's own
                         // Part_Master row, not from anything cached on the local PurchaseRequestLine
@@ -185,6 +205,7 @@ namespace Procurement.Erp
                         var partInfo = await _maxOrderRepository.GetPartByIdAsync(requestLine.ErpArticleId);
 
                         // MAX's own function, not this app's own date math — see the class comment.
+                        // Earliest required date of the bundle (its first line).
                         var mrpDueDate = requestLine.RequiredDate ?? DateTime.Now;
                         var poDueDate = await _maxOrderRepository.CalculatePoDueDateAsync(mrpDueDate, requestLine.ErpArticleId);
 
@@ -207,14 +228,18 @@ namespace Procurement.Erp
                         }
                         lineNumber++;
 
-                        result.Lines.Add(new PurchaseOrderCreationResultLine
+                        // Every bundled request line points at the same MAX PO line.
+                        foreach (var bundledRequestLine in requestLines)
                         {
-                            PurchaseRequestLineId = draftLine.PurchaseRequestLineId,
-                            MaxLineNumber = poLine.LINNUM_10,
-                            MaxDeliveryNumber = poLine.DELNUM_10
-                        });
+                            result.Lines.Add(new PurchaseOrderCreationResultLine
+                            {
+                                PurchaseRequestLineId = bundledRequestLine.Id,
+                                MaxLineNumber = poLine.LINNUM_10,
+                                MaxDeliveryNumber = poLine.DELNUM_10
+                            });
 
-                        RemoveOriginalOrder(maxOrderModule, log, requestLine);
+                            RemoveOriginalOrder(maxOrderModule, log, bundledRequestLine);
+                        }
                     }
 
                     result.ErpPoNumber = erpPoNumber;
@@ -359,13 +384,16 @@ namespace Procurement.Erp
                 {
                     await ApplyHeaderConfirmationAsync(admin, maxOrderModule, order, log);
 
-                    foreach (var line in order.Lines)
+                    // Bundled request lines share one MAX PO line (same MaxLineNumber/
+                    // MaxDeliveryNumber), so each MAX line is updated once, with the supplier's
+                    // confirmation for its part number as a whole.
+                    var maxLines = order.Lines
+                        .Where(l => !string.IsNullOrEmpty(l.MaxLineNumber)) // placed in mock mode: no real MAX row
+                        .GroupBy(l => (l.MaxLineNumber, l.MaxDeliveryNumber))
+                        .Select(g => g.First());
+                    foreach (var line in maxLines)
                     {
-                        // Placed while UseMockPurchaseOrders=true (or synced before this field
-                        // existed) — no real MAX row to point at.
-                        if (string.IsNullOrEmpty(line.MaxLineNumber)) continue;
-
-                        var statusLine = OrderBundler.ConfirmationForLine(supplierStatus, order.Lines, line);
+                        var statusLine = supplierStatus.Lines?.FirstOrDefault(l => l.SupplierPartNumber == line.SupplierPartNumber);
                         await ApplyLineConfirmationAsync(admin, maxOrderModule, order, line, statusLine, log);
                     }
                 }
