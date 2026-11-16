@@ -68,14 +68,16 @@ namespace Procurement.UI.Forms
                 m.CreatedAt
             }).ToList();
             ApplyDateTimeColumns(dgv_mappings, "CreatedAt");
-            // ManufacturerPartNumber is the one genuinely free-text column here, left in Fill with a
-            // floor (user request, 20 okt 2026).
+            // Fixed widths, no Fill (user feedback, 16 nov 2026: maximizing stretched every column,
+            // "niet handig als ik de kolomrijen even breed wil houden"). The grid itself still grows
+            // with the window (more rows/room), only the columns keep their width; user-dragged
+            // widths are remembered by GridColumnSettingsHelper.
             SetCharacterBasedColumnWidth(dgv_mappings, "Id", 6);
             SetCharacterBasedColumnWidth(dgv_mappings, "ErpArticleId", 14);
             SetCharacterBasedColumnWidth(dgv_mappings, "SupplierCode", 12);
-            SetMinimumWidth(dgv_mappings, "SupplierPartNumber", 120);
+            SetCharacterBasedColumnWidth(dgv_mappings, "SupplierPartNumber", 20);
             SetCharacterBasedColumnWidth(dgv_mappings, "Manufacturer", 16);
-            SetMinimumWidth(dgv_mappings, "ManufacturerPartNumber", 140);
+            SetCharacterBasedColumnWidth(dgv_mappings, "ManufacturerPartNumber", 24);
             SetCharacterBasedColumnWidth(dgv_mappings, "MatchConfidence", 14);
             SetCharacterBasedColumnWidth(dgv_mappings, "CreatedAt", 19);
         }
