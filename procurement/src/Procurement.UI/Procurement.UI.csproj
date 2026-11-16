@@ -110,6 +110,12 @@
     <Compile Update="Forms\NewPurchaseRequestForm.Designer.cs">
       <DependentUpon>NewPurchaseRequestForm.cs</DependentUpon>
     </Compile>
+    <Compile Update="Forms\LoginForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="Forms\LoginForm.Designer.cs">
+      <DependentUpon>LoginForm.cs</DependentUpon>
+    </Compile>
   </ItemGroup>
 
 </Project>
