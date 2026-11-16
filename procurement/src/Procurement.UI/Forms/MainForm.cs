@@ -13,13 +13,15 @@ using Procurement.UI.Support;
 
 namespace Procurement.UI.Forms
 {
-    /// <summary>Purchase Requests-overzicht (spec §8.1) — the application's main/start screen.</summary>
-    public class MainForm : Form
+    /// <summary>
+    /// Purchase Requests-overzicht (spec §8.1) — the application's main work screen.
+    /// Built with the Visual Studio Designer (user request, 16 nov 2026): toolbar, the four filter
+    /// group boxes, both grids and the status line are in MainForm.Designer.cs; grid columns come
+    /// from the DataSource and are formatted here. No Fill columns (user rule, 16 nov 2026).
+    /// </summary>
+    public partial class MainForm : Form
     {
         private readonly CompositionRoot _composition;
-
-        private DataGridView _requestsGrid;
-        private DataGridView _offersGrid;
 
         // The one PurchaseRequestLine the offers grid currently shows — set whenever
         // LoadOffersForSelectedRequestAsync (re)loads, read when a "Select" checkbox is ticked.
@@ -27,41 +29,11 @@ namespace Procurement.UI.Forms
         // offers grid never needs to represent more than one line's offers at a time.
         private int? _currentLineId;
 
-        // "Orders ophalen uit MAX" group — status filter + the Query button that actually triggers
-        // the MAX round-trip (nothing here runs automatically, only on Query click).
-        private CheckBox _statusPlannedCheckBox;
-        private CheckBox _statusApprovedCheckBox;
-        private Button _queryButton;
-
-        // "Due Date Range" group.
-        private CheckBox _dueDateEnableCheckBox;
-        private DateTimePicker _dueDateStartPicker;
-        private DateTimePicker _dueDateEndPicker;
-
-        // "Filter" group — generic range filter, applied to whichever column "Select By" picks.
-        private ComboBox _rangeFieldCombo;
-        private TextBox _rangeStartBox;
-        private TextBox _rangeEndBox;
-
-        // "Weergeven" group — which of this prototype's own Workflow statuses to show in the grid.
-        // Purely a local display filter (never touches MAX): read by both LoadLocalRequestsAsync and
-        // RefreshRequestsAsync so toggling one behaves the same regardless of how the grid was last
-        // populated. Ordered has no checkbox here at all (user request, 20 okt 2026: the requests/
-        // lines grids are for PRs/PLs only — an actually-placed order belongs in the dedicated
-        // "Orders..." window, not toggled back into this one) — see BuildRequestStatusFilterGroup.
+        // "Display" group — which of this prototype's own Workflow statuses to show in the grid.
+        // Purely a local display filter (never touches MAX). Ordered has no checkbox (user request,
+        // 20 okt 2026: placed orders belong in the separate Orders window). The checkboxes themselves
+        // are in the Designer; this maps them to their status.
         private readonly Dictionary<PurchaseRequestStatus, CheckBox> _requestStatusCheckBoxes = new Dictionary<PurchaseRequestStatus, CheckBox>();
-
-        // Uit by default — testaanvragen zijn uitzonderingen, niet standaard zichtbaar (user request,
-        // 20 okt 2026). Overstemt IsManualTestRequest's eigen "altijd tonen"-uitzondering in
-        // ApplyRangeAndDueDateFilters/GetOpenPurchaseRequestsAsync wanneer uitgevinkt.
-        private CheckBox _showTestRequestsCheckBox;
-
-        private Button _newRequestButton;
-        private Button _startSourcingButton;
-        private Button _sourceAllButton;
-        private Button _placeOrdersButton;
-        private Button _processConfirmationsButton;
-        private Label _statusLabel;
 
         // Every action button shares this one "an operation is in flight" gate (SetBusy) instead of
         // each handler only disabling itself — with only the triggering button disabled, every other
@@ -76,284 +48,62 @@ namespace Procurement.UI.Forms
         {
             _composition = composition ?? throw new ArgumentNullException(nameof(composition));
             InitializeComponent();
-            GridColumnSettingsHelper.Attach(this); // remembers column widths per user, like UniPro
-            // Niets wordt automatisch geladen bij het openen — de grid blijft leeg tot de
-            // gebruiker zelf op "Query" klikt (dat geldt ook voor de al lokaal gesynchroniseerde
-            // aanvragen, die enkel na een expliciete actie opnieuw worden getoond).
-        }
+            ClassicStyle.ApplyClassicStyle(this);
+            this.BackColor = ClassicStyle.ClassicScreenBackColor;
+            EnableRowNumberHeaders(dgv_requests);
+            EnableRowNumberHeaders(dgv_offers);
 
-        private void InitializeComponent()
-        {
-            // "Component Procurement" (with company/user) is ShellForm's title now — this window is
-            // just one MDI child among several (user request, 20 okt 2026), so it gets a plain screen
-            // name instead, same style as Orders/Approvals/Settings/etc.
+            // ShellForm carries "Component Procurement" with company/user; this MDI child just gets its screen name.
             Text = "Purchase Requests" + (_composition.Session.TestMode ? " – TEST MODE" : string.Empty);
-            Width = 1300;
-            Height = 860;
-            // StartPosition is moot for an MDI child (ShellForm.ShowPurchaseRequests() sets MdiParent,
-            // user request, 20 okt 2026 — "MDI-container?") — WinForms always places MDI children with
-            // its own cascading layout regardless of this setting; left as CenterScreen only because
-            // nothing depends on changing it.
-            StartPosition = FormStartPosition.CenterScreen;
-            // Geeft alle Dock-ed children (grids, knoppenbalken) een beetje lucht t.o.v. de
-            // vensterrand in plaats van er helemaal tegenaan te zitten.
-            Padding = new Padding(8);
-            // Pale blue, matching MAX's own "MRP Detail" screenshot (user request, 20 okt 2026) — see
-            // GridFormatting.ClassicScreenBackColor's own comment for why this replaced an earlier,
-            // visually-no-op SystemColors.Control attempt.
-            BackColor = ClassicScreenBackColor;
 
-            var toolPanel = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 40, FlowDirection = FlowDirection.LeftToRight };
-            _newRequestButton = new Button { Text = "Add New Test Request", AutoSize = true };
-            ApplyClassicButtonStyle(_newRequestButton);
-            _newRequestButton.Click += async (s, e) => await NewRequestAsync();
-            // Elke rij is een MAX-order voor precies 1 artikel — bij tientallen open orders is 1
-            // voor 1 klikken onwerkbaar. Sourcing starten verwerkt daarom alle geselecteerde
-            // aanvragen (Ctrl/Shift-klik in het grid); Alles sourcen verwerkt de hele lijst zonder
-            // eerst te hoeven selecteren.
-            _startSourcingButton = new Button { Text = "Start Sourcing (Selection)", AutoSize = true };
-            ApplyClassicButtonStyle(_startSourcingButton);
-            _startSourcingButton.Click += async (s, e) => await SourceRequestsAsync(GetSelectedRequestIds(), confirmIfMoreThan: 1);
-            _sourceAllButton = new Button { Text = "Source All", AutoSize = true };
-            ApplyClassicButtonStyle(_sourceAllButton);
-            _sourceAllButton.Click += async (s, e) => await SourceRequestsAsync(GetAllRequestIds(), confirmIfMoreThan: 1);
-            // Losgekoppeld van sourcing (spec-correctie): sourcing/goedkeuring brengt een aanvraag
-            // enkel tot ReadyToOrder (een SupplierSelection per regel), het daadwerkelijk plaatsen
-            // van de order is een aparte, expliciete stap — zo kan per leverancier gebundeld worden
-            // i.p.v. automatisch bij elke match meteen te bestellen.
-            _placeOrdersButton = new Button { Text = "Place Order (Selection)", AutoSize = true };
-            ApplyClassicButtonStyle(_placeOrdersButton);
-            _placeOrdersButton.Click += async (s, e) => await PlaceOrdersAsync(GetSelectedRequestIds());
-            // Eén knop voor alle nog te bevestigen orders — verwerkt bevestigingen automatisch
-            // (lokaal altijd, en in real-mode ook de MAX Confirming/Reference/duedate-velden) en
-            // toont enkel wat afwijkt (aantal/prijs/te late levering), niet elke geslaagde
-            // bevestiging apart (zie ProcurementEngine.ProcessOrderConfirmationsAsync).
-            _processConfirmationsButton = new Button { Text = "Process Order Confirmations", AutoSize = true };
-            ApplyClassicButtonStyle(_processConfirmationsButton);
-            _processConfirmationsButton.Click += async (s, e) => await ProcessOrderConfirmationsAsync();
+            _requestStatusCheckBoxes[PurchaseRequestStatus.Pending] = chk_statusPending;
+            _requestStatusCheckBoxes[PurchaseRequestStatus.Sourcing] = chk_statusSourcing;
+            _requestStatusCheckBoxes[PurchaseRequestStatus.WaitingApproval] = chk_statusWaitingApproval;
+            _requestStatusCheckBoxes[PurchaseRequestStatus.ReadyToOrder] = chk_statusReadyToOrder;
+            _requestStatusCheckBoxes[PurchaseRequestStatus.Exception] = chk_statusException;
 
-            toolPanel.Controls.AddRange(new Control[]
-            {
-                _newRequestButton, _startSourcingButton, _sourceAllButton, _placeOrdersButton, _processConfirmationsButton
-            });
-
-            // No menu bar here anymore (user request, 20 okt 2026) — Orders/Approvals/Supplier
-            // Mapping/Settings/Audit Log moved to ShellForm, the actual Application.Run() root, once
-            // this window stopped being that root itself. See ShellForm's own class comment for why.
-
-            // Apart van de actieknoppen hierboven: het ophalen/filteren van MAX-orders krijgt een
-            // eigen rij met groepsvakken (Query + status-filter, Due Date Range, en de generieke
-            // "Select By"-filter).
-            var filterPanel = new FlowLayoutPanel
-            {
-                Dock = DockStyle.Top,
-                AutoSize = true,
-                FlowDirection = FlowDirection.LeftToRight,
-                Padding = new Padding(4)
-            };
-            filterPanel.Controls.Add(BuildQueryGroup());
-            filterPanel.Controls.Add(BuildDueDateRangeGroup());
-            filterPanel.Controls.Add(BuildRangeFilterGroup());
-            filterPanel.Controls.Add(BuildRequestStatusFilterGroup());
-
-            _requestsGrid = new DataGridView
-            {
-                Name = "requestsGrid",
-                // Fill instead of a fixed height (user request, 20 okt 2026 — "mag lager, ten gunste
-                // van de PR's": the offers grid below rarely needs more than ~5 rows, so it gets a
-                // fixed, modest height instead, and this grid — which can hold many more PRs — gets
-                // whatever space that frees up).
-                Dock = DockStyle.Fill,
-                ReadOnly = true,
-                AllowUserToAddRows = false,
-                // AllCells meet de tekstbreedte van élke cel in élke rij om kolombreedtes te bepalen
-                // — bij een paar honderd rijen is dat traag genoeg om zichtbaar te haperen, en het
-                // grid herberekent dat opnieuw zodra rijen zichtbaar worden tijdens het scrollen,
-                // wat als "verspringende velden" oogt. Fill verdeelt de resterende breedte enkel
-                // proportioneel (FillWeight), zonder ook maar één cel te hoeven meten, en blijft dus
-                // stabiel ongeacht het aantal rijen — de kolommen met een expliciete breedte
-                // (ApplyMaxColumnWidths, AutoSizeMode.None) doen niet mee met die verdeling.
-                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-                // DisableResizing houdt de headerbreedte vast op het DataGridView-default (genoeg
-                // voor de rijnummers die EnableRowNumberHeaders erin tekent) — zonder deze instelling
-                // telt die breedte bovendien mee bij Fill-kolomherberekening (venster resizen).
-                RowHeadersWidthSizeMode = DataGridViewRowHeadersWidthSizeMode.DisableResizing,
-                SelectionMode = DataGridViewSelectionMode.RowHeaderSelect,
-                // Ctrl/Shift-klik om meerdere aanvragen tegelijk te selecteren voor "Sourcing
-                // starten (selectie)" — het regels-grid onder de detailweergave blijft altijd de
-                // regels van de laatst-actieve rij tonen (CurrentRow), ook met meerdere geselecteerd.
-                MultiSelect = true
-            };
-            EnableDoubleBuffering(_requestsGrid);
-            EnableRowNumberHeaders(_requestsGrid);
-            ApplyClassicHeaderStyle(_requestsGrid);
-            _requestsGrid.SelectionChanged += RequestsGrid_SelectionChanged;
-
-            var offersLabel = new Label { Text = "Offers for the selected request (tick \"Select\" to select/deselect an offer):", Dock = DockStyle.Bottom, Height = 20, Padding = new Padding(4) };
-
-            _offersGrid = new DataGridView
-            {
-                Name = "offersGrid",
-                // Fixed, modest height instead of Fill (user request, 20 okt 2026 — "Over het
-                // algemeen zullen we niet meer dan een stuk of 5 offers per PR hebben"): room for a
-                // header plus about 7 rows before scrolling, comfortably above that typical ~5, in
-                // favor of giving the requests grid above the space this used to take.
-                Dock = DockStyle.Bottom,
-                Height = 190,
-                // Niet grid-breed ReadOnly (anders dan elk ander grid in dit scherm) — enkel de
-                // "Select"-kolom mag bewerkt worden, de rest wordt individueel op ReadOnly gezet na
-                // het vullen (zie het eind van LoadOffersForSelectedRequestAsync). Nodig omdat
-                // DataGridView geen per-kolom ReadOnly toestaat zolang de grid zelf ReadOnly staat.
-                ReadOnly = false,
-                AllowUserToAddRows = false,
-                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-                RowHeadersWidthSizeMode = DataGridViewRowHeadersWidthSizeMode.DisableResizing,
-                SelectionMode = DataGridViewSelectionMode.RowHeaderSelect,
-                MultiSelect = false
-            };
-            EnableDoubleBuffering(_offersGrid);
-            EnableRowNumberHeaders(_offersGrid);
-            ApplyClassicHeaderStyle(_offersGrid);
-            // Standaard WinForms-truc voor een checkbox-kolom: CellValueChanged vuurt pas nadat de
-            // cel "committed" is, en een checkbox-cel committed vanzelf pas zodra de focus verplaatst
-            // — CurrentCellDirtyStateChanged forceert dat meteen bij het klikken zelf.
-            _offersGrid.CurrentCellDirtyStateChanged += (s, e) =>
-            {
-                if (_offersGrid.IsCurrentCellDirty)
-                    _offersGrid.CommitEdit(DataGridViewDataErrorContexts.Commit);
-            };
-            _offersGrid.CellValueChanged += async (s, e) => await OffersGrid_CellValueChangedAsync(e);
-
-            _statusLabel = new Label { Dock = DockStyle.Bottom, Height = 24, Text = "Ready. Click \"Query\" to fetch orders from MAX.", Padding = new Padding(4) };
-
-            // Docking processes controls in REVERSE add-order (last added claims its edge first) —
-            // within one direction, the last-added of that group ends up outermost. _requestsGrid
-            // (Fill) must therefore be added before every Top/Bottom sibling, so it's processed last
-            // and correctly receives whatever's left after all of them have claimed their own slice:
-            // toolPanel (outermost top) above filterPanel above [requestsGrid: Fill] above
-            // offersLabel above _offersGrid (fixed height) above _statusLabel (outermost bottom).
-            Controls.Add(_requestsGrid);
-            Controls.Add(offersLabel);
-            Controls.Add(_offersGrid);
-            Controls.Add(_statusLabel);
-            Controls.Add(filterPanel);
-            Controls.Add(toolPanel);
-        }
-
-        private GroupBox BuildQueryGroup()
-        {
-            var layout = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true };
-
-            // MAX Order_Master.STATUS_10 filter (user-supplied query): 1 = Planned, 2 = Approved.
-            // Default: only Approved, matching what should auto-source without review. Alleen van
-            // invloed op de *volgende* keer dat op Query wordt geklikt.
-            _statusPlannedCheckBox = new CheckBox { Text = "1 - Planned", AutoSize = true, Checked = false, Margin = new Padding(0, 0, 0, 2) };
-            _statusApprovedCheckBox = new CheckBox { Text = "2 - Approved", AutoSize = true, Checked = true, Margin = new Padding(0, 0, 0, 2) };
+            // MAX Order_Master.STATUS_10 filter (1 = Planned, 2 = Approved; default only Approved).
             UpdateIncludedOrderStatuses();
+            cb_rangeField.SelectedIndex = 0;
 
-            _queryButton = new Button { Text = "Query", AutoSize = true, Margin = new Padding(0, 6, 0, 0) };
-            ApplyClassicButtonStyle(_queryButton);
-            _queryButton.Click += async (s, e) => await QueryOrdersAsync();
-
-            layout.Controls.Add(_statusPlannedCheckBox);
-            layout.Controls.Add(_statusApprovedCheckBox);
-            layout.Controls.Add(_queryButton);
-            return WrapInGroupBox("Fetch Orders from MAX", layout);
+            GridColumnSettingsHelper.Attach(this); // remembers column widths per user, like UniPro
+            // Nothing loads automatically on open — the grid stays empty until the user clicks "Query".
         }
 
-        private GroupBox BuildDueDateRangeGroup()
+        // Each MAX order is a request for exactly one article; "Start Sourcing" handles every selected
+        // row (Ctrl/Shift-click), "Source All" the whole list. Placing the order is a separate step,
+        // so orders can be bundled per supplier. "Process Order Confirmations" handles all
+        // confirmations at once and only shows the deviations.
+        private async void bt_newRequest_Click(object sender, EventArgs e) => await NewRequestAsync();
+
+        private async void bt_startSourcing_Click(object sender, EventArgs e) => await SourceRequestsAsync(GetSelectedRequestIds(), confirmIfMoreThan: 1);
+
+        private async void bt_sourceAll_Click(object sender, EventArgs e) => await SourceRequestsAsync(GetAllRequestIds(), confirmIfMoreThan: 1);
+
+        private async void bt_placeOrders_Click(object sender, EventArgs e) => await PlaceOrdersAsync(GetSelectedRequestIds());
+
+        private async void bt_processConfirmations_Click(object sender, EventArgs e) => await ProcessOrderConfirmationsAsync();
+
+        private async void bt_query_Click(object sender, EventArgs e) => await QueryOrdersAsync();
+
+        private void chk_dueDateEnable_CheckedChanged(object sender, EventArgs e)
         {
-            var layout = new TableLayoutPanel { ColumnCount = 2, AutoSize = true };
-            layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-            layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-
-            _dueDateEnableCheckBox = new CheckBox { Text = "Enable", AutoSize = true };
-            _dueDateStartPicker = new DateTimePicker { Format = DateTimePickerFormat.Short, Width = 105, Enabled = false };
-            _dueDateEndPicker = new DateTimePicker { Format = DateTimePickerFormat.Short, Width = 105, Enabled = false };
-            _dueDateEnableCheckBox.CheckedChanged += (s, e) =>
-            {
-                _dueDateStartPicker.Enabled = _dueDateEnableCheckBox.Checked;
-                _dueDateEndPicker.Enabled = _dueDateEnableCheckBox.Checked;
-            };
-
-            AddFilterRow(layout, string.Empty, _dueDateEnableCheckBox);
-            AddFilterRow(layout, "Start Date", _dueDateStartPicker);
-            AddFilterRow(layout, "End Date", _dueDateEndPicker);
-
-            return WrapInGroupBox("Due Date Range", layout);
+            dtp_dueDateStart.Enabled = chk_dueDateEnable.Checked;
+            dtp_dueDateEnd.Enabled = chk_dueDateEnable.Checked;
         }
 
-        private GroupBox BuildRangeFilterGroup()
+        // Shared by the five status checkboxes and "Show Test Requests" (off by default: manual
+        // TEST- requests are exceptions, user request 20 okt 2026). Re-renders the local data only.
+        private async void chk_displayFilter_CheckedChanged(object sender, EventArgs e) => await ReloadWithCurrentStatusFilterAsync();
+
+        // Standard WinForms trick for a checkbox column: commit on click, so CellValueChanged fires right away.
+        private void dgv_offers_CurrentCellDirtyStateChanged(object sender, EventArgs e)
         {
-            var layout = new TableLayoutPanel { ColumnCount = 2, AutoSize = true };
-            layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-            layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-
-            _rangeFieldCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 105 };
-            _rangeFieldCombo.Items.AddRange(new object[] { "Order Number", "Customer", "Part" });
-            _rangeFieldCombo.SelectedIndex = 0;
-            _rangeStartBox = new TextBox { Width = 105 };
-            _rangeEndBox = new TextBox { Width = 105 };
-
-            AddFilterRow(layout, "Select By", _rangeFieldCombo);
-            AddFilterRow(layout, "Start", _rangeStartBox);
-            AddFilterRow(layout, "End", _rangeEndBox);
-
-            return WrapInGroupBox("Filter", layout);
+            if (dgv_offers.IsCurrentCellDirty)
+                dgv_offers.CommitEdit(DataGridViewDataErrorContexts.Commit);
         }
 
-        private GroupBox BuildRequestStatusFilterGroup()
-        {
-            var layout = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true };
-
-            var defaultChecked = new HashSet<PurchaseRequestStatus>
-            {
-                PurchaseRequestStatus.Pending,
-                PurchaseRequestStatus.Sourcing,
-                PurchaseRequestStatus.WaitingApproval,
-                PurchaseRequestStatus.ReadyToOrder,
-                PurchaseRequestStatus.Exception
-            };
-
-            foreach (PurchaseRequestStatus status in Enum.GetValues(typeof(PurchaseRequestStatus)))
-            {
-                // Ordered gets no checkbox at all (user request, 20 okt 2026) — this grid is for
-                // PRs/PLs only, an actually-placed order belongs in the dedicated "Orders..." window.
-                // Previously Ordered had a checkbox here too (unchecked by default, reachable on
-                // demand); now it can never appear in this grid, full stop.
-                if (status == PurchaseRequestStatus.Ordered) continue;
-
-                // Checked is set before CheckedChanged is wired up, on purpose — otherwise building
-                // these five checkboxes here would itself fire five local DB reloads while the form
-                // is still being constructed, before Load ever runs (the constructor's whole point is
-                // that nothing loads until the user clicks something).
-                var checkBox = new CheckBox { Text = status.ToString(), AutoSize = true, Checked = defaultChecked.Contains(status), Margin = new Padding(0, 0, 0, 2) };
-                _requestStatusCheckBoxes[status] = checkBox;
-                layout.Controls.Add(checkBox);
-            }
-
-            foreach (var checkBox in _requestStatusCheckBoxes.Values)
-            {
-                checkBox.CheckedChanged += async (s, e) => await ReloadWithCurrentStatusFilterAsync();
-            }
-
-            // Uit by default (user request, 20 okt 2026: "dit zijn uitzonderingen, die wil ik niet
-            // standaard zien") — handmatige testaanvragen ("TEST-"-prefix) worden normaal altijd
-            // getoond ongeacht de status-/Due Date-/Select By-filters hierboven (zie
-            // ApplyRangeAndDueDateFilters/GetOpenPurchaseRequestsAsync's eigen IsManualTestRequest-
-            // uitzondering); dit vakje overstemt die uitzondering juist weer, los van de rest.
-            _showTestRequestsCheckBox = new CheckBox
-            {
-                Text = "Show Test Requests",
-                AutoSize = true,
-                Checked = false,
-                Margin = new Padding(0, 8, 0, 2)
-            };
-            _showTestRequestsCheckBox.CheckedChanged += async (s, e) => await ReloadWithCurrentStatusFilterAsync();
-            layout.Controls.Add(_showTestRequestsCheckBox);
-
-            return WrapInGroupBox("Display", layout);
-        }
+        private async void dgv_offers_CellValueChanged(object sender, DataGridViewCellEventArgs e) => await OffersGrid_CellValueChangedAsync(e);
 
         private HashSet<PurchaseRequestStatus> GetCheckedRequestStatuses() =>
             new HashSet<PurchaseRequestStatus>(_requestStatusCheckBoxes.Where(kv => kv.Value.Checked).Select(kv => kv.Key));
@@ -373,27 +123,11 @@ namespace Procurement.UI.Forms
             }
         }
 
-        private static void AddFilterRow(TableLayoutPanel layout, string label, Control control)
-        {
-            var row = layout.RowCount;
-            layout.RowCount++;
-            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            if (string.IsNullOrEmpty(label))
-            {
-                layout.Controls.Add(control, 0, row);
-                layout.SetColumnSpan(control, 2);
-                return;
-            }
-            layout.Controls.Add(new Label { Text = label, AutoSize = true, TextAlign = ContentAlignment.MiddleLeft, Margin = new Padding(0, 4, 3, 2) }, 0, row);
-            control.Margin = new Padding(3, 2, 0, 2);
-            layout.Controls.Add(control, 1, row);
-        }
-
         private void UpdateIncludedOrderStatuses()
         {
             var statuses = new HashSet<string>();
-            if (_statusPlannedCheckBox.Checked) statuses.Add("1");
-            if (_statusApprovedCheckBox.Checked) statuses.Add("2");
+            if (chk_statusPlanned.Checked) statuses.Add("1");
+            if (chk_statusApproved.Checked) statuses.Add("2");
             _composition.ErpConnector.IncludedOrderStatuses = statuses;
         }
 
@@ -414,7 +148,7 @@ namespace Procurement.UI.Forms
             var statuses = GetCheckedRequestStatuses();
             var allRequests = await _composition.PurchaseRequestRepository.GetAllAsync();
             var requests = ApplyRangeAndDueDateFilters(allRequests.Where(r => statuses.Contains(r.Status)))
-                .Where(r => _showTestRequestsCheckBox.Checked || !IsManualTestRequest(r.ErpRequestNumber))
+                .Where(r => chk_showTestRequests.Checked || !IsManualTestRequest(r.ErpRequestNumber))
                 .ToList();
             await PopulateRequestsGrid(requests);
             SetStatus($"{requests.Count} aanvraag/aanvragen getoond (statusfilter).");
@@ -434,16 +168,16 @@ namespace Procurement.UI.Forms
         {
             IEnumerable<PurchaseRequest> result = requests.ToList();
 
-            if (_dueDateEnableCheckBox.Checked)
+            if (chk_dueDateEnable.Checked)
             {
-                var start = _dueDateStartPicker.Value.Date;
-                var end = _dueDateEndPicker.Value.Date;
+                var start = dtp_dueDateStart.Value.Date;
+                var end = dtp_dueDateEnd.Value.Date;
                 result = result.Where(r => IsManualTestRequest(r.ErpRequestNumber) ||
                     (r.RequiredDate.HasValue && r.RequiredDate.Value.Date >= start && r.RequiredDate.Value.Date <= end));
             }
 
-            var rangeStart = _rangeStartBox.Text.Trim();
-            var rangeEnd = _rangeEndBox.Text.Trim();
+            var rangeStart = txt_rangeStart.Text.Trim();
+            var rangeEnd = txt_rangeEnd.Text.Trim();
             if (!string.IsNullOrEmpty(rangeStart) || !string.IsNullOrEmpty(rangeEnd))
             {
                 var field = GetSelectedRangeField();
@@ -492,7 +226,7 @@ namespace Procurement.UI.Forms
             // bekijk je voortaan via het aparte "Orders..."-scherm.
             var statuses = GetCheckedRequestStatuses();
             var filteredRequests = requests.Where(r => statuses.Contains(r.Status))
-                .Where(r => _showTestRequestsCheckBox.Checked || !IsManualTestRequest(r.ErpRequestNumber))
+                .Where(r => chk_showTestRequests.Checked || !IsManualTestRequest(r.ErpRequestNumber))
                 .ToList();
             await PopulateRequestsGrid(filteredRequests);
             // Toont ook hoeveel orders de MAX-query zelf teruggaf (voor het filter toepassen op de
@@ -506,11 +240,11 @@ namespace Procurement.UI.Forms
         {
             UpdateIncludedOrderStatuses();
 
-            _composition.ErpConnector.DueDateFilterStart = _dueDateEnableCheckBox.Checked ? _dueDateStartPicker.Value.Date : (DateTime?)null;
-            _composition.ErpConnector.DueDateFilterEnd = _dueDateEnableCheckBox.Checked ? _dueDateEndPicker.Value.Date : (DateTime?)null;
+            _composition.ErpConnector.DueDateFilterStart = chk_dueDateEnable.Checked ? dtp_dueDateStart.Value.Date : (DateTime?)null;
+            _composition.ErpConnector.DueDateFilterEnd = chk_dueDateEnable.Checked ? dtp_dueDateEnd.Value.Date : (DateTime?)null;
 
-            var rangeStart = _rangeStartBox.Text.Trim();
-            var rangeEnd = _rangeEndBox.Text.Trim();
+            var rangeStart = txt_rangeStart.Text.Trim();
+            var rangeEnd = txt_rangeEnd.Text.Trim();
             var hasRange = !string.IsNullOrEmpty(rangeStart) || !string.IsNullOrEmpty(rangeEnd);
 
             _composition.ErpConnector.RangeFilterField = hasRange ? GetSelectedRangeField() : (MaxOrderRangeField?)null;
@@ -520,7 +254,7 @@ namespace Procurement.UI.Forms
 
         private MaxOrderRangeField GetSelectedRangeField()
         {
-            var text = _rangeFieldCombo.SelectedItem as string;
+            var text = cb_rangeField.SelectedItem as string;
             if (text == "Customer") return MaxOrderRangeField.Customer;
             if (text == "Part") return MaxOrderRangeField.Part;
             return MaxOrderRangeField.OrderNumber;
@@ -620,25 +354,25 @@ namespace Procurement.UI.Forms
             // Assigning DataSource can itself raise SelectionChanged (when the grid picks a
             // default current cell); detach first so that doesn't race with the explicit reload
             // below against the same shared DbContext.
-            _requestsGrid.SelectionChanged -= RequestsGrid_SelectionChanged;
-            _requestsGrid.DataSource = rows;
-            _requestsGrid.SelectionChanged += RequestsGrid_SelectionChanged;
+            dgv_requests.SelectionChanged -= dgv_requests_SelectionChanged;
+            dgv_requests.DataSource = rows;
+            dgv_requests.SelectionChanged += dgv_requests_SelectionChanged;
 
-            if (_requestsGrid.Columns["Id"] != null)
-                _requestsGrid.Columns["Id"].Visible = false;
-            SetHeaderText(_requestsGrid, "ManufacturingPart", "Manufacturing Part");
-            SetHeaderText(_requestsGrid, "ExtCost", "Ext. Cost");
-            SetHeaderText(_requestsGrid, "PoDueDate", "PO DueDate");
-            SetHeaderText(_requestsGrid, "RecVendor", "Rec. Vendor");
-            SetHeaderText(_requestsGrid, "SelectedSupplier", "Selected Supplier");
-            SetHeaderText(_requestsGrid, "SelectedPrice", "Selected Price");
-            SetHeaderText(_requestsGrid, "SelectedQuantity", "Selected Qty");
-            SetHeaderText(_requestsGrid, "SelectedDueDate", "Selected DueDate");
-            ApplyCurrencyColumns(_requestsGrid, "SelectedPrice");
-            ApplyQuantityColumns(_requestsGrid, "SelectedQuantity");
-            ApplyDateColumns(_requestsGrid, "SelectedDueDate");
-            ApplyMaxColumnWidths(_requestsGrid);
-            ApplyFrozenColumns(_requestsGrid,
+            if (dgv_requests.Columns["Id"] != null)
+                dgv_requests.Columns["Id"].Visible = false;
+            SetHeaderText(dgv_requests, "ManufacturingPart", "Manufacturing Part");
+            SetHeaderText(dgv_requests, "ExtCost", "Ext. Cost");
+            SetHeaderText(dgv_requests, "PoDueDate", "PO DueDate");
+            SetHeaderText(dgv_requests, "RecVendor", "Rec. Vendor");
+            SetHeaderText(dgv_requests, "SelectedSupplier", "Selected Supplier");
+            SetHeaderText(dgv_requests, "SelectedPrice", "Selected Price");
+            SetHeaderText(dgv_requests, "SelectedQuantity", "Selected Qty");
+            SetHeaderText(dgv_requests, "SelectedDueDate", "Selected DueDate");
+            ApplyCurrencyColumns(dgv_requests, "SelectedPrice");
+            ApplyQuantityColumns(dgv_requests, "SelectedQuantity");
+            ApplyDateColumns(dgv_requests, "SelectedDueDate");
+            ApplyMaxColumnWidths(dgv_requests);
+            ApplyFrozenColumns(dgv_requests,
                 "Order", "Workflow", "PartID", "Desc1", "Quantity", "Cost", "DueDate", "PoDueDate",
                 "SelectedSupplier", "SelectedPrice", "SelectedQuantity", "SelectedDueDate");
         }
@@ -704,11 +438,8 @@ namespace Procurement.UI.Forms
         /// Column widths for the requests grid (see PopulateRequestsGrid) — used to be shared with
         /// the old "lines of selected request" grid too, before that was replaced by the offers grid
         /// (LoadOffersForSelectedRequestAsync, which has its own, much smaller column set and doesn't
-        /// call this). Every column named here gets AutoSizeMode.None, i.e. is excluded from the
-        /// grid-level Fill distribution — without that, Fill would spread the remaining width evenly
-        /// across short fixed-format columns (Status, Firm, Quantity, DueDate, ...) and long free-text
-        /// ones (Desc1, Reference) alike, which looks arbitrary. Only genuinely variable-length text
-        /// columns (Desc1, Reference) are left to Fill. SetHeaderText/SetFixedColumnWidth calls for a
+        /// call this). Every column named here gets a fixed width (no Fill since 16 nov 2026, user
+        /// rule: columns must not stretch when the window is maximized). SetHeaderText/SetFixedColumnWidth calls for a
         /// missing column are harmless no-ops (see GridFormatting).
         /// </summary>
         private static void ApplyMaxColumnWidths(DataGridView grid)
@@ -751,14 +482,10 @@ namespace Procurement.UI.Forms
             SetCharacterBasedColumnWidth(grid, "SelectedPrice", 12);
             SetCharacterBasedColumnWidth(grid, "SelectedQuantity", 10);
             SetCharacterBasedColumnWidth(grid, "SelectedDueDate", 12);
-            // Desc1/Reference (variable-length free text) are deliberately left out of the fixed
-            // widths above — those are the columns Fill actually distributes the remaining window
-            // width across. A MinimumWidth floor on both instead of leaving them fully unconstrained:
-            // once the fixed columns above add up to more than the viewport (easily happens with this
-            // many columns), Fill would otherwise keep shrinking Desc1/Reference toward unreadable
-            // instead of ever giving up and showing a horizontal scrollbar for the overflow.
-            SetMinimumWidth(grid, "Desc1", 180);
-            SetMinimumWidth(grid, "Reference", 180);
+            // Desc1/Reference get a fixed width too since 16 nov 2026 (no Fill: columns must not
+            // stretch when the window is maximized); widen by dragging, the width is remembered.
+            SetCharacterBasedColumnWidth(grid, "Desc1", 30);
+            SetCharacterBasedColumnWidth(grid, "Reference", 30);
 
             // App-wide conventions (GridFormatting): quantities at 4 decimals, cost/price fields at
             // 4 decimals with a € prefix, Cnv (Cost Conv, a conversion factor rather than a price) at
@@ -800,7 +527,7 @@ namespace Procurement.UI.Forms
             foreach (var column in otherColumns) column.Frozen = false;
         }
 
-        private async void RequestsGrid_SelectionChanged(object sender, EventArgs e)
+        private async void dgv_requests_SelectionChanged(object sender, EventArgs e)
         {
             try
             {
@@ -827,7 +554,7 @@ namespace Procurement.UI.Forms
             if (requestId == null)
             {
                 _currentLineId = null;
-                _offersGrid.DataSource = null;
+                dgv_offers.DataSource = null;
                 return;
             }
 
@@ -836,14 +563,14 @@ namespace Procurement.UI.Forms
             _currentLineId = line?.Id;
             if (line == null)
             {
-                _offersGrid.DataSource = null;
+                dgv_offers.DataSource = null;
                 return;
             }
 
             var offers = await _composition.Engine.GetOffersForLineAsync(line.Id);
             var selection = await _composition.Engine.GetSelectionForLineAsync(line.Id);
 
-            _offersGrid.DataSource = offers.Select(o => new OfferGridRow
+            dgv_offers.DataSource = offers.Select(o => new OfferGridRow
             {
                 Id = o.Id,
                 Select = selection != null && selection.SelectedOfferId == o.Id,
@@ -861,42 +588,39 @@ namespace Procurement.UI.Forms
                 DueDate = o.EstimatedDeliveryDate
             }).ToList();
 
-            if (_offersGrid.Columns["Id"] != null)
-                _offersGrid.Columns["Id"].Visible = false;
-            SetHeaderText(_offersGrid, "SupplierCode", "Supplier");
-            SetHeaderText(_offersGrid, "SupplierPartNumber", "Supplier Part Number");
-            SetHeaderText(_offersGrid, "MatchConfidence", "Match");
-            SetHeaderText(_offersGrid, "OfferedQuantity", "Quantity");
-            SetHeaderText(_offersGrid, "UnitPrice", "Unit Price");
-            SetHeaderText(_offersGrid, "LandedCost", "Landed Cost");
-            SetHeaderText(_offersGrid, "LeadTimeDays", "Lead Time (Working Days)");
-            SetHeaderText(_offersGrid, "AvailableQuantity", "Available Qty");
-            SetHeaderText(_offersGrid, "DueDate", "Due Date");
-            ApplyQuantityColumns(_offersGrid, "OfferedQuantity", "AvailableQuantity");
-            ApplyCurrencyColumns(_offersGrid, "UnitPrice", "LandedCost");
-            ApplyDateColumns(_offersGrid, "DueDate");
-            // Every column except SupplierPartNumber gets an explicit width (user request, 20 okt
-            // 2026: "ik heb liever dat we rechts wat ruimte over houden dan dat alles zo breed wordt
-            // dat het ook niet meer leesbaar is") — without this, AutoSizeColumnsMode.Fill stretched
-            // every one of these short code/numeric/date columns to fill the leftover width.
-            // SupplierPartNumber is the one genuinely variable-length column left in Fill, with a
-            // floor under it so it can't be squeezed unreadable either.
-            SetCharacterBasedColumnWidth(_offersGrid, "Select", 8);
-            SetCharacterBasedColumnWidth(_offersGrid, "SupplierCode", 10);
-            SetMinimumWidth(_offersGrid, "SupplierPartNumber", 140);
-            SetCharacterBasedColumnWidth(_offersGrid, "MatchConfidence", 10);
-            SetCharacterBasedColumnWidth(_offersGrid, "OfferedQuantity", 10);
-            SetCharacterBasedColumnWidth(_offersGrid, "UnitPrice", 12);
-            SetCharacterBasedColumnWidth(_offersGrid, "Currency", 8);
-            SetCharacterBasedColumnWidth(_offersGrid, "Packaging", 14);
-            SetCharacterBasedColumnWidth(_offersGrid, "Reel", 10);
-            SetCharacterBasedColumnWidth(_offersGrid, "LandedCost", 12);
-            SetCharacterBasedColumnWidth(_offersGrid, "LeadTimeDays", 22);
-            SetCharacterBasedColumnWidth(_offersGrid, "AvailableQuantity", 12);
-            SetCharacterBasedColumnWidth(_offersGrid, "DueDate", 12);
+            if (dgv_offers.Columns["Id"] != null)
+                dgv_offers.Columns["Id"].Visible = false;
+            SetHeaderText(dgv_offers, "SupplierCode", "Supplier");
+            SetHeaderText(dgv_offers, "SupplierPartNumber", "Supplier Part Number");
+            SetHeaderText(dgv_offers, "MatchConfidence", "Match");
+            SetHeaderText(dgv_offers, "OfferedQuantity", "Quantity");
+            SetHeaderText(dgv_offers, "UnitPrice", "Unit Price");
+            SetHeaderText(dgv_offers, "LandedCost", "Landed Cost");
+            SetHeaderText(dgv_offers, "LeadTimeDays", "Lead Time (Working Days)");
+            SetHeaderText(dgv_offers, "AvailableQuantity", "Available Qty");
+            SetHeaderText(dgv_offers, "DueDate", "Due Date");
+            ApplyQuantityColumns(dgv_offers, "OfferedQuantity", "AvailableQuantity");
+            ApplyCurrencyColumns(dgv_offers, "UnitPrice", "LandedCost");
+            ApplyDateColumns(dgv_offers, "DueDate");
+            // Every column gets an explicit width (user request, 20 okt 2026: "ik heb liever dat we
+            // rechts wat ruimte over houden dan dat alles zo breed wordt dat het ook niet meer leesbaar
+            // is"); no Fill at all since 16 nov 2026.
+            SetCharacterBasedColumnWidth(dgv_offers, "Select", 8);
+            SetCharacterBasedColumnWidth(dgv_offers, "SupplierCode", 10);
+            SetCharacterBasedColumnWidth(dgv_offers, "SupplierPartNumber", 22);
+            SetCharacterBasedColumnWidth(dgv_offers, "MatchConfidence", 10);
+            SetCharacterBasedColumnWidth(dgv_offers, "OfferedQuantity", 10);
+            SetCharacterBasedColumnWidth(dgv_offers, "UnitPrice", 12);
+            SetCharacterBasedColumnWidth(dgv_offers, "Currency", 8);
+            SetCharacterBasedColumnWidth(dgv_offers, "Packaging", 14);
+            SetCharacterBasedColumnWidth(dgv_offers, "Reel", 10);
+            SetCharacterBasedColumnWidth(dgv_offers, "LandedCost", 12);
+            SetCharacterBasedColumnWidth(dgv_offers, "LeadTimeDays", 22);
+            SetCharacterBasedColumnWidth(dgv_offers, "AvailableQuantity", 12);
+            SetCharacterBasedColumnWidth(dgv_offers, "DueDate", 12);
 
             // Enkel "Select" mag bewerkt worden — zie de ReadOnly=false op de grid zelf.
-            foreach (DataGridViewColumn column in _offersGrid.Columns)
+            foreach (DataGridViewColumn column in dgv_offers.Columns)
                 column.ReadOnly = column.Name != "Select";
         }
 
@@ -936,10 +660,10 @@ namespace Procurement.UI.Forms
         /// </summary>
         private async System.Threading.Tasks.Task OffersGrid_CellValueChangedAsync(DataGridViewCellEventArgs e)
         {
-            if (e.RowIndex < 0 || _offersGrid.Columns[e.ColumnIndex].Name != "Select") return;
+            if (e.RowIndex < 0 || dgv_offers.Columns[e.ColumnIndex].Name != "Select") return;
             if (_currentLineId == null) return;
 
-            var row = _offersGrid.Rows[e.RowIndex];
+            var row = dgv_offers.Rows[e.RowIndex];
             var nowChecked = (bool)row.Cells["Select"].Value;
 
             try
@@ -968,8 +692,8 @@ namespace Procurement.UI.Forms
 
         private int? GetSelectedRequestId()
         {
-            if (_requestsGrid.CurrentRow == null) return null;
-            return (int)_requestsGrid.CurrentRow.Cells["Id"].Value;
+            if (dgv_requests.CurrentRow == null) return null;
+            return (int)dgv_requests.CurrentRow.Cells["Id"].Value;
         }
 
         // Derived from SelectedCells rather than SelectedRows, on purpose, even though
@@ -981,11 +705,11 @@ namespace Procurement.UI.Forms
         // since DataGridView marks every cell of a fully-selected row as Selected. Either way of
         // selecting a row for "Sourcing starten (selectie)"/"Order plaatsen (selectie)" works.
         private List<int> GetSelectedRequestIds() =>
-            _requestsGrid.SelectedCells.Cast<DataGridViewCell>().Select(c => c.OwningRow).Distinct()
+            dgv_requests.SelectedCells.Cast<DataGridViewCell>().Select(c => c.OwningRow).Distinct()
                 .Select(r => (int)r.Cells["Id"].Value).ToList();
 
         private List<int> GetAllRequestIds() =>
-            _requestsGrid.Rows.Cast<DataGridViewRow>().Where(r => !r.IsNewRow).Select(r => (int)r.Cells["Id"].Value).ToList();
+            dgv_requests.Rows.Cast<DataGridViewRow>().Where(r => !r.IsNewRow).Select(r => (int)r.Cells["Id"].Value).ToList();
 
         private async System.Threading.Tasks.Task NewRequestAsync()
         {
@@ -1249,7 +973,7 @@ namespace Procurement.UI.Forms
         /// </summary>
         public async System.Threading.Tasks.Task RefreshLocalRequestsAsync() => await LoadLocalRequestsAsync();
 
-        private void SetStatus(string text) => _statusLabel.Text = text;
+        private void SetStatus(string text) => lbl_status.Text = text;
 
         /// <summary>
         /// Every action-button handler calls this instead of managing its own Enabled/UseWaitCursor
@@ -1265,21 +989,21 @@ namespace Procurement.UI.Forms
             // DataGridView is known to hold onto its own cached cursor after the wait cursor
             // cascades back to false on the form (a long-standing WinForms quirk, not something
             // toggling UseWaitCursor alone fixes) — most noticeable here because PopulateRequestsGrid
-            // rebinds _requestsGrid.DataSource while UseWaitCursor is still true, mid-query. Forcing
+            // rebinds dgv_requests.DataSource while UseWaitCursor is still true, mid-query. Forcing
             // both grids back to Cursors.Default on the way out clears that stale state explicitly.
             if (!busy)
             {
-                _requestsGrid.Cursor = Cursors.Default;
-                _offersGrid.Cursor = Cursors.Default;
+                dgv_requests.Cursor = Cursors.Default;
+                dgv_offers.Cursor = Cursors.Default;
             }
 
             var enabled = !busy;
-            _queryButton.Enabled = enabled;
-            _newRequestButton.Enabled = enabled;
-            _startSourcingButton.Enabled = enabled;
-            _sourceAllButton.Enabled = enabled;
-            _placeOrdersButton.Enabled = enabled;
-            _processConfirmationsButton.Enabled = enabled;
+            bt_query.Enabled = enabled;
+            bt_newRequest.Enabled = enabled;
+            bt_startSourcing.Enabled = enabled;
+            bt_sourceAll.Enabled = enabled;
+            bt_placeOrders.Enabled = enabled;
+            bt_processConfirmations.Enabled = enabled;
             // Not strictly a race on shared MAX SqlConnections like the buttons above (their
             // CheckedChanged handler already no-ops via the same _isBusy check) — disabled anyway so
             // a toggle during a Query can't silently fail to visually match the grid until the next
