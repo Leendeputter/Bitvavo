@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Forms;
 using Procurement.Suppliers.Farnell;
-using static Procurement.UI.Support.GridFormatting;
+using Procurement.UI.Support;
 
 namespace Procurement.UI.Forms
 {
@@ -15,11 +15,11 @@ namespace Procurement.UI.Forms
     /// stored). The first address in that list is pre-selected; the user can pick any other before
     /// confirming. Only ever shown when there's more than one address to choose from — MainForm
     /// skips this dialog entirely otherwise.
+    /// Built with the Visual Studio Designer (user request, 16 nov 2026); the address list is filled here.
     /// </summary>
-    public class FarnellShipToAddressPickerForm : Form
+    public partial class FarnellShipToAddressPickerForm : Form
     {
         private readonly List<FarnellShipToAddress> _addresses;
-        private ListBox _list;
 
         public string SelectedAddressId { get; private set; }
 
@@ -27,50 +27,23 @@ namespace Procurement.UI.Forms
         {
             _addresses = addresses?.ToList() ?? new List<FarnellShipToAddress>();
             InitializeComponent();
+            ClassicStyle.ApplyClassicStyle(this);
+            this.BackColor = ClassicStyle.ClassicScreenBackColor;
+
+            foreach (var address in _addresses)
+                lst_addresses.Items.Add(FormatAddress(address));
+            if (lst_addresses.Items.Count > 0)
+                lst_addresses.SelectedIndex = 0;
         }
 
-        private void InitializeComponent()
+        private void bt_ok_Click(object sender, EventArgs e) => Confirm();
+
+        private void lst_addresses_DoubleClick(object sender, EventArgs e) => Confirm();
+
+        private void Confirm()
         {
-            Text = "Choose Farnell Shipping Address";
-            Width = 480;
-            Height = 380;
-            StartPosition = FormStartPosition.CenterParent;
-            FormBorderStyle = FormBorderStyle.FixedDialog;
-            MinimizeBox = false;
-            MaximizeBox = false;
-            BackColor = ClassicScreenBackColor;
-
-            var hint = new Label
-            {
-                Dock = DockStyle.Top,
-                Height = 30,
-                Padding = new Padding(8),
-                Text = "This Farnell order needs a shipping address — pick one below:"
-            };
-
-            _list = new ListBox { Dock = DockStyle.Fill, IntegralHeight = false };
-            foreach (var address in _addresses)
-                _list.Items.Add(FormatAddress(address));
-            if (_list.Items.Count > 0)
-                _list.SelectedIndex = 0;
-
-            var buttonPanel = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(10) };
-            var okButton = new Button { Text = "OK", AutoSize = true, DialogResult = DialogResult.OK };
-            ApplyClassicButtonStyle(okButton);
-            okButton.Click += (s, e) =>
-            {
-                SelectedAddressId = _list.SelectedIndex >= 0 ? _addresses[_list.SelectedIndex].AddressId : null;
-            };
-            var cancelButton = new Button { Text = "Cancel", AutoSize = true, DialogResult = DialogResult.Cancel };
-            ApplyClassicButtonStyle(cancelButton);
-            buttonPanel.Controls.Add(cancelButton);
-            buttonPanel.Controls.Add(okButton);
-
-            Controls.Add(_list);
-            Controls.Add(buttonPanel);
-            Controls.Add(hint);
-            AcceptButton = okButton;
-            CancelButton = cancelButton;
+            SelectedAddressId = lst_addresses.SelectedIndex >= 0 ? _addresses[lst_addresses.SelectedIndex].AddressId : null;
+            DialogResult = DialogResult.OK;
         }
 
         private static string FormatAddress(FarnellShipToAddress address)
