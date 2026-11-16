@@ -29,7 +29,7 @@ namespace Procurement.UI.Forms
         private void InitializeComponent()
         {
             this.bt_refresh = new System.Windows.Forms.Button();
-            this.gb_include = new System.Windows.Forms.GroupBox();
+            this.gb_include = new Procurement.UI.Support.ClassicStyle.ClassicGroupBox();
             this.chk_includeCompleted = new System.Windows.Forms.CheckBox();
             this.chk_includeDeleted = new System.Windows.Forms.CheckBox();
             this.split_orders = new System.Windows.Forms.SplitContainer();
@@ -201,7 +201,7 @@ namespace Procurement.UI.Forms
         #endregion
 
         private System.Windows.Forms.Button bt_refresh;
-        private System.Windows.Forms.GroupBox gb_include;
+        private Procurement.UI.Support.ClassicStyle.ClassicGroupBox gb_include;
         private System.Windows.Forms.CheckBox chk_includeCompleted;
         private System.Windows.Forms.CheckBox chk_includeDeleted;
         private System.Windows.Forms.SplitContainer split_orders;

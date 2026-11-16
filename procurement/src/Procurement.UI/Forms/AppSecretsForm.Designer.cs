@@ -33,7 +33,7 @@ namespace Procurement.UI.Forms
             this.pnl_secrets = new System.Windows.Forms.Panel();
             this.bt_save = new System.Windows.Forms.Button();
             this.bt_close = new System.Windows.Forms.Button();
-            this.gb_access = new System.Windows.Forms.GroupBox();
+            this.gb_access = new Procurement.UI.Support.ClassicStyle.ClassicGroupBox();
             this.dgv_access = new System.Windows.Forms.DataGridView();
             this.lbl_copyFrom = new System.Windows.Forms.Label();
             this.cb_copyFrom = new System.Windows.Forms.ComboBox();
@@ -233,7 +233,7 @@ namespace Procurement.UI.Forms
         private System.Windows.Forms.Panel pnl_secrets;
         private System.Windows.Forms.Button bt_save;
         private System.Windows.Forms.Button bt_close;
-        private System.Windows.Forms.GroupBox gb_access;
+        private Procurement.UI.Support.ClassicStyle.ClassicGroupBox gb_access;
         private System.Windows.Forms.DataGridView dgv_access;
         private System.Windows.Forms.Label lbl_copyFrom;
         private System.Windows.Forms.ComboBox cb_copyFrom;

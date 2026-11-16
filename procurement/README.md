@@ -1563,4 +1563,4 @@ raken dat mock-modus zelf nooit aanraakt:
   uit data volgt (secret-rijen, grid-kolommen) blijft in code, net als in UniPro. In
   `Procurement.UI.csproj` staat per omgezet scherm een `SubType=Form`/`DependentUpon`-paar. De andere
   schermen gebruiken voorlopig nog `GridFormatting`; die volgen één voor één na een check van dit
-  scherm in de Designer. Omgezet: App Secrets, Supplier Mapping, Approvals, Audit Log, Order Confirmation Exceptions, Farnell ship-to picker, New Purchase Request, Login, Orders, Settings, Shell-menu, Purchase Requests (16 nov) — alle schermen zijn nu omgezet. Vaste regel: geen Fill-kolommen (kolommen rekken niet mee bij maximaliseren).
+  scherm in de Designer. Omgezet: App Secrets, Supplier Mapping, Approvals, Audit Log, Order Confirmation Exceptions, Farnell ship-to picker, New Purchase Request, Login, Orders, Settings, Shell-menu, Purchase Requests (16 nov) — alle schermen zijn nu omgezet, ook de dialoogjes AuditLogDetailForm, ShippingDetailsForm en DigiKeyAuthorizeForm. GroupBoxen zijn ClassicStyle.ClassicGroupBox, net als in UniPro. Vaste regel: geen Fill-kolommen (kolommen rekken niet mee bij maximaliseren).

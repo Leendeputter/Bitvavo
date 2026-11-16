@@ -1,5 +1,4 @@
 using System;
-using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
 using Procurement.Data.Repositories;
@@ -59,41 +58,8 @@ namespace Procurement.UI.Forms
             var text = string.Join(Environment.NewLine + Environment.NewLine,
                 DetailFields.Select(f => $"{f}:{Environment.NewLine}{row.Cells[f].FormattedValue}"));
 
-            // Small throw-away detail dialog, built in code on purpose (no separate Designer form needed).
-            using (var dialog = new Form
-            {
-                Text = "Audit Log Detail",
-                Width = 700,
-                Height = 550,
-                StartPosition = FormStartPosition.CenterParent,
-                MinimizeBox = false,
-                MaximizeBox = false,
-                BackColor = ClassicStyle.ClassicScreenBackColor
-            })
-            {
-                var textBox = new TextBox
-                {
-                    Dock = DockStyle.Fill,
-                    Multiline = true,
-                    ReadOnly = true,
-                    ScrollBars = ScrollBars.Vertical,
-                    WordWrap = true,
-                    Font = new Font("Consolas", 9f),
-                    Text = text
-                };
-                var buttonPanel = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 43, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(8) };
-                var closeButton = new Button { Text = "Close", Size = new Size(90, 27), DialogResult = DialogResult.OK };
-                var copyButton = new Button { Text = "Copy to Clipboard", Size = new Size(120, 27) };
-                copyButton.Click += (s, e) => Clipboard.SetText(text);
-                buttonPanel.Controls.Add(closeButton);
-                buttonPanel.Controls.Add(copyButton);
-
-                dialog.Controls.Add(textBox);
-                dialog.Controls.Add(buttonPanel);
-                dialog.AcceptButton = closeButton;
-                ClassicStyle.ApplyClassicStyle(dialog);
+            using (var dialog = new AuditLogDetailForm(text))
                 dialog.ShowDialog(this);
-            }
         }
 
         private async System.Threading.Tasks.Task SearchAsync()

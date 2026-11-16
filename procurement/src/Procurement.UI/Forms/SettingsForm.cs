@@ -18,8 +18,8 @@ namespace Procurement.UI.Forms
     /// als data te beheren in plaats van hard-coded in de code, plus een read-only weergave van
     /// de supplier capability-matrix (§5).
     /// Built with the Visual Studio Designer (user request, 16 nov 2026): the tabs, grids and
-    /// buttons are in SettingsForm.Designer.cs; the two small modal dialogs (shipping details,
-    /// DigiKey redirect paste) are still built in code below.
+    /// buttons are in SettingsForm.Designer.cs; the two small dialogs are ShippingDetailsForm and
+    /// DigiKeyAuthorizeForm.
     /// </summary>
     public partial class SettingsForm : Form
     {
@@ -54,15 +54,6 @@ namespace Procurement.UI.Forms
         private async void bt_savePackaging_Click(object sender, EventArgs e) => await SavePackagingPoliciesAsync();
 
         private async void bt_saveApproval_Click(object sender, EventArgs e) => await SaveApprovalPolicyAsync();
-
-        private static void AddRow(TableLayoutPanel layout, string label, Control control)
-        {
-            var row = layout.RowCount;
-            layout.RowCount++;
-            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            layout.Controls.Add(new Label { Text = label, AutoSize = true, TextAlign = System.Drawing.ContentAlignment.MiddleLeft, Margin = new Padding(3, 8, 3, 3) }, 0, row);
-            layout.Controls.Add(control, 1, row);
-        }
 
         private async System.Threading.Tasks.Task RefreshAllAsync()
         {
@@ -172,62 +163,15 @@ namespace Procurement.UI.Forms
             var current = await _supplierRepository.GetByCodeAsync(supplierCode);
             if (current == null) return;
 
-            using (var dialog = new Form
+            using (var dialog = new ShippingDetailsForm(current))
             {
-                Text = $"Edit Shipping Details – {supplierCode}",
-                Width = 440,
-                Height = 460,
-                StartPosition = FormStartPosition.CenterParent,
-                FormBorderStyle = FormBorderStyle.FixedDialog,
-                MinimizeBox = false,
-                MaximizeBox = false,
-                BackColor = ClassicStyle.ClassicScreenBackColor
-            })
-            {
-                var layout = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 2, AutoSize = true, Padding = new Padding(10) };
-                var accountIdBox = new TextBox { Width = 220, Text = current.AccountId };
-                var contactNameBox = new TextBox { Width = 220, Text = current.ContactName };
-                var contactEmailBox = new TextBox { Width = 220, Text = current.ContactEmail };
-                var contactTelephoneBox = new TextBox { Width = 220, Text = current.ContactTelephone };
-                var addressLine1Box = new TextBox { Width = 220, Text = current.AddressLine1 };
-                var addressLine2Box = new TextBox { Width = 220, Text = current.AddressLine2 };
-                var cityBox = new TextBox { Width = 220, Text = current.City };
-                var provinceBox = new TextBox { Width = 220, Text = current.Province };
-                var postalCodeBox = new TextBox { Width = 220, Text = current.PostalCode };
-                var countryCodeBox = new TextBox { Width = 220, Text = current.CountryCode, MaxLength = 2 };
-                AddRow(layout, "Account ID:", accountIdBox);
-                AddRow(layout, "Contact Name:", contactNameBox);
-                AddRow(layout, "Contact Email:", contactEmailBox);
-                AddRow(layout, "Contact Phone:", contactTelephoneBox);
-                AddRow(layout, "Address Line 1:", addressLine1Box);
-                AddRow(layout, "Address Line 2:", addressLine2Box);
-                AddRow(layout, "City:", cityBox);
-                AddRow(layout, "Province/State:", provinceBox);
-                AddRow(layout, "Postal Code:", postalCodeBox);
-                AddRow(layout, "Country Code (2 letters, ISO):", countryCodeBox);
-
-                var buttonPanel = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(10) };
-                var saveButton = new Button { Text = "Save", AutoSize = true, DialogResult = DialogResult.OK };
-                var cancelButton = new Button { Text = "Cancel", AutoSize = true, DialogResult = DialogResult.Cancel };
-                buttonPanel.Controls.Add(cancelButton);
-                buttonPanel.Controls.Add(saveButton);
-
-                var scrollPanel = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
-                scrollPanel.Controls.Add(layout);
-
-                dialog.Controls.Add(scrollPanel);
-                dialog.Controls.Add(buttonPanel);
-                dialog.AcceptButton = saveButton;
-                dialog.CancelButton = cancelButton;
-
-                ClassicStyle.ApplyClassicStyle(dialog);
                 if (dialog.ShowDialog(this) != DialogResult.OK) return;
 
                 try
                 {
                     await _supplierRepository.UpdateOrderingContactAsync(
-                        supplierId, accountIdBox.Text, contactNameBox.Text, contactEmailBox.Text, contactTelephoneBox.Text,
-                        addressLine1Box.Text, addressLine2Box.Text, cityBox.Text, provinceBox.Text, postalCodeBox.Text, countryCodeBox.Text);
+                        supplierId, dialog.AccountId, dialog.ContactName, dialog.ContactEmail, dialog.ContactTelephone,
+                        dialog.AddressLine1, dialog.AddressLine2, dialog.City, dialog.Province, dialog.PostalCode, dialog.CountryCode);
                     MessageBox.Show(this, "Verzendgegevens opgeslagen.", "Opgeslagen", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
                 catch (Exception ex)
@@ -318,56 +262,11 @@ namespace Procurement.UI.Forms
             }
         }
 
-        /// <summary>
-        /// DigiKey rejects any "http://" Callback URL, so this app registers/uses the literal
-        /// "https://localhost" value it documents for apps without a real callback endpoint — nothing
-        /// ever listens there, so after consent the browser simply fails to load
-        /// "https://localhost/?code=...&amp;state=..." (no server at that address). The address bar
-        /// still shows that attempted URL though (including the query string), so the user copies it
-        /// from there and pastes it into this dialog instead of an automatic redirect being caught.
-        /// Returns null if the user cancelled.
-        /// </summary>
+        /// <summary>Asks for the pasted "https://localhost/?code=..." URL (see DigiKeyAuthorizeForm). Null if cancelled.</summary>
         private string ShowPasteRedirectDialog()
         {
-            using (var dialog = new Form
-            {
-                Text = "Authorize DigiKey Ordering",
-                Width = 520,
-                Height = 270,
-                StartPosition = FormStartPosition.CenterParent,
-                FormBorderStyle = FormBorderStyle.FixedDialog,
-                MinimizeBox = false,
-                MaximizeBox = false,
-                BackColor = ClassicStyle.ClassicScreenBackColor
-            })
-            {
-                var hint = new Label
-                {
-                    Dock = DockStyle.Top,
-                    Height = 90,
-                    Padding = new Padding(10),
-                    Text = "A browser window has just opened to log in to DigiKey and give consent. "
-                        + "After approving, DigiKey redirects the browser to \"https://localhost/...\" — that page won't "
-                        + "load (expected, nothing runs there), but the address bar will contain the full URL. "
-                        + "Copy that complete URL from the address bar and paste it below."
-                };
-                var textBox = new TextBox { Dock = DockStyle.Top, Height = 60 };
-
-                var buttonPanel = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(10) };
-                var okButton = new Button { Text = "OK", AutoSize = true, DialogResult = DialogResult.OK };
-                var cancelButton = new Button { Text = "Cancel", AutoSize = true, DialogResult = DialogResult.Cancel };
-                buttonPanel.Controls.Add(cancelButton);
-                buttonPanel.Controls.Add(okButton);
-
-                dialog.Controls.Add(textBox);
-                dialog.Controls.Add(hint);
-                dialog.Controls.Add(buttonPanel);
-                dialog.AcceptButton = okButton;
-                dialog.CancelButton = cancelButton;
-
-                ClassicStyle.ApplyClassicStyle(dialog);
-                return dialog.ShowDialog(this) == DialogResult.OK ? textBox.Text : null;
-            }
+            using (var dialog = new DigiKeyAuthorizeForm())
+                return dialog.ShowDialog(this) == DialogResult.OK ? dialog.RedirectUrl : null;
         }
 
         private async System.Threading.Tasks.Task SaveSupplierPreferencesAsync()
