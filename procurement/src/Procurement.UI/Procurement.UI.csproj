@@ -92,6 +92,18 @@
     <Compile Update="Forms\AuditLogForm.Designer.cs">
       <DependentUpon>AuditLogForm.cs</DependentUpon>
     </Compile>
+    <Compile Update="Forms\OrderConfirmationExceptionsForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="Forms\OrderConfirmationExceptionsForm.Designer.cs">
+      <DependentUpon>OrderConfirmationExceptionsForm.cs</DependentUpon>
+    </Compile>
+    <Compile Update="Forms\FarnellShipToAddressPickerForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="Forms\FarnellShipToAddressPickerForm.Designer.cs">
+      <DependentUpon>FarnellShipToAddressPickerForm.cs</DependentUpon>
+    </Compile>
   </ItemGroup>
 
 </Project>

@@ -1,9 +1,10 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Forms;
 using Procurement.Core.Models;
-using static Procurement.UI.Support.GridFormatting;
 using Procurement.UI.Support;
+using static Procurement.UI.Support.GridFormatting;
 
 namespace Procurement.UI.Forms
 {
@@ -13,16 +14,20 @@ namespace Procurement.UI.Forms
     /// duedate fields in real mode) by the time this dialog opens; this only lists the lines that
     /// need a human look (quantity/price deviation, or a delivery date confirmed later than
     /// requested), not a report of everything that went through cleanly.
+    /// Built with the Visual Studio Designer (user request, 16 nov 2026); grid columns come from the
+    /// DataSource, so their widths are set here. No Fill mode (user rule, 16 nov 2026).
     /// </summary>
-    public class OrderConfirmationExceptionsForm : Form
+    public partial class OrderConfirmationExceptionsForm : Form
     {
-        private DataGridView _grid;
-
         public OrderConfirmationExceptionsForm(IReadOnlyList<OrderConfirmationException> exceptions)
         {
             InitializeComponent();
+            ClassicStyle.ApplyClassicStyle(this);
+            this.BackColor = ClassicStyle.ClassicScreenBackColor;
+            EnableRowNumberHeaders(dgv_exceptions);
             GridColumnSettingsHelper.Attach(this); // remembers column widths per user, like UniPro
-            _grid.DataSource = exceptions.Select(e => new
+
+            dgv_exceptions.DataSource = (exceptions ?? Array.Empty<OrderConfirmationException>()).Select(e => new
             {
                 e.ErpPoNumber,
                 e.SupplierCode,
@@ -36,54 +41,22 @@ namespace Procurement.UI.Forms
                 Reason = DescribeReason(e)
             }).ToList();
 
-            ApplyQuantityColumns(_grid, "OrderedQuantity", "ConfirmedQuantity");
-            ApplyCurrencyColumns(_grid, "OrderedUnitPrice", "ConfirmedUnitPrice");
-            ApplyDateColumns(_grid, "RequiredDate", "ConfirmedShipDate");
-            // Reason is the one genuinely free-text column here, left in Fill with a floor.
-            SetCharacterBasedColumnWidth(_grid, "ErpPoNumber", 12);
-            SetCharacterBasedColumnWidth(_grid, "SupplierCode", 12);
-            SetMinimumWidth(_grid, "SupplierPartNumber", 140);
-            SetCharacterBasedColumnWidth(_grid, "OrderedQuantity", 12);
-            SetCharacterBasedColumnWidth(_grid, "ConfirmedQuantity", 14);
-            SetCharacterBasedColumnWidth(_grid, "OrderedUnitPrice", 14);
-            SetCharacterBasedColumnWidth(_grid, "ConfirmedUnitPrice", 16);
-            SetCharacterBasedColumnWidth(_grid, "RequiredDate", 12);
-            SetCharacterBasedColumnWidth(_grid, "ConfirmedShipDate", 14);
-            SetMinimumWidth(_grid, "Reason", 160);
+            ApplyQuantityColumns(dgv_exceptions, "OrderedQuantity", "ConfirmedQuantity");
+            ApplyCurrencyColumns(dgv_exceptions, "OrderedUnitPrice", "ConfirmedUnitPrice");
+            ApplyDateColumns(dgv_exceptions, "RequiredDate", "ConfirmedShipDate");
+            SetCharacterBasedColumnWidth(dgv_exceptions, "ErpPoNumber", 12);
+            SetCharacterBasedColumnWidth(dgv_exceptions, "SupplierCode", 12);
+            SetCharacterBasedColumnWidth(dgv_exceptions, "SupplierPartNumber", 20);
+            SetCharacterBasedColumnWidth(dgv_exceptions, "OrderedQuantity", 12);
+            SetCharacterBasedColumnWidth(dgv_exceptions, "ConfirmedQuantity", 14);
+            SetCharacterBasedColumnWidth(dgv_exceptions, "OrderedUnitPrice", 14);
+            SetCharacterBasedColumnWidth(dgv_exceptions, "ConfirmedUnitPrice", 16);
+            SetCharacterBasedColumnWidth(dgv_exceptions, "RequiredDate", 12);
+            SetCharacterBasedColumnWidth(dgv_exceptions, "ConfirmedShipDate", 14);
+            SetCharacterBasedColumnWidth(dgv_exceptions, "Reason", 36);
         }
 
-        private void InitializeComponent()
-        {
-            Text = "Order Confirmation – Deviations";
-            Width = 1000;
-            Height = 500;
-            StartPosition = FormStartPosition.CenterParent;
-            // Pale blue, matching MAX's own "MRP Detail" screenshot (user request, 20 okt 2026) — see
-            // GridFormatting.ClassicScreenBackColor's own comment for why this replaced an earlier,
-            // visually-no-op SystemColors.Control attempt.
-            BackColor = ClassicScreenBackColor;
-
-            _grid = new DataGridView
-            {
-                Name = "grid",
-                Dock = DockStyle.Fill,
-                ReadOnly = true,
-                AllowUserToAddRows = false,
-                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-                SelectionMode = DataGridViewSelectionMode.RowHeaderSelect,
-                MultiSelect = false
-            };
-            EnableDoubleBuffering(_grid);
-            EnableRowNumberHeaders(_grid);
-            ApplyClassicHeaderStyle(_grid);
-
-            var closeButton = new Button { Text = "Close", AutoSize = true, Dock = DockStyle.Bottom };
-            ApplyClassicButtonStyle(closeButton);
-            closeButton.Click += (s, e) => Close();
-
-            Controls.Add(_grid);
-            Controls.Add(closeButton);
-        }
+        private void bt_close_Click(object sender, EventArgs e) => Close();
 
         private static string DescribeReason(OrderConfirmationException e)
         {
