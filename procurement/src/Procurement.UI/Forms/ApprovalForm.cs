@@ -7,78 +7,37 @@ using Procurement.UI.Support;
 
 namespace Procurement.UI.Forms
 {
-    /// <summary>Goedkeuringsscherm (spec §8.3) — only lines that failed the auto-approve criteria show up here.</summary>
-    public class ApprovalForm : Form
+    /// <summary>
+    /// Goedkeuringsscherm (spec §8.3) — only lines that failed the auto-approve criteria show up here.
+    /// Designer-built since 16 nov 2026 (ApprovalForm.Designer.cs), same pattern as UniPro:
+    /// ClassicStyle.ApplyClassicStyle(this) right after InitializeComponent(); grid columns follow
+    /// from data, so they stay in code. Fixed column widths, no Fill (user preference, 16 nov 2026).
+    /// </summary>
+    public partial class ApprovalForm : Form
     {
         private readonly ProcurementEngine _engine;
-
-        private DataGridView _grid;
-        private TextBox _commentBox;
-        private Button _approveButton;
-        private Button _rejectButton;
-        private Label _statusLabel;
 
         public ApprovalForm(ProcurementEngine engine)
         {
             _engine = engine ?? throw new ArgumentNullException(nameof(engine));
             InitializeComponent();
+            ClassicStyle.ApplyClassicStyle(this);
+            this.BackColor = ClassicStyle.ClassicScreenBackColor;
+            EnableRowNumberHeaders(dgv_approvals);
             GridColumnSettingsHelper.Attach(this); // remembers column widths per user, like UniPro
-            Load += async (s, e) => await RefreshAsync();
+            Load += ApprovalForm_Load;
         }
 
-        private void InitializeComponent()
-        {
-            Text = "Approvals";
-            Width = 1000;
-            Height = 550;
-            // StartPosition is moot for an MDI child (ShellForm.ShowApprovals() sets MdiParent, user
-            // request, 20 okt 2026 — "MDI-container?") — WinForms always places MDI children with its
-            // own cascading layout regardless of this setting; left as CenterScreen only because
-            // nothing depends on changing it.
-            StartPosition = FormStartPosition.CenterScreen;
-            // Pale blue, matching MAX's own "MRP Detail" screenshot (user request, 20 okt 2026) — see
-            // GridFormatting.ClassicScreenBackColor's own comment for why this replaced an earlier,
-            // visually-no-op SystemColors.Control attempt.
-            BackColor = ClassicScreenBackColor;
+        private async void ApprovalForm_Load(object sender, EventArgs e) => await RefreshAsync();
 
-            _grid = new DataGridView
-            {
-                Name = "grid",
-                Dock = DockStyle.Fill,
-                ReadOnly = true,
-                AllowUserToAddRows = false,
-                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-                SelectionMode = DataGridViewSelectionMode.RowHeaderSelect,
-                MultiSelect = false
-            };
-            EnableDoubleBuffering(_grid);
-            EnableRowNumberHeaders(_grid);
-            ApplyClassicHeaderStyle(_grid);
+        private async void bt_approve_Click(object sender, EventArgs e) => await DecideAsync(approve: true);
 
-            var actionPanel = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 70, FlowDirection = FlowDirection.LeftToRight };
-            actionPanel.Controls.Add(new Label { Text = "Comment:", AutoSize = true, Padding = new Padding(0, 8, 4, 0) });
-            _commentBox = new TextBox { Width = 400 };
-            _approveButton = new Button { Text = "Approve", AutoSize = true };
-            ApplyClassicButtonStyle(_approveButton);
-            _approveButton.Click += async (s, e) => await DecideAsync(approve: true);
-            _rejectButton = new Button { Text = "Reject", AutoSize = true };
-            ApplyClassicButtonStyle(_rejectButton);
-            _rejectButton.Click += async (s, e) => await DecideAsync(approve: false);
-            actionPanel.Controls.Add(_commentBox);
-            actionPanel.Controls.Add(_approveButton);
-            actionPanel.Controls.Add(_rejectButton);
-
-            _statusLabel = new Label { Dock = DockStyle.Bottom, Height = 24, Padding = new Padding(4) };
-
-            Controls.Add(_grid);
-            Controls.Add(actionPanel);
-            Controls.Add(_statusLabel);
-        }
+        private async void bt_reject_Click(object sender, EventArgs e) => await DecideAsync(approve: false);
 
         private async System.Threading.Tasks.Task RefreshAsync()
         {
             var pending = await _engine.GetPendingApprovalsAsync();
-            _grid.DataSource = pending.Select(a => new
+            dgv_approvals.DataSource = pending.Select(a => new
             {
                 // Kept in the DataSource (DecideAsync reads it back from the grid) but hidden below
                 // — just a sequential id, and the row header already shows a row number (user
@@ -93,40 +52,39 @@ namespace Procurement.UI.Forms
                 Reason = a.Reasons,
                 a.CreatedAt
             }).ToList();
-            ApplyQuantityColumns(_grid, "OfferedQty");
-            ApplyCurrencyColumns(_grid, "Price");
-            ApplyDateTimeColumns(_grid, "CreatedAt");
-            SetHeaderText(_grid, "OfferedQty", "Offered Qty");
-            // Reason is the one genuinely free-text column here, left in Fill with a floor.
-            if (_grid.Columns["Id"] != null) _grid.Columns["Id"].Visible = false;
-            SetCharacterBasedColumnWidth(_grid, "ErpRequestNumber", 12);
-            SetCharacterBasedColumnWidth(_grid, "PartID", 14);
-            SetCharacterBasedColumnWidth(_grid, "Part", 18);
-            SetCharacterBasedColumnWidth(_grid, "Supplier", 12);
-            SetCharacterBasedColumnWidth(_grid, "OfferedQty", 12);
-            SetCharacterBasedColumnWidth(_grid, "Price", 12);
-            SetMinimumWidth(_grid, "Reason", 160);
-            SetCharacterBasedColumnWidth(_grid, "CreatedAt", 19);
+            ApplyQuantityColumns(dgv_approvals, "OfferedQty");
+            ApplyCurrencyColumns(dgv_approvals, "Price");
+            ApplyDateTimeColumns(dgv_approvals, "CreatedAt");
+            SetHeaderText(dgv_approvals, "OfferedQty", "Offered Qty");
+            if (dgv_approvals.Columns["Id"] != null) dgv_approvals.Columns["Id"].Visible = false;
+            SetCharacterBasedColumnWidth(dgv_approvals, "ErpRequestNumber", 12);
+            SetCharacterBasedColumnWidth(dgv_approvals, "PartID", 14);
+            SetCharacterBasedColumnWidth(dgv_approvals, "Part", 18);
+            SetCharacterBasedColumnWidth(dgv_approvals, "Supplier", 12);
+            SetCharacterBasedColumnWidth(dgv_approvals, "OfferedQty", 12);
+            SetCharacterBasedColumnWidth(dgv_approvals, "Price", 12);
+            SetCharacterBasedColumnWidth(dgv_approvals, "Reason", 40);
+            SetCharacterBasedColumnWidth(dgv_approvals, "CreatedAt", 19);
 
-            _statusLabel.Text = $"{pending.Count} regel(s) wachten op goedkeuring.";
+            lbl_status.Text = $"{pending.Count} regel(s) wachten op goedkeuring.";
         }
 
         private async System.Threading.Tasks.Task DecideAsync(bool approve)
         {
-            if (_grid.CurrentRow == null)
+            if (dgv_approvals.CurrentRow == null)
             {
                 MessageBox.Show(this, "Selecteer eerst een regel.", "Geen selectie", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
-            var approvalId = (int)_grid.CurrentRow.Cells["Id"].Value;
+            var approvalId = (int)dgv_approvals.CurrentRow.Cells["Id"].Value;
 
-            _approveButton.Enabled = false;
-            _rejectButton.Enabled = false;
+            bt_approve.Enabled = false;
+            bt_reject.Enabled = false;
             try
             {
-                await _engine.ApproveAsync(approvalId, approve, _commentBox.Text, Environment.UserName);
-                _commentBox.Clear();
+                await _engine.ApproveAsync(approvalId, approve, txt_comment.Text, Environment.UserName);
+                txt_comment.Clear();
                 await RefreshAsync();
             }
             catch (Exception ex)
@@ -135,8 +93,8 @@ namespace Procurement.UI.Forms
             }
             finally
             {
-                _approveButton.Enabled = true;
-                _rejectButton.Enabled = true;
+                bt_approve.Enabled = true;
+                bt_reject.Enabled = true;
             }
         }
     }

@@ -80,6 +80,12 @@
     <Compile Update="Forms\SupplierMappingForm.Designer.cs">
       <DependentUpon>SupplierMappingForm.cs</DependentUpon>
     </Compile>
+    <Compile Update="Forms\ApprovalForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="Forms\ApprovalForm.Designer.cs">
+      <DependentUpon>ApprovalForm.cs</DependentUpon>
+    </Compile>
   </ItemGroup>
 
 </Project>
