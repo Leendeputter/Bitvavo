@@ -5,12 +5,13 @@ using Procurement.Core.Entities;
 using Procurement.Core.Enums;
 using Procurement.Data.Repositories;
 using Procurement.Erp;
-using static Procurement.UI.Support.GridFormatting;
+using Procurement.UI.Support;
 
 namespace Procurement.UI.Forms
 {
-    /// <summary>Simple test-data entry form (spec §8.1) — stands in for the not-yet-connected real ERP.</summary>
-    public class NewPurchaseRequestForm : Form
+    /// <summary>Simple test-data entry form (spec §8.1) — stands in for the not-yet-connected real ERP.
+    /// Built with the Visual Studio Designer (user request, 16 nov 2026).</summary>
+    public partial class NewPurchaseRequestForm : Form
     {
         private readonly PurchaseRequestRepository _repository;
         private readonly MaxOrderRepository _maxOrderRepository;
@@ -20,100 +21,24 @@ namespace Procurement.UI.Forms
         private string _lookedUpPartType;
         private string _lookedUpCustomer;
 
-        private TextBox _erpArticleIdBox;
-        private TextBox _manufacturerBox;
-        private TextBox _mpnBox;
-        private TextBox _descriptionBox;
-        private NumericUpDown _quantityBox;
-        private DateTimePicker _requiredDatePicker;
-        private ComboBox _packagingCombo;
-        private CheckBox _reelRequiredCheck;
-        private TextBox _warehouseBox;
-        private TextBox _projectBox;
-        private NumericUpDown _priorityBox;
-
         public NewPurchaseRequestForm(PurchaseRequestRepository repository, MaxOrderRepository maxOrderRepository)
         {
             _repository = repository ?? throw new ArgumentNullException(nameof(repository));
             _maxOrderRepository = maxOrderRepository ?? throw new ArgumentNullException(nameof(maxOrderRepository));
             InitializeComponent();
+            ClassicStyle.ApplyClassicStyle(this);
+            this.BackColor = ClassicStyle.ClassicScreenBackColor;
+
+            // Defaults that depend on "now" or on an enum stay in code; fixed test defaults are in the Designer.
+            txt_articleId.Text = "ART-" + DateTime.UtcNow.Ticks % 100000;
+            dtp_requiredDate.Value = DateTime.Today.AddDays(14);
+            cb_packaging.Items.AddRange(Enum.GetNames(typeof(PackagingRequirement)));
+            cb_packaging.SelectedItem = nameof(PackagingRequirement.OriginalReel);
         }
 
-        private void InitializeComponent()
-        {
-            Text = "Add New Test Request";
-            Width = 480;
-            Height = 480;
-            StartPosition = FormStartPosition.CenterParent;
-            FormBorderStyle = FormBorderStyle.FixedDialog;
-            MaximizeBox = false;
-            MinimizeBox = false;
-            // Pale blue, matching MAX's own "MRP Detail" screenshot (user request, 20 okt 2026) — see
-            // GridFormatting.ClassicScreenBackColor's own comment.
-            BackColor = ClassicScreenBackColor;
+        private async void bt_fetchFromMax_Click(object sender, EventArgs e) => await LookupFromMaxAsync();
 
-            var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, Padding = new Padding(10), AutoSize = true };
-            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40));
-            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 60));
-
-            _erpArticleIdBox = new TextBox { Dock = DockStyle.Fill, Text = "ART-" + DateTime.UtcNow.Ticks % 100000 };
-            var lookupButton = new Button { Text = "Fetch from MAX", AutoSize = true };
-            ApplyClassicButtonStyle(lookupButton);
-            lookupButton.Click += async (s, e) => await LookupFromMaxAsync();
-            var articleIdPanel = new Panel { Dock = DockStyle.Fill, Height = 24 };
-            _erpArticleIdBox.Dock = DockStyle.Left;
-            _erpArticleIdBox.Width = 140;
-            lookupButton.Dock = DockStyle.Right;
-            articleIdPanel.Controls.Add(_erpArticleIdBox);
-            articleIdPanel.Controls.Add(lookupButton);
-            _manufacturerBox = new TextBox { Dock = DockStyle.Fill, Text = "Vishay" };
-            _mpnBox = new TextBox { Dock = DockStyle.Fill, Text = "CRCW060310K0FKEA" };
-            _descriptionBox = new TextBox { Dock = DockStyle.Fill };
-            _quantityBox = new NumericUpDown { Dock = DockStyle.Fill, Minimum = 1, Maximum = 10000000, Value = 12000 };
-            _requiredDatePicker = new DateTimePicker { Dock = DockStyle.Fill, Value = DateTime.Today.AddDays(14) };
-            _packagingCombo = new ComboBox { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList };
-            _packagingCombo.Items.AddRange(Enum.GetNames(typeof(PackagingRequirement)));
-            _packagingCombo.SelectedItem = nameof(PackagingRequirement.OriginalReel);
-            _reelRequiredCheck = new CheckBox { Dock = DockStyle.Fill, Checked = true, Text = "Reel Required" };
-            _warehouseBox = new TextBox { Dock = DockStyle.Fill, Text = "WAREHOUSE-1" };
-            _projectBox = new TextBox { Dock = DockStyle.Fill, Text = "PROTOTYPE" };
-            _priorityBox = new NumericUpDown { Dock = DockStyle.Fill, Minimum = 1, Maximum = 10, Value = 5 };
-
-            AddRow(layout, "Internal Article Number:", articleIdPanel);
-            AddRow(layout, "Manufacturer:", _manufacturerBox);
-            AddRow(layout, "Manufacturer Part Number:", _mpnBox);
-            AddRow(layout, "Description:", _descriptionBox);
-            AddRow(layout, "Requested Quantity:", _quantityBox);
-            AddRow(layout, "Required Date:", _requiredDatePicker);
-            AddRow(layout, "Packaging Requirement:", _packagingCombo);
-            AddRow(layout, string.Empty, _reelRequiredCheck);
-            AddRow(layout, "Warehouse:", _warehouseBox);
-            AddRow(layout, "Project:", _projectBox);
-            AddRow(layout, "Priority (1=high):", _priorityBox);
-
-            var buttonPanel = new FlowLayoutPanel { Dock = DockStyle.Bottom, FlowDirection = FlowDirection.RightToLeft, Height = 40 };
-            var cancelButton = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel };
-            ApplyClassicButtonStyle(cancelButton);
-            var okButton = new Button { Text = "Save" };
-            ApplyClassicButtonStyle(okButton);
-            okButton.Click += async (s, e) => await SaveAsync();
-            buttonPanel.Controls.Add(cancelButton);
-            buttonPanel.Controls.Add(okButton);
-
-            Controls.Add(layout);
-            Controls.Add(buttonPanel);
-            AcceptButton = okButton;
-            CancelButton = cancelButton;
-        }
-
-        private static void AddRow(TableLayoutPanel layout, string label, Control control)
-        {
-            var row = layout.RowCount;
-            layout.RowCount++;
-            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            layout.Controls.Add(new Label { Text = label, Dock = DockStyle.Fill, TextAlign = System.Drawing.ContentAlignment.MiddleLeft }, 0, row);
-            layout.Controls.Add(control, 1, row);
-        }
+        private async void bt_save_Click(object sender, EventArgs e) => await SaveAsync();
 
         /// <summary>
         /// Looks up Part_Master by the typed "intern artikelnummer" (MaxOrderRepository.
@@ -126,7 +51,7 @@ namespace Procurement.UI.Forms
         /// </summary>
         private async System.Threading.Tasks.Task LookupFromMaxAsync()
         {
-            var partId = _erpArticleIdBox.Text.Trim();
+            var partId = txt_articleId.Text.Trim();
             if (string.IsNullOrEmpty(partId)) return;
 
             var part = await _maxOrderRepository.GetPartByIdAsync(partId);
@@ -141,18 +66,18 @@ namespace Procurement.UI.Forms
             _lookedUpPartType = part.PartType;
             _lookedUpCustomer = part.Customer;
 
-            if (string.IsNullOrWhiteSpace(_descriptionBox.Text))
+            if (string.IsNullOrWhiteSpace(txt_description.Text))
             {
                 var descriptionParts = new List<string>();
                 if (!string.IsNullOrWhiteSpace(part.Desc1)) descriptionParts.Add(part.Desc1);
                 if (!string.IsNullOrWhiteSpace(part.Desc2)) descriptionParts.Add(part.Desc2);
-                _descriptionBox.Text = string.Join(" ", descriptionParts);
+                txt_description.Text = string.Join(" ", descriptionParts);
             }
         }
 
         private async System.Threading.Tasks.Task SaveAsync()
         {
-            if (string.IsNullOrWhiteSpace(_mpnBox.Text))
+            if (string.IsNullOrWhiteSpace(txt_mpn.Text))
             {
                 MessageBox.Show(this, "Manufacturer part number is verplicht.", "Validatie", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
@@ -162,27 +87,27 @@ namespace Procurement.UI.Forms
             {
                 ErpRequestNumber = "TEST-" + DateTime.UtcNow.ToString("yyyyMMddHHmmss"),
                 RequestDate = DateTime.UtcNow,
-                RequiredDate = _requiredDatePicker.Value,
-                Warehouse = _warehouseBox.Text,
-                Project = _projectBox.Text,
-                Priority = (int)_priorityBox.Value,
+                RequiredDate = dtp_requiredDate.Value,
+                Warehouse = txt_warehouse.Text,
+                Project = txt_project.Text,
+                Priority = (int)nud_priority.Value,
                 Status = PurchaseRequestStatus.Pending,
                 Lines = new List<PurchaseRequestLine>
                 {
                     new PurchaseRequestLine
                     {
-                        ErpArticleId = _erpArticleIdBox.Text,
-                        Manufacturer = _manufacturerBox.Text,
-                        ManufacturerPartNumber = _mpnBox.Text,
-                        Description = _descriptionBox.Text,
+                        ErpArticleId = txt_articleId.Text,
+                        Manufacturer = txt_manufacturer.Text,
+                        ManufacturerPartNumber = txt_mpn.Text,
+                        Description = txt_description.Text,
                         Desc1 = _lookedUpDesc1,
                         Desc2 = _lookedUpDesc2,
                         PartType = _lookedUpPartType,
                         Customer = _lookedUpCustomer,
-                        RequestedQuantity = (int)_quantityBox.Value,
-                        RequiredDate = _requiredDatePicker.Value,
-                        PackagingRequirement = (PackagingRequirement)Enum.Parse(typeof(PackagingRequirement), (string)_packagingCombo.SelectedItem),
-                        ReelRequirement = _reelRequiredCheck.Checked
+                        RequestedQuantity = (int)nud_quantity.Value,
+                        RequiredDate = dtp_requiredDate.Value,
+                        PackagingRequirement = (PackagingRequirement)Enum.Parse(typeof(PackagingRequirement), (string)cb_packaging.SelectedItem),
+                        ReelRequirement = chk_reelRequired.Checked
                     }
                 }
             };

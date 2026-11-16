@@ -104,6 +104,12 @@
     <Compile Update="Forms\FarnellShipToAddressPickerForm.Designer.cs">
       <DependentUpon>FarnellShipToAddressPickerForm.cs</DependentUpon>
     </Compile>
+    <Compile Update="Forms\NewPurchaseRequestForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="Forms\NewPurchaseRequestForm.Designer.cs">
+      <DependentUpon>NewPurchaseRequestForm.cs</DependentUpon>
+    </Compile>
   </ItemGroup>
 
 </Project>
