@@ -23,18 +23,15 @@ namespace Procurement.UI.Forms
     /// PurchaseRequest's Workflow status, so cramming both into one PR-shaped grid never worked well
     /// (user request, sep 2026, after repeatedly having to open Order details per row just to see an
     /// order's own status/confirmed quantity/price).
+    /// Built with the Visual Studio Designer (user request, 16 nov 2026); the two grids sit in a
+    /// SplitContainer so their heights can be dragged.
     /// </summary>
-    public class OrdersForm : Form
+    public partial class OrdersForm : Form
     {
         private readonly PurchaseOrderRepository _purchaseOrderRepository;
         private readonly PurchaseRequestRepository _purchaseRequestRepository;
         private readonly MaxOrderRepository _maxOrderRepository;
 
-        private DataGridView _ordersGrid;
-        private DataGridView _linesGrid;
-        private CheckBox _includeCompletedCheckBox;
-        private CheckBox _includeDeletedCheckBox;
-        private Label _statusBar;
         private IReadOnlyList<PurchaseOrder> _loadedOrders = new List<PurchaseOrder>();
 
         /// <summary>
@@ -51,104 +48,30 @@ namespace Procurement.UI.Forms
             _purchaseRequestRepository = purchaseRequestRepository ?? throw new ArgumentNullException(nameof(purchaseRequestRepository));
             _maxOrderRepository = maxOrderRepository ?? throw new ArgumentNullException(nameof(maxOrderRepository));
             InitializeComponent();
+            ClassicStyle.ApplyClassicStyle(this);
+            this.BackColor = ClassicStyle.ClassicScreenBackColor;
+            EnableRowNumberHeaders(dgv_orders);
+            EnableRowNumberHeaders(dgv_lines);
             GridColumnSettingsHelper.Attach(this); // remembers column widths per user, like UniPro
-            Load += async (s, e) => await RefreshAsync();
+            Load += OrdersForm_Load;
         }
 
-        private void InitializeComponent()
-        {
-            Text = "Orders";
-            Width = 1150;
-            Height = 650;
-            // StartPosition is moot for an MDI child (ShellForm.ShowOrders() sets MdiParent, user
-            // request, 20 okt 2026 — "MDI-container?") — WinForms always places MDI children with its
-            // own cascading layout regardless of this setting; left as CenterScreen only because
-            // nothing depends on changing it.
-            StartPosition = FormStartPosition.CenterScreen;
-            // Pale blue, matching MAX's own "MRP Detail" screenshot (user request, 20 okt 2026) — see
-            // GridFormatting.ClassicScreenBackColor's own comment for why this replaced an earlier,
-            // visually-no-op SystemColors.Control attempt.
-            BackColor = ClassicScreenBackColor;
+        private async void OrdersForm_Load(object sender, EventArgs e) => await RefreshAsync();
 
-            // Taller than a plain button bar (user request, 20 okt 2026 — matching MAX's own "PO
-            // Schedule Inquiry" screenshot) to fit the "Include" group below.
-            var topPanel = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 70, FlowDirection = FlowDirection.LeftToRight };
-            var refreshButton = new Button { Text = "Refresh", AutoSize = true, Margin = new Padding(4) };
-            ApplyClassicButtonStyle(refreshButton);
-            refreshButton.Click += async (s, e) => await RefreshAsync();
-            topPanel.Controls.Add(refreshButton);
+        private async void bt_refresh_Click(object sender, EventArgs e) => await RefreshAsync();
 
-            // "Orderlijnen die al geleverd zijn" default-hidden in Lines of Selected PO (user request,
-            // 20 okt 2026, matching MAX's own "PO Schedule Inquiry 1" filter screen — its "Status 4
-            // Orders (Completed)" checkbox, same Order_Master.STATUS_10 field). Unchecked by default:
-            // only still-open lines show; checking it also shows lines MAX's own STATUS_10 marks
-            // Completed ("4"). Re-filters instantly from the cached _lineStatusesByKey (set once per
-            // RefreshAsync) rather than re-querying MAX on every toggle. Label text matches MAX's own
-            // screenshot verbatim rather than this app's own wording (user request, 20 okt 2026 — "de
-            // tekst die ik je in het voorbeeld gestuurd had, dat verbeterd de adaptie wellicht").
-            var includeLayout = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true };
-            _includeCompletedCheckBox = new CheckBox { Text = "Status 4 Orders (Completed)", AutoSize = true };
-            _includeCompletedCheckBox.CheckedChanged += async (s, e) => await LoadLinesForSelectedOrderAsync();
-            includeLayout.Controls.Add(_includeCompletedCheckBox);
+        // "Status 4 Orders (Completed)": label text matches MAX's own "PO Schedule Inquiry 1" filter
+        // screen (user request, 20 okt 2026). Unchecked: only still-open lines; re-filters from the
+        // cached _lineStatusesByKey without re-querying MAX.
+        private async void chk_includeCompleted_CheckedChanged(object sender, EventArgs e) => await LoadLinesForSelectedOrderAsync();
 
-            // Orders whose Order_Master rows have been deleted straight in MAX (user feedback, 20 okt
-            // 2026: "Als ze verwijderd zijn uit MAX dan graag uit de lijst verwijderen... maar dat ze
-            // nog wel in de tabel blijven staan") — this app never deletes its own local PurchaseOrder
-            // row just because MAX's side is gone (that stays the historical record), it only hides
-            // such rows from the default view here, with this checkbox to reveal them again.
-            _includeDeletedCheckBox = new CheckBox { Text = "Deleted in MAX", AutoSize = true };
-            _includeDeletedCheckBox.CheckedChanged += (s, e) => PopulateOrdersGrid();
-            includeLayout.Controls.Add(_includeDeletedCheckBox);
-
-            var includeGroup = WrapInGroupBox("Include", includeLayout);
-            includeGroup.Margin = new Padding(12, 2, 4, 2);
-            topPanel.Controls.Add(includeGroup);
-
-            var poLabel = new Label { Text = "All Purchase Orders:", Dock = DockStyle.Top, Height = 20, Padding = new Padding(4) };
-            _ordersGrid = new DataGridView
-            {
-                Name = "ordersGrid",
-                Dock = DockStyle.Top,
-                Height = 260,
-                ReadOnly = true,
-                AllowUserToAddRows = false,
-                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-                SelectionMode = DataGridViewSelectionMode.RowHeaderSelect,
-                MultiSelect = false
-            };
-            EnableDoubleBuffering(_ordersGrid);
-            EnableRowNumberHeaders(_ordersGrid);
-            ApplyClassicHeaderStyle(_ordersGrid);
-            _ordersGrid.SelectionChanged += OrdersGrid_SelectionChanged;
-
-            var linesLabel = new Label { Text = "Lines of Selected PO:", Dock = DockStyle.Top, Height = 20, Padding = new Padding(4) };
-            _linesGrid = new DataGridView
-            {
-                Name = "linesGrid",
-                Dock = DockStyle.Fill,
-                ReadOnly = true,
-                AllowUserToAddRows = false,
-                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-                SelectionMode = DataGridViewSelectionMode.RowHeaderSelect,
-                MultiSelect = false
-            };
-            EnableDoubleBuffering(_linesGrid);
-            EnableRowNumberHeaders(_linesGrid);
-            ApplyClassicHeaderStyle(_linesGrid);
-
-            _statusBar = new Label { Dock = DockStyle.Bottom, Height = 24, Padding = new Padding(4), BackColor = System.Drawing.SystemColors.ControlLight };
-
-            Controls.Add(_linesGrid);
-            Controls.Add(linesLabel);
-            Controls.Add(_ordersGrid);
-            Controls.Add(poLabel);
-            Controls.Add(topPanel);
-            Controls.Add(_statusBar);
-        }
+        // Orders deleted straight in MAX are hidden by default but never deleted locally (user
+        // feedback, 20 okt 2026); this checkbox reveals them again.
+        private void chk_includeDeleted_CheckedChanged(object sender, EventArgs e) => PopulateOrdersGrid();
 
         private async System.Threading.Tasks.Task RefreshAsync()
         {
-            _statusBar.Text = "Orders laden...";
+            lbl_status.Text = "Orders laden...";
             _loadedOrders = await _purchaseOrderRepository.GetAllAsync();
 
             // One batched MAX round-trip for every line's Order_Master.STATUS_10 across every loaded
@@ -166,21 +89,21 @@ namespace Procurement.UI.Forms
         }
 
         /// <summary>
-        /// Rebuilds _ordersGrid's rows from the already-loaded/already-fetched _loadedOrders and
-        /// _lineStatusesByKey — called from RefreshAsync, and again from _includeDeletedCheckBox's
+        /// Rebuilds dgv_orders's rows from the already-loaded/already-fetched _loadedOrders and
+        /// _lineStatusesByKey — called from RefreshAsync, and again from chk_includeDeleted's
         /// CheckedChanged so toggling it re-filters instantly without a MAX round-trip.
         /// </summary>
         private void PopulateOrdersGrid()
         {
             var visibleOrders = _loadedOrders
-                .Where(po => _includeDeletedCheckBox.Checked || !IsNotFoundInMax(po))
+                .Where(po => chk_includeDeleted.Checked || !IsNotFoundInMax(po))
                 .ToList();
 
             // Assigning DataSource can itself raise SelectionChanged; detach first so that doesn't
             // race with LoadLinesForSelectedOrder below against the same in-memory list (same
             // reasoning as MainForm's own grids).
-            _ordersGrid.SelectionChanged -= OrdersGrid_SelectionChanged;
-            _ordersGrid.DataSource = visibleOrders.Select(po => new
+            dgv_orders.SelectionChanged -= dgv_orders_SelectionChanged;
+            dgv_orders.DataSource = visibleOrders.Select(po => new
             {
                 po.Id,
                 po.ErpPoNumber,
@@ -194,45 +117,45 @@ namespace Procurement.UI.Forms
                 po.Currency,
                 Lines = po.Lines.Count
             }).ToList();
-            _ordersGrid.SelectionChanged += OrdersGrid_SelectionChanged;
+            dgv_orders.SelectionChanged += dgv_orders_SelectionChanged;
 
-            if (_ordersGrid.Columns["Id"] != null)
-                _ordersGrid.Columns["Id"].Visible = false;
-            ApplyCurrencyColumns(_ordersGrid, "OrderTotal");
-            ApplyDateTimeColumns(_ordersGrid, "CreatedAt", "SubmittedAt", "ConfirmedAt");
+            if (dgv_orders.Columns["Id"] != null)
+                dgv_orders.Columns["Id"].Visible = false;
+            ApplyCurrencyColumns(dgv_orders, "OrderTotal");
+            ApplyDateTimeColumns(dgv_orders, "CreatedAt", "SubmittedAt", "ConfirmedAt");
             // Explicit widths for every column (user request, 20 okt 2026) — none of these are
             // genuinely free-text, so none need Fill's stretch-to-fill behavior.
-            SetCharacterBasedColumnWidth(_ordersGrid, "ErpPoNumber", 12);
-            SetCharacterBasedColumnWidth(_ordersGrid, "Supplier", 12);
-            SetCharacterBasedColumnWidth(_ordersGrid, "SupplierOrderNumber", 16);
-            SetCharacterBasedColumnWidth(_ordersGrid, "Status", 14);
-            SetCharacterBasedColumnWidth(_ordersGrid, "CreatedAt", 19);
-            SetCharacterBasedColumnWidth(_ordersGrid, "SubmittedAt", 19);
-            SetCharacterBasedColumnWidth(_ordersGrid, "ConfirmedAt", 19);
-            SetCharacterBasedColumnWidth(_ordersGrid, "OrderTotal", 14);
-            SetCharacterBasedColumnWidth(_ordersGrid, "Currency", 8);
-            SetCharacterBasedColumnWidth(_ordersGrid, "Lines", 8);
+            SetCharacterBasedColumnWidth(dgv_orders, "ErpPoNumber", 12);
+            SetCharacterBasedColumnWidth(dgv_orders, "Supplier", 12);
+            SetCharacterBasedColumnWidth(dgv_orders, "SupplierOrderNumber", 16);
+            SetCharacterBasedColumnWidth(dgv_orders, "Status", 14);
+            SetCharacterBasedColumnWidth(dgv_orders, "CreatedAt", 19);
+            SetCharacterBasedColumnWidth(dgv_orders, "SubmittedAt", 19);
+            SetCharacterBasedColumnWidth(dgv_orders, "ConfirmedAt", 19);
+            SetCharacterBasedColumnWidth(dgv_orders, "OrderTotal", 14);
+            SetCharacterBasedColumnWidth(dgv_orders, "Currency", 8);
+            SetCharacterBasedColumnWidth(dgv_orders, "Lines", 8);
 
             var hiddenDeletedCount = _loadedOrders.Count - visibleOrders.Count;
-            _statusBar.Text = $"{visibleOrders.Count} order(s)"
+            lbl_status.Text = $"{visibleOrders.Count} order(s)"
                 + (hiddenDeletedCount > 0 ? $", {hiddenDeletedCount} verwijderd in MAX verborgen." : ".");
         }
 
-        private async void OrdersGrid_SelectionChanged(object sender, EventArgs e) => await LoadLinesForSelectedOrderAsync();
+        private async void dgv_orders_SelectionChanged(object sender, EventArgs e) => await LoadLinesForSelectedOrderAsync();
 
         private async System.Threading.Tasks.Task LoadLinesForSelectedOrderAsync()
         {
-            if (_ordersGrid.CurrentRow == null)
+            if (dgv_orders.CurrentRow == null)
             {
-                _linesGrid.DataSource = null;
+                dgv_lines.DataSource = null;
                 return;
             }
 
-            var poId = (int)_ordersGrid.CurrentRow.Cells["Id"].Value;
+            var poId = (int)dgv_orders.CurrentRow.Cells["Id"].Value;
             var order = _loadedOrders.FirstOrDefault(o => o.Id == poId);
             if (order == null)
             {
-                _linesGrid.DataSource = null;
+                dgv_lines.DataSource = null;
                 return;
             }
 
@@ -257,9 +180,9 @@ namespace Procurement.UI.Forms
             // deviation logic here — same reasoning MainForm.OrderConfirmationExceptionsForm already
             // follows for "Orderbevestiging verwerken".
             var visibleLines = order.Lines
-                .Where(l => _includeCompletedCheckBox.Checked || !IsCompletedInMax(order.ErpPoNumber, l))
+                .Where(l => chk_includeCompleted.Checked || !IsCompletedInMax(order.ErpPoNumber, l))
                 .ToList();
-            _linesGrid.DataSource = visibleLines.Select(l =>
+            dgv_lines.DataSource = visibleLines.Select(l =>
             {
                 requestLines.TryGetValue(l.PurchaseRequestLineId, out var requestLine);
                 var confirmed = l.ConfirmedQuantity.HasValue;
@@ -300,36 +223,35 @@ namespace Procurement.UI.Forms
                     l.LineTotal
                 };
             }).ToList();
-            ApplyQuantityColumns(_linesGrid, "Quantity", "ConfirmedQuantity");
-            ApplyCurrencyColumns(_linesGrid, "UnitPrice", "ConfirmedUnitPrice", "LineTotal");
-            ApplyDateColumns(_linesGrid, "RequiredDate", "ConfirmedShipDate");
-            SetHeaderText(_linesGrid, "MaxStatus", "Status");
-            SetHeaderText(_linesGrid, "QuantityMismatch", "Qty Mismatch?");
-            SetHeaderText(_linesGrid, "PriceMismatch", "Price Mismatch?");
-            SetHeaderText(_linesGrid, "DeliveryIsLate", "Late?");
-            HighlightDeviatingLines(_linesGrid);
-            // Explicit widths for every column except SupplierPartNumber (genuinely variable-length,
-            // left in Fill with a floor) — same reasoning as MainForm's offers grid (user request,
-            // 20 okt 2026).
-            SetCharacterBasedColumnWidth(_linesGrid, "ErpRequestNumber", 12);
-            SetCharacterBasedColumnWidth(_linesGrid, "PartID", 14);
-            SetMinimumWidth(_linesGrid, "SupplierPartNumber", 140);
-            SetCharacterBasedColumnWidth(_linesGrid, "MaxStatus", 10);
-            SetCharacterBasedColumnWidth(_linesGrid, "Confirmed", 10);
-            SetCharacterBasedColumnWidth(_linesGrid, "Quantity", 10);
-            SetCharacterBasedColumnWidth(_linesGrid, "ConfirmedQuantity", 12);
-            SetCharacterBasedColumnWidth(_linesGrid, "QuantityMismatch", 12);
-            SetCharacterBasedColumnWidth(_linesGrid, "UnitPrice", 12);
-            SetCharacterBasedColumnWidth(_linesGrid, "ConfirmedUnitPrice", 14);
-            SetCharacterBasedColumnWidth(_linesGrid, "PriceMismatch", 12);
-            SetCharacterBasedColumnWidth(_linesGrid, "RequiredDate", 12);
-            SetCharacterBasedColumnWidth(_linesGrid, "ConfirmedShipDate", 14);
-            SetCharacterBasedColumnWidth(_linesGrid, "DeliveryIsLate", 8);
-            SetCharacterBasedColumnWidth(_linesGrid, "LineTotal", 14);
+            ApplyQuantityColumns(dgv_lines, "Quantity", "ConfirmedQuantity");
+            ApplyCurrencyColumns(dgv_lines, "UnitPrice", "ConfirmedUnitPrice", "LineTotal");
+            ApplyDateColumns(dgv_lines, "RequiredDate", "ConfirmedShipDate");
+            SetHeaderText(dgv_lines, "MaxStatus", "Status");
+            SetHeaderText(dgv_lines, "QuantityMismatch", "Qty Mismatch?");
+            SetHeaderText(dgv_lines, "PriceMismatch", "Price Mismatch?");
+            SetHeaderText(dgv_lines, "DeliveryIsLate", "Late?");
+            HighlightDeviatingLines(dgv_lines);
+            // Explicit widths for every column, no Fill (user rule, 16 nov 2026: columns must not
+            // stretch when the window is maximized).
+            SetCharacterBasedColumnWidth(dgv_lines, "ErpRequestNumber", 12);
+            SetCharacterBasedColumnWidth(dgv_lines, "PartID", 14);
+            SetCharacterBasedColumnWidth(dgv_lines, "SupplierPartNumber", 20);
+            SetCharacterBasedColumnWidth(dgv_lines, "MaxStatus", 10);
+            SetCharacterBasedColumnWidth(dgv_lines, "Confirmed", 10);
+            SetCharacterBasedColumnWidth(dgv_lines, "Quantity", 10);
+            SetCharacterBasedColumnWidth(dgv_lines, "ConfirmedQuantity", 12);
+            SetCharacterBasedColumnWidth(dgv_lines, "QuantityMismatch", 12);
+            SetCharacterBasedColumnWidth(dgv_lines, "UnitPrice", 12);
+            SetCharacterBasedColumnWidth(dgv_lines, "ConfirmedUnitPrice", 14);
+            SetCharacterBasedColumnWidth(dgv_lines, "PriceMismatch", 12);
+            SetCharacterBasedColumnWidth(dgv_lines, "RequiredDate", 12);
+            SetCharacterBasedColumnWidth(dgv_lines, "ConfirmedShipDate", 14);
+            SetCharacterBasedColumnWidth(dgv_lines, "DeliveryIsLate", 8);
+            SetCharacterBasedColumnWidth(dgv_lines, "LineTotal", 14);
 
             var unconfirmedCount = visibleLines.Count(l => !l.ConfirmedQuantity.HasValue);
             var hiddenCompletedCount = order.Lines.Count - visibleLines.Count;
-            _statusBar.Text = $"{order.SupplierCode}: {order.Status}"
+            lbl_status.Text = $"{order.SupplierCode}: {order.Status}"
                 + (string.IsNullOrEmpty(order.SupplierOrderNumber) ? string.Empty : $" (ordernummer {order.SupplierOrderNumber})")
                 + $" — {visibleLines.Count} regel(s), {unconfirmedCount} nog niet bevestigd"
                 + (hiddenCompletedCount > 0 ? $", {hiddenCompletedCount} voltooid verborgen." : ".");
