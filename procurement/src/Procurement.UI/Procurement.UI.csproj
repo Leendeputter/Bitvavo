@@ -64,4 +64,16 @@
     <ProjectReference Include="..\Procurement.Suppliers.Other\Procurement.Suppliers.Other.csproj" />
   </ItemGroup>
 
+  <!-- Designer-built forms (16 nov 2026, converted one screen at a time to match UniPro): the
+       Designer file is nested under its form, and SubType=Form makes Visual Studio open the
+       form in the Designer by default. Add a pair here for every newly converted screen. -->
+  <ItemGroup>
+    <Compile Update="Forms\AppSecretsForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="Forms\AppSecretsForm.Designer.cs">
+      <DependentUpon>AppSecretsForm.cs</DependentUpon>
+    </Compile>
+  </ItemGroup>
+
 </Project>

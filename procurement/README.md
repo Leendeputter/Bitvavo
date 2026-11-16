@@ -1553,3 +1553,14 @@ raken dat mock-modus zelf nooit aanraakt:
   worden na elke binding opnieuw toegepast, en alleen kolommen die je zelf versleept of op de
   scheidingslijn dubbelklikt worden onthouden, zodat de bewust meerekkende (Fill-)kolommen blijven
   meegroeien met het venster. Opslaan gebeurt bij het sluiten van het scherm.
+- **Schermen via de Visual Studio Designer, zoals UniPro — eerste scherm: App Secrets** (16 nov 2026 —
+  "Is het mogelijk om de windows in Procurement via de designer op te bouwen? ... dan krijg ik een
+  verschil met UniPro als we dat later gaan samenvoegen"; gekozen aanpak: per scherm, App Secrets
+  eerst als proef). `AppSecretsForm` is nu `partial` met een `AppSecretsForm.Designer.cs`, met
+  UniPro's control-namen (`pnl_secrets`, `dgv_access`, `bt_save`, ...) en `bt_xxx_Click`-handlers.
+  Styling zoals in UniPro: `ClassicStyle.ApplyClassicStyle(this)` direct na `InitializeComponent()` —
+  `Support/ClassicStyle.cs` is een letterlijke kopie van UniPro's `UI/Support/ClassicStyle.cs`. Wat
+  uit data volgt (secret-rijen, grid-kolommen) blijft in code, net als in UniPro. In
+  `Procurement.UI.csproj` staat per omgezet scherm een `SubType=Form`/`DependentUpon`-paar. De andere
+  schermen gebruiken voorlopig nog `GridFormatting`; die volgen één voor één na een check van dit
+  scherm in de Designer.
