@@ -74,6 +74,12 @@
     <Compile Update="Forms\AppSecretsForm.Designer.cs">
       <DependentUpon>AppSecretsForm.cs</DependentUpon>
     </Compile>
+    <Compile Update="Forms\SupplierMappingForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="Forms\SupplierMappingForm.Designer.cs">
+      <DependentUpon>SupplierMappingForm.cs</DependentUpon>
+    </Compile>
   </ItemGroup>
 
 </Project>
