@@ -594,14 +594,7 @@ namespace Procurement.Engine
                 SupplierCode = supplierCode,
                 Currency = items[0].Offer.Currency,
                 IdempotencyKey = idempotencyKey,
-                Lines = items.Select(i => new PurchaseOrderDraftLine
-                {
-                    PurchaseRequestLineId = i.Line.Id,
-                    SupplierPartNumber = i.Offer.SupplierPartNumber,
-                    Quantity = i.Offer.OfferedQuantity,
-                    UnitPrice = i.Offer.UnitPrice,
-                    LineTotal = i.Offer.OfferedQuantity * i.Offer.UnitPrice
-                }).ToList()
+                Lines = BuildBundledDraftLines(items)
             };
 
             string erpPoNumber;
@@ -631,13 +624,17 @@ namespace Procurement.Engine
                 SupplierCode = supplierCode,
                 ErpPoNumber = erpPoNumber,
                 Currency = draft.Currency,
-                Lines = items.Select(i => new SupplierOrderRequestLine
-                {
-                    SupplierPartNumber = i.Offer.SupplierPartNumber,
-                    Quantity = i.Offer.OfferedQuantity,
-                    UnitPrice = i.Offer.UnitPrice,
-                    PackagingType = i.Offer.PackagingType
-                }).ToList()
+                // One supplier order line per supplier part number: a bundle of request lines for the
+                // same article goes to the supplier as one line with the total (see OrderBundler).
+                Lines = draft.Lines
+                    .GroupBy(l => l.SupplierPartNumber)
+                    .Select(g => new SupplierOrderRequestLine
+                    {
+                        SupplierPartNumber = g.Key,
+                        Quantity = g.Sum(l => l.Quantity),
+                        UnitPrice = g.First().UnitPrice,
+                        PackagingType = items.First(i => i.Offer.SupplierPartNumber == g.Key).Offer.PackagingType
+                    }).ToList()
             };
 
             await _auditLogger.LogAsync("PurchaseOrder", erpPoNumber, "SUPPLIER_ORDER_SUBMITTING", "InProgress", supplierCode,
@@ -661,6 +658,48 @@ namespace Procurement.Engine
                 "Success", supplierCode, responsePayload: $"Status={result.Status}; OrderTotal={result.OrderTotal} {result.Currency}");
 
             await _erp.UpdatePurchaseOrderStatusAsync(erpPoNumber, result.Status.ToString());
+        }
+
+        /// <summary>
+        /// PO lines for one supplier group. Request lines with the same supplier part number are a
+        /// bundle (user request, 16 nov 2026): their requested quantities are summed and rounded up to
+        /// MOQ/order multiple once instead of per line, so 10 lines of 100 pieces with a 5000 MOQ
+        /// become one reel of 5000, not ten. Each request line keeps its own PO line (own quantity and
+        /// date in MAX); the rounding surplus goes on the line with the earliest required date. A
+        /// single line is a bundle of one, which gives the same quantity as its offer. Unit price: the
+        /// price of the bundle's offer with the largest quantity (closest price break to the total).
+        /// </summary>
+        private static List<PurchaseOrderDraftLine> BuildBundledDraftLines(List<(PurchaseRequestLine Line, SupplierOffer Offer)> items)
+        {
+            var result = new List<PurchaseOrderDraftLine>();
+
+            foreach (var bundle in items.GroupBy(i => i.Offer.SupplierPartNumber))
+            {
+                var members = bundle
+                    .OrderBy(i => i.Line.RequiredDate ?? DateTime.MaxValue)
+                    .ThenBy(i => i.Line.Id)
+                    .ToList();
+                var priceOffer = members.OrderByDescending(i => i.Offer.OfferedQuantity).First().Offer;
+                var orderMultiple = members.Max(i => i.Offer.OrderMultiple);
+                var minimumOrderQuantity = members.Max(i => i.Offer.MinimumOrderQuantity);
+
+                var quantities = OrderBundler.AllocateQuantities(
+                    members.Select(i => i.Line.RequestedQuantity).ToList(), earliestIndex: 0, orderMultiple, minimumOrderQuantity);
+
+                for (var n = 0; n < members.Count; n++)
+                {
+                    result.Add(new PurchaseOrderDraftLine
+                    {
+                        PurchaseRequestLineId = members[n].Line.Id,
+                        SupplierPartNumber = bundle.Key,
+                        Quantity = quantities[n],
+                        UnitPrice = priceOffer.UnitPrice,
+                        LineTotal = quantities[n] * priceOffer.UnitPrice
+                    });
+                }
+            }
+
+            return result;
         }
 
         /// <summary>
@@ -708,7 +747,7 @@ namespace Procurement.Engine
 
                 foreach (var line in order.Lines)
                 {
-                    var statusLine = status.Lines?.FirstOrDefault(l => l.SupplierPartNumber == line.SupplierPartNumber);
+                    var statusLine = OrderBundler.ConfirmationForLine(status, order.Lines, line);
                     if (statusLine == null) continue;
 
                     var requestLine = await _purchaseRequestRepository.GetLineByIdAsync(line.PurchaseRequestLineId);

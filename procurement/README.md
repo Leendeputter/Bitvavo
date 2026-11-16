@@ -1571,3 +1571,11 @@ raken dat mock-modus zelf nooit aanraakt:
   is de waarheid"), in plaats van met het gemiddelde van de andere offers. Live opgezocht per regel
   tijdens sourcing (`IErpConnector.GetPartCostAsync`, geen nieuwe kolom). Geen kostprijs in MAX (of
   mock-ERP) → check wordt overgeslagen. Geen valuta-omrekening.
+- **16 nov 2026 — Bundelen per artikel bij Place Order** ("10 regels voor hetzelfde artikel ...
+  samenvoegen tot 1 inkoop van een volle reel van 5000 stuks, maar voorkomen dat er 10x een reel van
+  5000 stuks besteld wordt"). Sourcing rondt nog per regel af (offer per regel), maar bij Place Order
+  worden geselecteerde regels met hetzelfde supplier part number opgeteld en één keer afgerond op
+  MOQ/ordermultiple (`OrderBundler`). MAX: één PO-regel per aanvraag (eigen aantal en datum), het
+  afrondingsoverschot op de regel met de vroegste vraagdatum. Leverancier: één orderregel met het
+  totaal. Een orderbevestiging per part number wordt over de gebundelde PO-regels verdeeld
+  (`OrderBundler.ConfirmationForLine`). Alleen binnen de selectie van Place Order.

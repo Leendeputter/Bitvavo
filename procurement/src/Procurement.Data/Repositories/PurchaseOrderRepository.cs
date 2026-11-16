@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Data.Entity;
 using System.Linq;
 using System.Threading.Tasks;
+using Procurement.Core.BusinessLogic;
 using Procurement.Core.Entities;
 using Procurement.Core.Enums;
 using Procurement.Core.Interfaces;
@@ -141,7 +142,7 @@ namespace Procurement.Data.Repositories
 
             foreach (var line in order.Lines)
             {
-                var statusLine = status.Lines?.FirstOrDefault(l => l.SupplierPartNumber == line.SupplierPartNumber);
+                var statusLine = OrderBundler.ConfirmationForLine(status, order.Lines, line);
                 if (statusLine == null) continue;
 
                 line.ConfirmedQuantity = statusLine.ConfirmedQuantity;

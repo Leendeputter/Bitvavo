@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Dapper;
 using MAX50;
 using MaxOrder;
+using Procurement.Core.BusinessLogic;
 using Procurement.Core.Entities;
 using Procurement.Core.Interfaces;
 using Procurement.Core.Models;
@@ -364,7 +365,7 @@ namespace Procurement.Erp
                         // existed) — no real MAX row to point at.
                         if (string.IsNullOrEmpty(line.MaxLineNumber)) continue;
 
-                        var statusLine = supplierStatus.Lines?.FirstOrDefault(l => l.SupplierPartNumber == line.SupplierPartNumber);
+                        var statusLine = OrderBundler.ConfirmationForLine(supplierStatus, order.Lines, line);
                         await ApplyLineConfirmationAsync(admin, maxOrderModule, order, line, statusLine, log);
                     }
                 }
