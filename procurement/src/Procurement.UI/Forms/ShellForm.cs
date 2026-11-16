@@ -27,8 +27,12 @@ namespace Procurement.UI.Forms
     ///
     /// Nothing opens automatically at startup — the user picks what to look at, Activity > Purchase
     /// Requests included.
+    ///
+    /// Built with the Visual Studio Designer (user request, 16 nov 2026): menu bar and MDI settings
+    /// in ShellForm.Designer.cs; the title (depends on the login) and the blue menu renderer are set
+    /// in the constructor.
     /// </summary>
-    public class ShellForm : Form
+    public partial class ShellForm : Form
     {
         private readonly CompositionRoot _composition;
 
@@ -36,75 +40,39 @@ namespace Procurement.UI.Forms
         // existing window forward instead of opening a confusing second copy of this app's main
         // work surface, with its own separate in-progress Query/selection state.
         private MainForm _mainForm;
-        private ToolStripMenuItem _beheerMenu;
 
         public ShellForm(CompositionRoot composition)
         {
             _composition = composition ?? throw new ArgumentNullException(nameof(composition));
             InitializeComponent();
-        }
 
-        private void InitializeComponent()
-        {
+            // Window title depends on the login, so it's set here rather than in the Designer.
             Text = $"Component Procurement – {_composition.Session.CompanyName} ({_composition.Session.UserName})"
                  + (_composition.Session.TestMode ? " – TEST MODE" : string.Empty);
-            // A normal, resizable/maximizable window, opening maximized (user request, 20 okt 2026 —
-            // the first version was deliberately small/fixed-size as "just a launcher", but that read
-            // as broken rather than minimal). Width/Height are only what it'd fall back to if the
-            // user un-maximizes it.
-            Width = 1300;
-            Height = 860;
-            StartPosition = FormStartPosition.CenterScreen;
-            WindowState = FormWindowState.Maximized;
-            // White instead of the default SystemColors.Control gray, for more contrast against the
-            // menu bar (user request, 20 okt 2026 — this is the "startscherm" they meant, not
-            // MainForm, which keeps its own default background).
-            BackColor = Color.White;
 
-            // Confines every screen to this window instead of letting them be dragged out onto the
-            // desktop (user request, 20 okt 2026 — see class comment). The actual MDI child area is a
-            // separate, auto-created MdiClient control, not this Form itself, hence OnLoad below to
-            // reach it and match its backdrop to the child forms' own pale-blue background — otherwise
-            // it'd default to a plain flat gray (SystemColors.AppWorkspace) behind/around them.
-            IsMdiContainer = true;
-
-            // Classic blue menu-bar look (user request, 20 okt 2026 — screenshot of MAX's own MRP
-            // menu bar as the reference). ToolStripProfessionalRenderer is the standard WinForms way
-            // to recolor a MenuStrip beyond plain BackColor (System render mode mostly ignores it in
-            // favor of the OS theme); see ClassicBlueColorTable below for the actual palette.
-            var menuStrip = new MenuStrip
-            {
-                Dock = DockStyle.Top,
-                RenderMode = ToolStripRenderMode.Professional,
-                Renderer = new ToolStripProfessionalRenderer(new ClassicBlueColorTable())
-            };
-
-            // Approvals grouped under Activity too, not just the two the user named explicitly when
-            // this menu was first built — same category (recurring work to check on), not
-            // configuration like the Options items.
-            var activityMenu = new ToolStripMenuItem("Activity");
-            activityMenu.DropDownItems.Add("Purchase Requests", null, (s, e) => ShowPurchaseRequests());
-            activityMenu.DropDownItems.Add("Purchase Orders...", null, (s, e) => ShowOrders());
-            activityMenu.DropDownItems.Add("Approvals...", null, (s, e) => ShowApprovals());
-
-            var optionsMenu = new ToolStripMenuItem("Options");
-            optionsMenu.DropDownItems.Add("Supplier Mapping...", null, (s, e) => ShowSupplierMapping());
-            optionsMenu.DropDownItems.Add("Settings...", null, (s, e) => ShowSettings());
-            optionsMenu.DropDownItems.Add("Audit Log...", null, (s, e) => ShowAuditLog());
-
-            // Beheer > App Secrets (user request, 13 nov 2026: secrets "op dezelfde manier als
-            // UniPro, met een aparte database en een beheer menu"). Same menu name, item name and
-            // access right as UniPro2026's own Beheer menu, so the two line up when merged. Hidden
-            // in OnLoad for users without MGR User Security (and demanded again on click, like UniPro).
-            _beheerMenu = new ToolStripMenuItem("Beheer");
-            _beheerMenu.DropDownItems.Add("App Secrets", null, (s, e) => ShowAppSecrets());
-
-            // Activity before Options (user request, 20 okt 2026).
-            menuStrip.Items.AddRange(new ToolStripItem[] { activityMenu, optionsMenu, _beheerMenu });
-            MainMenuStrip = menuStrip;
-
-            Controls.Add(menuStrip);
+            // Classic blue menu-bar look like MAX's own MRP menu (user request, 20 okt 2026). A custom
+            // renderer can't be set in the Designer, so it's applied here.
+            menuStrip1.RenderMode = ToolStripRenderMode.Professional;
+            menuStrip1.Renderer = new ToolStripProfessionalRenderer(new ClassicBlueColorTable());
         }
+
+        // Activity: recurring work to check on. Options: configuration. Beheer: same menu name, item
+        // and access right as UniPro2026's own Beheer menu (user request, 13 nov 2026), hidden in
+        // OnLoad for users without MGR User Security. Menu items use the Designer's default
+        // "xxxToolStripMenuItem" names, as UniPro.Designer.cs does.
+        private void purchaseRequestsToolStripMenuItem_Click(object sender, EventArgs e) => ShowPurchaseRequests();
+
+        private void purchaseOrdersToolStripMenuItem_Click(object sender, EventArgs e) => ShowOrders();
+
+        private void approvalsToolStripMenuItem_Click(object sender, EventArgs e) => ShowApprovals();
+
+        private void supplierMappingToolStripMenuItem_Click(object sender, EventArgs e) => ShowSupplierMapping();
+
+        private void settingsToolStripMenuItem_Click(object sender, EventArgs e) => ShowSettings();
+
+        private void auditLogToolStripMenuItem_Click(object sender, EventArgs e) => ShowAuditLog();
+
+        private void appSecretsToolStripMenuItem_Click(object sender, EventArgs e) => ShowAppSecrets();
 
         /// <summary>
         /// The MdiClient control behind the menu strip is created automatically once IsMdiContainer
@@ -122,7 +90,7 @@ namespace Procurement.UI.Forms
                     mdiClient.BackColor = ClassicScreenBackColor;
             }
 
-            _beheerMenu.Visible = HasBeheerAccess();
+            beheerToolStripMenuItem.Visible = HasBeheerAccess();
 
             if (_composition.StartupWarnings.Count > 0)
             {
