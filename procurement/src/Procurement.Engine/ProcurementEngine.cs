@@ -307,7 +307,7 @@ namespace Procurement.Engine
             }
 
             var preference = await _policyRepository.GetSupplierPreferenceAsync(selectionResult.SelectedOffer.SupplierCode);
-            var referencePrice = ComputeReferenceUnitPrice(offers, selectionResult.SelectedOffer);
+            var referencePrice = ApprovalEvaluator.GetMaxReferenceUnitPrice(line);
             var evaluation = ApprovalEvaluator.Evaluate(selectionResult.SelectedOffer, line, approvalPolicy, preference, referencePrice);
 
             if (evaluation.IsAutoApproved)
@@ -336,12 +336,6 @@ namespace Procurement.Engine
             await _auditLogger.LogAsync("PurchaseRequestLine", line.Id.ToString(), "APPROVAL_REQUIRED", "Pending",
                 selectionResult.SelectedOffer.SupplierCode, responsePayload: approval.Reasons);
             return LineOutcome.PendingApproval;
-        }
-
-        private static decimal? ComputeReferenceUnitPrice(IReadOnlyList<SupplierOffer> offers, SupplierOffer selected)
-        {
-            var others = offers.Where(o => !ReferenceEquals(o, selected)).ToList();
-            return others.Count == 0 ? (decimal?)null : others.Average(o => o.UnitPrice);
         }
 
         private async Task<Dictionary<ISupplierAdapter, (string SupplierPartNumber, MatchConfidence Confidence)>> ResolveProductMappingsAsync(

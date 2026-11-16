@@ -1564,3 +1564,9 @@ raken dat mock-modus zelf nooit aanraakt:
   `Procurement.UI.csproj` staat per omgezet scherm een `SubType=Form`/`DependentUpon`-paar. De andere
   schermen gebruiken voorlopig nog `GridFormatting`; die volgen één voor één na een check van dit
   scherm in de Designer. Omgezet: App Secrets, Supplier Mapping, Approvals, Audit Log, Order Confirmation Exceptions, Farnell ship-to picker, New Purchase Request, Login, Orders, Settings, Shell-menu, Purchase Requests (16 nov) — alle schermen zijn nu omgezet, ook de dialoogjes AuditLogDetailForm, ShippingDetailsForm en DigiKeyAuthorizeForm. GroupBoxen zijn ClassicStyle.ClassicGroupBox, net als in UniPro. Vaste regel: geen Fill-kolommen (kolommen rekken niet mee bij maximaliseren).
+- **16 nov 2026 — Price variance t.o.v. MAX-kostprijs** ("Ik had verwacht dat de price variance
+  zou zijn gerelateerd aan de bekende kostprijs in MAX van het artikel"). De "Max price variance
+  (%)"-check in de approval policy vergelijkt de stukprijs van de gekozen offer nu met de MAX-kostprijs
+  van de regel (`Order_Master.COST_10 / CSTCNV_10`, dezelfde eenheidsprijs als Ext. Cost in Purchase
+  Requests) in plaats van met het gemiddelde van de andere offers. Geen bruikbare MAX-kostprijs
+  (bv. een handmatige testaanvraag) → check wordt overgeslagen. `ApprovalEvaluator.GetMaxReferenceUnitPrice`.

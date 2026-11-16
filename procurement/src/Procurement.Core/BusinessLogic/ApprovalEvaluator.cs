@@ -53,7 +53,7 @@ namespace Procurement.Core.BusinessLogic
                 if (variance > policy.MaxPriceVariancePercentage)
                 {
                     reasons.Add(
-                        $"Prijsafwijking ({variance:0.0}%) overschrijdt de toegestane afwijking ({policy.MaxPriceVariancePercentage:0.0}%).");
+                        $"Prijsafwijking ({variance:0.0}%) t.o.v. de MAX-kostprijs ({referenceUnitPrice.Value:0.0000}) overschrijdt de toegestane afwijking ({policy.MaxPriceVariancePercentage:0.0}%).");
                 }
             }
 
@@ -79,6 +79,20 @@ namespace Procurement.Core.BusinessLogic
             }
 
             return new ApprovalEvaluation(reasons.Count == 0, reasons);
+        }
+
+        /// <summary>
+        /// Reference price for the "Max price variance" check: the article's known cost price in MAX
+        /// (user request, 16 nov 2026: "gerelateerd aan de bekende kostprijs in MAX van het artikel"),
+        /// i.e. Order_Master.COST_10 / CSTCNV_10 as synced onto the line — the same unit cost the
+        /// Purchase Requests grid uses for Ext. Cost. Replaces the earlier "average of the other
+        /// offers". Null (check skipped) when MAX has no usable cost, e.g. a manual test request.
+        /// </summary>
+        public static decimal? GetMaxReferenceUnitPrice(PurchaseRequestLine line)
+        {
+            if (line?.Cost == null || line.Cost.Value <= 0m) return null;
+            if (line.CostConv == null || line.CostConv.Value == 0m) return null;
+            return line.Cost.Value / line.CostConv.Value;
         }
     }
 }
