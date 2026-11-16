@@ -197,22 +197,32 @@ WHERE dbo.Order_Master.ORDNUM_10 IN ({string.Join(",", paramNames)})";
         }
 
         /// <summary>
-        /// Part_Master.COST_01 — the article's cost price in MAX, "de waarheid" (user, 16 nov 2026),
-        /// used as the reference for the approval policy's "Max price variance" check. Live lookup
-        /// per line at sourcing time, not a stored column, same reasoning as
-        /// GetPreferredVendorIdsByPartIdsAsync below. Null when the part isn't found or has no cost.
+        /// Part_Master.COST_01 / CSTCNV_01 — the article's cost price in MAX per piece, "de waarheid"
+        /// (user, 16 nov 2026). COST_01 is per cost unit (CSTUOM_01) and CSTCNV_01 is the cost
+        /// conversion, so the per-piece price is COST_01 / CSTCNV_01 — the same convention as
+        /// Order_Master's COST_10 / CSTCNV_10 (Ext. Cost in Purchase Requests). Reference for the
+        /// approval policy's "Max price variance" check. Live lookup per line at sourcing time, not a
+        /// stored column, same reasoning as GetPreferredVendorIdsByPartIdsAsync below. Null when the
+        /// part isn't found, has no cost, or has no usable conversion.
         /// </summary>
         public async Task<decimal?> GetPartCostAsync(string partId)
         {
             if (string.IsNullOrWhiteSpace(partId)) return null;
 
-            const string sql = "SELECT COST_01 FROM dbo.Part_Master WHERE PRTNUM_01 = @partId";
+            const string sql = "SELECT COST_01 AS Cost, CSTCNV_01 AS CostConv FROM dbo.Part_Master WHERE PRTNUM_01 = @partId";
             using (var conn = new SqlConnection(_session.AdminConnectionString))
             using (var cmd = new SqlCommand(sql, conn))
             {
                 cmd.Parameters.AddWithValue("@partId", partId.Trim());
                 await conn.OpenAsync();
-                return ToNullableDecimal(await cmd.ExecuteScalarAsync());
+                using (var reader = await cmd.ExecuteReaderAsync())
+                {
+                    if (!await reader.ReadAsync()) return null;
+                    var cost = ToNullableDecimal(reader["Cost"]);
+                    var costConv = ToNullableDecimal(reader["CostConv"]);
+                    if (!cost.HasValue || !costConv.HasValue || costConv.Value == 0m) return null;
+                    return cost.Value / costConv.Value;
+                }
             }
         }
 

@@ -392,7 +392,7 @@ namespace Procurement.Erp
             ? _inner.UpdatePurchaseOrderStatusAsync(erpPoNumber, status)
             : _maxPurchaseOrderRepository.UpdateStatusAsync(erpPoNumber, status);
 
-        /// <summary>Part_Master.COST_01 (user, 16 nov 2026: "de prijs uit de PartMaster, dat is de waarheid").</summary>
+        /// <summary>Part_Master.COST_01 / CSTCNV_01 per piece (user, 16 nov 2026: "de prijs uit de PartMaster, dat is de waarheid").</summary>
         public Task<decimal?> GetPartCostAsync(string partId) => _maxOrderRepository.GetPartCostAsync(partId);
 
         /// <summary>

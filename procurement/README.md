@@ -1567,7 +1567,7 @@ raken dat mock-modus zelf nooit aanraakt:
 - **16 nov 2026 — Price variance t.o.v. MAX-kostprijs** ("Ik had verwacht dat de price variance
   zou zijn gerelateerd aan de bekende kostprijs in MAX van het artikel"). De "Max price variance
   (%)"-check in de approval policy vergelijkt de stukprijs van de gekozen offer nu met de kostprijs
-  van het artikel in MAX, `Part_Master.COST_01` ("de prijs uit de PartMaster voor de zekerheid, dat
+  van het artikel in MAX per stuk, `Part_Master.COST_01 / CSTCNV_01` ("de prijs uit de PartMaster voor de zekerheid, dat
   is de waarheid"), in plaats van met het gemiddelde van de andere offers. Live opgezocht per regel
   tijdens sourcing (`IErpConnector.GetPartCostAsync`, geen nieuwe kolom). Geen kostprijs in MAX (of
   mock-ERP) → check wordt overgeslagen. Geen valuta-omrekening.

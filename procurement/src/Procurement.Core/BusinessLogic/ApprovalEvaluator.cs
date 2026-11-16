@@ -82,8 +82,8 @@ namespace Procurement.Core.BusinessLogic
         }
 
         /// <summary>
-        /// Reference price for the "Max price variance" check: the article's cost price in MAX,
-        /// Part_Master.COST_01 (user request, 16 nov 2026: "gerelateerd aan de bekende kostprijs in
+        /// Reference price for the "Max price variance" check: the article's cost price in MAX per
+        /// piece, Part_Master.COST_01 / CSTCNV_01 (user request, 16 nov 2026: "gerelateerd aan de bekende kostprijs in
         /// MAX van het artikel" / "de prijs uit de PartMaster, dat is de waarheid"). Replaces the
         /// earlier "average of the other offers". Null (check skipped) when MAX has no usable cost.
         /// </summary>
