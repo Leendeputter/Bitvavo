@@ -38,6 +38,19 @@ namespace Procurement.Core.Entities
         public decimal Tax { get; set; }
         public decimal LandedCost { get; set; }
 
+        /// <summary>Extra pieces for machine attrition included in OfferedQuantity (see AttritionRule).</summary>
+        public int AttritionQuantity { get; set; }
+
+        /// <summary>OfferedQuantity minus (RequestedQuantity + AttritionQuantity): what is left over after rounding to MOQ/reel.</summary>
+        public int SurplusQuantity { get; set; }
+
+        /// <summary>
+        /// What the selection compares (17 nov 2026): LandedCost + surplus penalty
+        /// (PackagingPolicy.SurplusPenaltyFactor × SurplusQuantity × unit cost). 0 on offers created
+        /// before this existed; the selection falls back to LandedCost then.
+        /// </summary>
+        public decimal ComparisonCost { get; set; }
+
         public MatchConfidence MatchConfidence { get; set; }
         public DateTime OfferTimestamp { get; set; }
         public DateTime ExpiresAt { get; set; }

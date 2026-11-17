@@ -32,6 +32,7 @@ namespace Procurement.UI.Forms
             this.tab_suppliers = new System.Windows.Forms.TabPage();
             this.tab_supplierPreferences = new System.Windows.Forms.TabPage();
             this.tab_packagingPolicy = new System.Windows.Forms.TabPage();
+            this.tab_attrition = new System.Windows.Forms.TabPage();
             this.tab_approvalPolicy = new System.Windows.Forms.TabPage();
             this.tab_capabilities = new System.Windows.Forms.TabPage();
             this.lbl_suppliersHint = new System.Windows.Forms.Label();
@@ -44,6 +45,14 @@ namespace Procurement.UI.Forms
             this.lbl_packagingHint = new System.Windows.Forms.Label();
             this.dgv_packagingPolicies = new System.Windows.Forms.DataGridView();
             this.bt_savePackaging = new System.Windows.Forms.Button();
+            this.gb_packaging = new Procurement.UI.Support.ClassicStyle.ClassicGroupBox();
+            this.lbl_allowedPackaging = new System.Windows.Forms.Label();
+            this.lst_allowedPackaging = new System.Windows.Forms.CheckedListBox();
+            this.lbl_exceptionPackaging = new System.Windows.Forms.Label();
+            this.lst_exceptionPackaging = new System.Windows.Forms.CheckedListBox();
+            this.lbl_attritionHint = new System.Windows.Forms.Label();
+            this.dgv_attritionRules = new System.Windows.Forms.DataGridView();
+            this.bt_saveAttrition = new System.Windows.Forms.Button();
             this.lbl_maxOrderValue = new System.Windows.Forms.Label();
             this.nud_maxOrderValue = new System.Windows.Forms.NumericUpDown();
             this.lbl_maxPriceVariance = new System.Windows.Forms.Label();
@@ -60,11 +69,14 @@ namespace Procurement.UI.Forms
             this.tab_suppliers.SuspendLayout();
             this.tab_supplierPreferences.SuspendLayout();
             this.tab_packagingPolicy.SuspendLayout();
+            this.gb_packaging.SuspendLayout();
+            this.tab_attrition.SuspendLayout();
             this.tab_approvalPolicy.SuspendLayout();
             this.tab_capabilities.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.dgv_suppliers)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.dgv_supplierPreferences)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.dgv_packagingPolicies)).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)(this.dgv_attritionRules)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.nud_maxOrderValue)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.nud_maxPriceVariance)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.dgv_capabilities)).BeginInit();
@@ -75,6 +87,7 @@ namespace Procurement.UI.Forms
             this.tab_settings.Controls.Add(this.tab_suppliers);
             this.tab_settings.Controls.Add(this.tab_supplierPreferences);
             this.tab_settings.Controls.Add(this.tab_packagingPolicy);
+            this.tab_settings.Controls.Add(this.tab_attrition);
             this.tab_settings.Controls.Add(this.tab_approvalPolicy);
             this.tab_settings.Controls.Add(this.tab_capabilities);
             this.tab_settings.Dock = System.Windows.Forms.DockStyle.Fill;
@@ -114,12 +127,58 @@ namespace Procurement.UI.Forms
             this.tab_packagingPolicy.Controls.Add(this.lbl_packagingHint);
             this.tab_packagingPolicy.Controls.Add(this.dgv_packagingPolicies);
             this.tab_packagingPolicy.Controls.Add(this.bt_savePackaging);
+            this.tab_packagingPolicy.Controls.Add(this.gb_packaging);
             this.tab_packagingPolicy.Location = new System.Drawing.Point(4, 22);
             this.tab_packagingPolicy.Name = "tab_packagingPolicy";
             this.tab_packagingPolicy.Padding = new System.Windows.Forms.Padding(3);
             this.tab_packagingPolicy.Size = new System.Drawing.Size(876, 535);
             this.tab_packagingPolicy.TabIndex = 2;
             this.tab_packagingPolicy.Text = "Packaging policy";
+            // 
+            // tab_attrition
+            // 
+            this.tab_attrition.Controls.Add(this.lbl_attritionHint);
+            this.tab_attrition.Controls.Add(this.dgv_attritionRules);
+            this.tab_attrition.Controls.Add(this.bt_saveAttrition);
+            this.tab_attrition.Location = new System.Drawing.Point(4, 22);
+            this.tab_attrition.Name = "tab_attrition";
+            this.tab_attrition.Padding = new System.Windows.Forms.Padding(3);
+            this.tab_attrition.Size = new System.Drawing.Size(876, 535);
+            this.tab_attrition.TabIndex = 3;
+            this.tab_attrition.Text = "Extra voor uitval";
+            // 
+            // lbl_attritionHint
+            // 
+            this.lbl_attritionHint.AutoSize = true;
+            this.lbl_attritionHint.Location = new System.Drawing.Point(6, 10);
+            this.lbl_attritionHint.Name = "lbl_attritionHint";
+            this.lbl_attritionHint.Size = new System.Drawing.Size(760, 13);
+            this.lbl_attritionHint.TabIndex = 0;
+            this.lbl_attritionHint.Text = "Extra = max(aantal x percentage, minimum). Category gaat voor soort (SMT/THT). Prijs = MAX-kostprijs, vanaf (incl.) tot (excl.), leeg = geen grens.";
+            // 
+            // dgv_attritionRules
+            // 
+            this.dgv_attritionRules.AllowUserToAddRows = true;
+            this.dgv_attritionRules.AllowUserToDeleteRows = true;
+            this.dgv_attritionRules.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
+            | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
+            this.dgv_attritionRules.BackgroundColor = System.Drawing.Color.White;
+            this.dgv_attritionRules.Location = new System.Drawing.Point(6, 30);
+            this.dgv_attritionRules.Name = "dgv_attritionRules";
+            this.dgv_attritionRules.Size = new System.Drawing.Size(860, 460);
+            this.dgv_attritionRules.TabIndex = 1;
+            // 
+            // bt_saveAttrition
+            // 
+            this.bt_saveAttrition.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left)));
+            this.bt_saveAttrition.Location = new System.Drawing.Point(6, 500);
+            this.bt_saveAttrition.Name = "bt_saveAttrition";
+            this.bt_saveAttrition.Size = new System.Drawing.Size(90, 27);
+            this.bt_saveAttrition.TabIndex = 2;
+            this.bt_saveAttrition.Text = "Save";
+            this.bt_saveAttrition.UseVisualStyleBackColor = true;
+            this.bt_saveAttrition.Click += new System.EventHandler(this.bt_saveAttrition_Click);
             // 
             // tab_approvalPolicy
             // 
@@ -138,7 +197,7 @@ namespace Procurement.UI.Forms
             this.tab_approvalPolicy.Name = "tab_approvalPolicy";
             this.tab_approvalPolicy.Padding = new System.Windows.Forms.Padding(3);
             this.tab_approvalPolicy.Size = new System.Drawing.Size(876, 535);
-            this.tab_approvalPolicy.TabIndex = 3;
+            this.tab_approvalPolicy.TabIndex = 4;
             this.tab_approvalPolicy.Text = "Approval policy";
             // 
             // tab_capabilities
@@ -148,7 +207,7 @@ namespace Procurement.UI.Forms
             this.tab_capabilities.Name = "tab_capabilities";
             this.tab_capabilities.Padding = new System.Windows.Forms.Padding(3);
             this.tab_capabilities.Size = new System.Drawing.Size(876, 535);
-            this.tab_capabilities.TabIndex = 4;
+            this.tab_capabilities.TabIndex = 5;
             this.tab_capabilities.Text = "Supplier capabilities";
             // 
             // lbl_suppliersHint
@@ -234,9 +293,9 @@ namespace Procurement.UI.Forms
             this.lbl_packagingHint.AutoSize = true;
             this.lbl_packagingHint.Location = new System.Drawing.Point(6, 10);
             this.lbl_packagingHint.Name = "lbl_packagingHint";
-            this.lbl_packagingHint.Size = new System.Drawing.Size(474, 13);
+            this.lbl_packagingHint.Size = new System.Drawing.Size(700, 13);
             this.lbl_packagingHint.TabIndex = 0;
-            this.lbl_packagingHint.Text = "AllowedPackaging: comma-separated list of enum names, e.g. OriginalReel,CutTape";
+            this.lbl_packagingHint.Text = "Per Category (bv. Integrated Circuits SMT), soort (SMT/THT) of Default; de meest specifieke regel wint. Vink rechts de verpakkingen aan.";
             // 
             // dgv_packagingPolicies
             // 
@@ -247,8 +306,62 @@ namespace Procurement.UI.Forms
             this.dgv_packagingPolicies.BackgroundColor = System.Drawing.Color.White;
             this.dgv_packagingPolicies.Location = new System.Drawing.Point(6, 30);
             this.dgv_packagingPolicies.Name = "dgv_packagingPolicies";
-            this.dgv_packagingPolicies.Size = new System.Drawing.Size(860, 460);
+            this.dgv_packagingPolicies.Size = new System.Drawing.Size(594, 460);
             this.dgv_packagingPolicies.TabIndex = 1;
+            this.dgv_packagingPolicies.SelectionChanged += new System.EventHandler(this.dgv_packagingPolicies_SelectionChanged);
+            // 
+            // gb_packaging
+            // 
+            this.gb_packaging.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
+            | System.Windows.Forms.AnchorStyles.Right)));
+            this.gb_packaging.Controls.Add(this.lbl_allowedPackaging);
+            this.gb_packaging.Controls.Add(this.lst_allowedPackaging);
+            this.gb_packaging.Controls.Add(this.lbl_exceptionPackaging);
+            this.gb_packaging.Controls.Add(this.lst_exceptionPackaging);
+            this.gb_packaging.Location = new System.Drawing.Point(606, 30);
+            this.gb_packaging.Name = "gb_packaging";
+            this.gb_packaging.Size = new System.Drawing.Size(260, 460);
+            this.gb_packaging.TabIndex = 3;
+            this.gb_packaging.TabStop = false;
+            this.gb_packaging.Text = "Verpakkingen van geselecteerde regel";
+            // 
+            // lbl_allowedPackaging
+            // 
+            this.lbl_allowedPackaging.AutoSize = true;
+            this.lbl_allowedPackaging.Location = new System.Drawing.Point(8, 22);
+            this.lbl_allowedPackaging.Name = "lbl_allowedPackaging";
+            this.lbl_allowedPackaging.Size = new System.Drawing.Size(97, 13);
+            this.lbl_allowedPackaging.TabIndex = 0;
+            this.lbl_allowedPackaging.Text = "Altijd toegestaan:";
+            // 
+            // lst_allowedPackaging
+            // 
+            this.lst_allowedPackaging.CheckOnClick = true;
+            this.lst_allowedPackaging.FormattingEnabled = true;
+            this.lst_allowedPackaging.Location = new System.Drawing.Point(8, 40);
+            this.lst_allowedPackaging.Name = "lst_allowedPackaging";
+            this.lst_allowedPackaging.Size = new System.Drawing.Size(244, 124);
+            this.lst_allowedPackaging.TabIndex = 1;
+            this.lst_allowedPackaging.ItemCheck += new System.Windows.Forms.ItemCheckEventHandler(this.lst_allowedPackaging_ItemCheck);
+            // 
+            // lbl_exceptionPackaging
+            // 
+            this.lbl_exceptionPackaging.AutoSize = true;
+            this.lbl_exceptionPackaging.Location = new System.Drawing.Point(8, 178);
+            this.lbl_exceptionPackaging.Name = "lbl_exceptionPackaging";
+            this.lbl_exceptionPackaging.Size = new System.Drawing.Size(200, 13);
+            this.lbl_exceptionPackaging.TabIndex = 2;
+            this.lbl_exceptionPackaging.Text = "Ook toegestaan vanaf de prijsdrempel:";
+            // 
+            // lst_exceptionPackaging
+            // 
+            this.lst_exceptionPackaging.CheckOnClick = true;
+            this.lst_exceptionPackaging.FormattingEnabled = true;
+            this.lst_exceptionPackaging.Location = new System.Drawing.Point(8, 196);
+            this.lst_exceptionPackaging.Name = "lst_exceptionPackaging";
+            this.lst_exceptionPackaging.Size = new System.Drawing.Size(244, 124);
+            this.lst_exceptionPackaging.TabIndex = 3;
+            this.lst_exceptionPackaging.ItemCheck += new System.Windows.Forms.ItemCheckEventHandler(this.lst_exceptionPackaging_ItemCheck);
             // 
             // bt_savePackaging
             // 
@@ -400,6 +513,10 @@ namespace Procurement.UI.Forms
             this.tab_supplierPreferences.PerformLayout();
             this.tab_packagingPolicy.ResumeLayout(false);
             this.tab_packagingPolicy.PerformLayout();
+            this.gb_packaging.ResumeLayout(false);
+            this.gb_packaging.PerformLayout();
+            this.tab_attrition.ResumeLayout(false);
+            this.tab_attrition.PerformLayout();
             this.tab_approvalPolicy.ResumeLayout(false);
             this.tab_approvalPolicy.PerformLayout();
             this.tab_capabilities.ResumeLayout(false);
@@ -407,6 +524,7 @@ namespace Procurement.UI.Forms
             ((System.ComponentModel.ISupportInitialize)(this.dgv_suppliers)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.dgv_supplierPreferences)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.dgv_packagingPolicies)).EndInit();
+            ((System.ComponentModel.ISupportInitialize)(this.dgv_attritionRules)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.nud_maxOrderValue)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.nud_maxPriceVariance)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.dgv_capabilities)).EndInit();
@@ -432,6 +550,15 @@ namespace Procurement.UI.Forms
         private System.Windows.Forms.Label lbl_packagingHint;
         private System.Windows.Forms.DataGridView dgv_packagingPolicies;
         private System.Windows.Forms.Button bt_savePackaging;
+        private Procurement.UI.Support.ClassicStyle.ClassicGroupBox gb_packaging;
+        private System.Windows.Forms.Label lbl_allowedPackaging;
+        private System.Windows.Forms.CheckedListBox lst_allowedPackaging;
+        private System.Windows.Forms.Label lbl_exceptionPackaging;
+        private System.Windows.Forms.CheckedListBox lst_exceptionPackaging;
+        private System.Windows.Forms.TabPage tab_attrition;
+        private System.Windows.Forms.Label lbl_attritionHint;
+        private System.Windows.Forms.DataGridView dgv_attritionRules;
+        private System.Windows.Forms.Button bt_saveAttrition;
         private System.Windows.Forms.Label lbl_maxOrderValue;
         private System.Windows.Forms.NumericUpDown nud_maxOrderValue;
         private System.Windows.Forms.Label lbl_maxPriceVariance;

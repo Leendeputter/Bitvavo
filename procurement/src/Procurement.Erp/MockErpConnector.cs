@@ -73,6 +73,10 @@ namespace Procurement.Erp
         /// <summary>No MAX in mock mode, so no cost price: the price-variance check is skipped.</summary>
         public Task<decimal?> GetPartCostAsync(string partId) => Task.FromResult<decimal?>(null);
 
+        // Mock mode has no MAX view to read: every article falls under the "Default" packaging policy.
+        public Task<ComponentClassification> GetComponentClassificationAsync(string partId) =>
+            Task.FromResult<ComponentClassification>(null);
+
         public async Task ApplyOrderConfirmationAsync(PurchaseOrder order, SupplierOrderStatus supplierStatus)
         {
             if (order == null) throw new ArgumentNullException(nameof(order));

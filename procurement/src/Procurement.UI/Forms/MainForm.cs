@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
+using Procurement.Core.BusinessLogic;
 using Procurement.Core.Entities;
 using Procurement.Core.Enums;
 using Procurement.Erp;
@@ -585,11 +586,15 @@ namespace Procurement.UI.Forms
                 SupplierPartNumber = o.SupplierPartNumber,
                 MatchConfidence = o.MatchConfidence.ToString(),
                 OfferedQuantity = o.OfferedQuantity,
+                AttritionQuantity = o.AttritionQuantity,
+                SurplusQuantity = o.SurplusQuantity,
                 UnitPrice = o.UnitPrice,
                 Currency = o.Currency,
                 Packaging = o.PackagingType.ToString(),
                 Reel = o.ReelType?.ToString() ?? "-",
+                ReelingFee = o.ReelingFee,
                 LandedCost = o.LandedCost,
+                ComparisonCost = SupplierSelectionEngine.EffectiveComparisonCost(o),
                 LeadTimeDays = o.LeadTimeDays,
                 AvailableQuantity = o.AvailableQuantity,
                 DueDate = o.EstimatedDeliveryDate
@@ -603,11 +608,17 @@ namespace Procurement.UI.Forms
             SetHeaderText(dgv_offers, "OfferedQuantity", "Quantity");
             SetHeaderText(dgv_offers, "UnitPrice", "Unit Price");
             SetHeaderText(dgv_offers, "LandedCost", "Landed Cost");
+            // Packaging per component type (17 nov 2026): each packaging variant is its own row; the
+            // selection compares "Vergelijkingskosten" = landed cost + the surplus penalty.
+            SetHeaderText(dgv_offers, "AttritionQuantity", "Extra uitval");
+            SetHeaderText(dgv_offers, "SurplusQuantity", "Overschot");
+            SetHeaderText(dgv_offers, "ReelingFee", "Reeling Fee");
+            SetHeaderText(dgv_offers, "ComparisonCost", "Vergelijkingskosten");
             SetHeaderText(dgv_offers, "LeadTimeDays", "Lead Time (Working Days)");
             SetHeaderText(dgv_offers, "AvailableQuantity", "Available Qty");
             SetHeaderText(dgv_offers, "DueDate", "Due Date");
-            ApplyQuantityColumns(dgv_offers, "OfferedQuantity", "AvailableQuantity");
-            ApplyCurrencyColumns(dgv_offers, "UnitPrice", "LandedCost");
+            ApplyQuantityColumns(dgv_offers, "OfferedQuantity", "AttritionQuantity", "SurplusQuantity", "AvailableQuantity");
+            ApplyCurrencyColumns(dgv_offers, "UnitPrice", "ReelingFee", "LandedCost", "ComparisonCost");
             ApplyDateColumns(dgv_offers, "DueDate");
             // Every column gets an explicit width (user request, 20 okt 2026: "ik heb liever dat we
             // rechts wat ruimte over houden dan dat alles zo breed wordt dat het ook niet meer leesbaar
@@ -617,11 +628,15 @@ namespace Procurement.UI.Forms
             SetCharacterBasedColumnWidth(dgv_offers, "SupplierPartNumber", 22);
             SetCharacterBasedColumnWidth(dgv_offers, "MatchConfidence", 10);
             SetCharacterBasedColumnWidth(dgv_offers, "OfferedQuantity", 10);
+            SetCharacterBasedColumnWidth(dgv_offers, "AttritionQuantity", 12);
+            SetCharacterBasedColumnWidth(dgv_offers, "SurplusQuantity", 10);
             SetCharacterBasedColumnWidth(dgv_offers, "UnitPrice", 12);
             SetCharacterBasedColumnWidth(dgv_offers, "Currency", 8);
             SetCharacterBasedColumnWidth(dgv_offers, "Packaging", 14);
             SetCharacterBasedColumnWidth(dgv_offers, "Reel", 10);
+            SetCharacterBasedColumnWidth(dgv_offers, "ReelingFee", 12);
             SetCharacterBasedColumnWidth(dgv_offers, "LandedCost", 12);
+            SetCharacterBasedColumnWidth(dgv_offers, "ComparisonCost", 18);
             SetCharacterBasedColumnWidth(dgv_offers, "LeadTimeDays", 22);
             SetCharacterBasedColumnWidth(dgv_offers, "AvailableQuantity", 12);
             SetCharacterBasedColumnWidth(dgv_offers, "DueDate", 12);
@@ -649,11 +664,15 @@ namespace Procurement.UI.Forms
             public string SupplierPartNumber { get; set; }
             public string MatchConfidence { get; set; }
             public int OfferedQuantity { get; set; }
+            public int AttritionQuantity { get; set; }
+            public int SurplusQuantity { get; set; }
             public decimal UnitPrice { get; set; }
             public string Currency { get; set; }
             public string Packaging { get; set; }
             public string Reel { get; set; }
+            public decimal ReelingFee { get; set; }
             public decimal LandedCost { get; set; }
+            public decimal ComparisonCost { get; set; }
             public int LeadTimeDays { get; set; }
             public int AvailableQuantity { get; set; }
             public DateTime DueDate { get; set; }

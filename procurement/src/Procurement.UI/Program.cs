@@ -142,6 +142,38 @@ namespace Procurement.UI
                     return;
                 }
 
+                // Packaging policy per component type + attrition rules (17 nov 2026): an additive
+                // change, so instead of the clean-slate recreate above (which would also wipe the
+                // supplier preferences/policies set in Settings) this writes a small ALTER/CREATE
+                // script that keeps all existing data. Same review-in-SSMS flow.
+                bool packagingUpgradeApplied;
+                try
+                {
+                    packagingUpgradeApplied = context.Database.SqlQuery<int>(PackagingUpgradeProbeSql).All(count => count > 0);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Kan het databaseschema niet controleren.\n\n{ex.Message}",
+                        "Database-fout", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                if (!packagingUpgradeApplied)
+                {
+                    var scriptPath = Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
+                        $"procurement-upgrade-packaging-{DateTime.Now:yyyyMMdd-HHmmss}.sql");
+                    File.WriteAllText(scriptPath, PackagingUpgradeSql);
+
+                    MessageBox.Show(
+                        "De database mist de kolommen en tabel voor het verpakkingsbeleid per componentsoort en de extra voor uitval.\n\n"
+                        + $"Er is een upgrade-script gegenereerd op je bureaublad:\n{scriptPath}\n\n"
+                        + "Dit script voegt alleen kolommen en een tabel toe (en verwijdert de oude kolom MinimumQuantity); "
+                        + "bestaande gegevens blijven staan. Voer het uit in SQL Server Management Studio en start de app daarna opnieuw.",
+                        "Schema bijwerken", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
                 SeedData.EnsureSeeded(context);
 
                 // Supplier credentials live in the shared SharedSecrets database since 13 nov 2026
@@ -199,6 +231,51 @@ namespace Procurement.UI
             }
         }
 
+        private const string PackagingUpgradeProbeSql =
+            "SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Procurement_PackagingPolicy') AND name = 'SurplusPenaltyFactor'"
+            + " UNION ALL SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Procurement_SupplierOffer') AND name = 'ComparisonCost'"
+            + " UNION ALL SELECT COUNT(*) FROM sys.tables WHERE name = 'Procurement_AttritionRule' AND schema_id = SCHEMA_ID('dbo')"
+            + " UNION ALL SELECT CASE WHEN COL_LENGTH('dbo.Procurement_PackagingPolicy', 'MinimumQuantity') IS NULL THEN 1 ELSE 0 END";
+
+        // Additive upgrade for the packaging policy per component type (17 nov 2026). Every
+        // statement is guarded, so running it twice is harmless. Column types match what EF's
+        // CreateDatabaseScript() generates for the same model.
+        private const string PackagingUpgradeSql = @"
+IF COL_LENGTH('dbo.Procurement_PackagingPolicy', 'ExceptionPriceThreshold') IS NULL
+    ALTER TABLE dbo.Procurement_PackagingPolicy ADD ExceptionPriceThreshold DECIMAL(18, 4) NULL;
+IF COL_LENGTH('dbo.Procurement_PackagingPolicy', 'ExceptionPackaging') IS NULL
+    ALTER TABLE dbo.Procurement_PackagingPolicy ADD ExceptionPackaging NVARCHAR(200) NULL;
+IF COL_LENGTH('dbo.Procurement_PackagingPolicy', 'SurplusPenaltyFactor') IS NULL
+    ALTER TABLE dbo.Procurement_PackagingPolicy ADD SurplusPenaltyFactor DECIMAL(9, 4) NOT NULL
+        CONSTRAINT DF_Procurement_PackagingPolicy_SurplusPenaltyFactor DEFAULT 0.5;
+IF COL_LENGTH('dbo.Procurement_PackagingPolicy', 'MinimumQuantity') IS NOT NULL
+    ALTER TABLE dbo.Procurement_PackagingPolicy DROP COLUMN MinimumQuantity;
+GO
+
+IF COL_LENGTH('dbo.Procurement_SupplierOffer', 'AttritionQuantity') IS NULL
+    ALTER TABLE dbo.Procurement_SupplierOffer ADD AttritionQuantity INT NOT NULL
+        CONSTRAINT DF_Procurement_SupplierOffer_AttritionQuantity DEFAULT 0;
+IF COL_LENGTH('dbo.Procurement_SupplierOffer', 'SurplusQuantity') IS NULL
+    ALTER TABLE dbo.Procurement_SupplierOffer ADD SurplusQuantity INT NOT NULL
+        CONSTRAINT DF_Procurement_SupplierOffer_SurplusQuantity DEFAULT 0;
+IF COL_LENGTH('dbo.Procurement_SupplierOffer', 'ComparisonCost') IS NULL
+    ALTER TABLE dbo.Procurement_SupplierOffer ADD ComparisonCost DECIMAL(18, 4) NOT NULL
+        CONSTRAINT DF_Procurement_SupplierOffer_ComparisonCost DEFAULT 0;
+GO
+
+IF OBJECT_ID('dbo.Procurement_AttritionRule', 'U') IS NULL
+    CREATE TABLE dbo.Procurement_AttritionRule (
+        Id INT IDENTITY(1, 1) NOT NULL,
+        AppliesTo NVARCHAR(100) NOT NULL,
+        MinUnitPrice DECIMAL(18, 4) NULL,
+        MaxUnitPrice DECIMAL(18, 4) NULL,
+        Percentage DECIMAL(9, 4) NOT NULL,
+        MinimumExtra INT NOT NULL,
+        CONSTRAINT [PK_dbo.Procurement_AttritionRule] PRIMARY KEY (Id)
+    );
+GO
+";
+
         // Every Procurement_-prefixed table this app currently creates — dropped ahead of recreating
         // the schema from the current model. Needed even for tables whose shape didn't change,
         // because CreateDatabaseScript() always emits CREATE TABLE for the whole model (it's not an
@@ -222,7 +299,7 @@ INSERT INTO @oldTables (Name) VALUES
     ('Procurement_SupplierProductMapping'), ('Procurement_SupplierSelection'), ('Procurement_ApprovalRequest'),
     ('Procurement_PurchaseOrder'), ('Procurement_PurchaseOrderLine'), ('Procurement_PurchaseOrderDelivery'),
     ('Procurement_Event'), ('Procurement_SupplierPreference'), ('Procurement_PackagingPolicy'),
-    ('Procurement_ApprovalPolicy');
+    ('Procurement_ApprovalPolicy'), ('Procurement_AttritionRule');
 
 DECLARE @dropFkSql NVARCHAR(MAX) = N'';
 SELECT @dropFkSql += 'ALTER TABLE ' + QUOTENAME(SCHEMA_NAME(t.schema_id)) + '.' + QUOTENAME(t.name)

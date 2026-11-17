@@ -115,6 +115,11 @@ namespace Procurement.Suppliers.DigiKey.Http
 
         [JsonProperty("StandardPricing")]
         public List<DigiKeyPriceBreakDto> StandardPricing { get; set; }
+
+        // Digi-Reel reeling fee. Field name per DigiKey's V4 ProductVariation schema as far as known
+        // (17 nov 2026), not yet confirmed against a real response: 0 when absent.
+        [JsonProperty("DigiReelFee")]
+        public decimal DigiReelFee { get; set; }
     }
 
     // Everything below follows DigiKey's Ordering API v3 Swagger/OpenAPI spec exactly (supplied

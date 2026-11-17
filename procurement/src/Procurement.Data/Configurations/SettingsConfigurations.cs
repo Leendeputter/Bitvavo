@@ -40,6 +40,22 @@ namespace Procurement.Data.Configurations
             HasKey(p => p.Id);
             Property(p => p.ComponentCategory).HasMaxLength(100).IsRequired();
             Property(p => p.AllowedPackagingCsv).HasMaxLength(200).HasColumnName("AllowedPackaging");
+            Property(p => p.ExceptionPackagingCsv).HasMaxLength(200).HasColumnName("ExceptionPackaging");
+            Property(p => p.ExceptionPriceThreshold).HasPrecision(18, 4);
+            Property(p => p.SurplusPenaltyFactor).HasPrecision(9, 4);
+        }
+    }
+
+    public class AttritionRuleConfiguration : EntityTypeConfiguration<AttritionRule>
+    {
+        public AttritionRuleConfiguration()
+        {
+            ToTable("Procurement_AttritionRule");
+            HasKey(r => r.Id);
+            Property(r => r.AppliesTo).HasMaxLength(100).IsRequired();
+            Property(r => r.MinUnitPrice).HasPrecision(18, 4);
+            Property(r => r.MaxUnitPrice).HasPrecision(18, 4);
+            Property(r => r.Percentage).HasPrecision(9, 4);
         }
     }
 

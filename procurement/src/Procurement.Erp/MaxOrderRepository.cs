@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Procurement.Core.Interfaces;
+using Procurement.Core.Models;
 
 namespace Procurement.Erp
 {
@@ -224,6 +225,51 @@ WHERE dbo.Order_Master.ORDNUM_10 IN ({string.Join(",", paramNames)})";
                     return cost.Value / costConv.Value;
                 }
             }
+        }
+
+        /// <summary>
+        /// Component type and category from the view dbo.UniPro_OmnifyPartType in the same company
+        /// database as Part_Master (user, 17 nov 2026: PartID varchar(50), EntryType int, Type
+        /// varchar, Category varchar; EntryType 16 = SMT, 17 = THT). A part can have several rows;
+        /// the SMT/THT row wins, otherwise the first row with a Category. Null when the part isn't in
+        /// the view.
+        /// </summary>
+        public async Task<ComponentClassification> GetComponentClassificationAsync(string partId)
+        {
+            if (string.IsNullOrWhiteSpace(partId)) return null;
+
+            const string sql = "SELECT EntryType, Category FROM dbo.UniPro_OmnifyPartType WHERE PartID = @partId";
+            var rows = new List<(int? EntryType, string Category)>();
+            using (var conn = new SqlConnection(_session.AdminConnectionString))
+            using (var cmd = new SqlCommand(sql, conn))
+            {
+                cmd.Parameters.AddWithValue("@partId", partId.Trim());
+                await conn.OpenAsync();
+                using (var reader = await cmd.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        var entryType = reader["EntryType"] == DBNull.Value ? (int?)null : Convert.ToInt32(reader["EntryType"]);
+                        var category = reader["Category"] == DBNull.Value ? null : Convert.ToString(reader["Category"])?.Trim();
+                        rows.Add((entryType, string.IsNullOrEmpty(category) ? null : category));
+                    }
+                }
+            }
+
+            if (rows.Count == 0) return null;
+
+            var typed = rows.FirstOrDefault(r => r.EntryType.HasValue && ComponentClassification.ComponentTypeFromEntryType(r.EntryType.Value) != null);
+            var hasTyped = typed.EntryType.HasValue;
+            var category = (hasTyped ? typed.Category : null) ?? rows.Select(r => r.Category).FirstOrDefault(c => c != null);
+            return new ComponentClassification
+            {
+                // Fallback for a part without an EntryType 16/17 row: the Category names end in
+                // " SMT" / " THT" (e.g. "Resistors SMT"), per the list the user sent on 17 nov 2026.
+                ComponentType = hasTyped
+                    ? ComponentClassification.ComponentTypeFromEntryType(typed.EntryType.Value)
+                    : ComponentClassification.ComponentTypeFromCategory(category),
+                Category = category
+            };
         }
 
         // Same SQL Server 2100-parameter-per-command ceiling as the other batched lookups above —

@@ -18,7 +18,9 @@ namespace Procurement.Core.Enums
         EitherReel,
         CutTape,
         Tray,
-        Tube
+        Tube,
+        // Appended (not inserted) so the stored int values of the existing members stay the same.
+        Bulk
     }
 
     public enum ReelType

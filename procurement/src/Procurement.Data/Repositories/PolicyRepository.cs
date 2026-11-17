@@ -43,6 +43,44 @@ namespace Procurement.Data.Repositories
             await _context.SaveChangesAsync();
         });
 
+        public Task<IReadOnlyList<AttritionRule>> GetAttritionRulesAsync() => _context.RunGuardedAsync(async () =>
+        {
+            IReadOnlyList<AttritionRule> result = await _context.AttritionRules
+                .OrderBy(r => r.AppliesTo).ThenBy(r => r.MinUnitPrice).ToListAsync();
+            return result;
+        });
+
+        /// <summary>
+        /// Saves the attrition table as edited in Settings: rows in <paramref name="rules"/> are added
+        /// or updated, stored rows that are no longer in it are deleted.
+        /// </summary>
+        public Task SaveAttritionRulesAsync(IReadOnlyList<AttritionRule> rules) => _context.RunGuardedAsync(async () =>
+        {
+            var keepIds = new HashSet<int>(rules.Where(r => r.Id != 0).Select(r => r.Id));
+            var stored = await _context.AttritionRules.ToListAsync();
+            foreach (var removed in stored.Where(r => !keepIds.Contains(r.Id)))
+                _context.AttritionRules.Remove(removed);
+
+            foreach (var rule in rules)
+            {
+                if (rule.Id == 0)
+                {
+                    _context.AttritionRules.Add(rule);
+                    continue;
+                }
+
+                var existing = stored.FirstOrDefault(r => r.Id == rule.Id);
+                if (existing == null || ReferenceEquals(existing, rule)) continue;
+                existing.AppliesTo = rule.AppliesTo;
+                existing.MinUnitPrice = rule.MinUnitPrice;
+                existing.MaxUnitPrice = rule.MaxUnitPrice;
+                existing.Percentage = rule.Percentage;
+                existing.MinimumExtra = rule.MinimumExtra;
+            }
+
+            await _context.SaveChangesAsync();
+        });
+
         public Task<IReadOnlyList<SupplierPreference>> GetSupplierPreferencesAsync() => _context.RunGuardedAsync(async () =>
         {
             IReadOnlyList<SupplierPreference> result = await _context.SupplierPreferences.OrderBy(p => p.Priority).ToListAsync();

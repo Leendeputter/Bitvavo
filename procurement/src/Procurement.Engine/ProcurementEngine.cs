@@ -256,7 +256,16 @@ namespace Procurement.Engine
                 return LineOutcome.Selected;
             }
 
-            var packagingPolicy = await _policyRepository.GetPackagingPolicyAsync("Default");
+            // Packaging policy + attrition per component type/category (user request, 17 nov 2026).
+            var maxUnitCost = ApprovalEvaluator.GetReferenceUnitPrice(await _erp.GetPartCostAsync(line.ErpArticleId));
+            var classification = await GetComponentClassificationAsync(line);
+            var packagingPolicy = PackagingRules.ResolvePolicy(await _policyRepository.GetPackagingPoliciesAsync(), classification);
+            var attritionRule = AttritionCalculator.FindRule(await _policyRepository.GetAttritionRulesAsync(), classification, maxUnitCost);
+            var attritionQuantity = AttritionCalculator.CalculateExtra(line.RequestedQuantity, attritionRule);
+            await _auditLogger.LogAsync("PurchaseRequestLine", line.Id.ToString(), "PACKAGING_POLICY_RESOLVED", "Success",
+                responsePayload: $"Type={classification?.ComponentType ?? "-"}; Category={classification?.Category ?? "-"}; " +
+                                 $"Policy={packagingPolicy?.ComponentCategory ?? "-"}; MaxUnitCost={maxUnitCost?.ToString() ?? "-"}; " +
+                                 $"AttritionRule={(attritionRule == null ? "-" : attritionRule.AppliesTo)}; Extra={attritionQuantity}");
 
             var mappings = await ResolveProductMappingsAsync(line, activeAdapters);
             if (mappings.Count == 0)
@@ -278,8 +287,8 @@ namespace Procurement.Engine
 
                 try
                 {
-                    var offer = await BuildOfferAsync(adapter, line, kvp.Value.SupplierPartNumber, kvp.Value.Confidence, packagingPolicy);
-                    offers.Add(offer);
+                    offers.AddRange(await BuildOffersAsync(adapter, line, kvp.Value.SupplierPartNumber, kvp.Value.Confidence,
+                        packagingPolicy, attritionQuantity, maxUnitCost));
                 }
                 catch (SupplierException ex)
                 {
@@ -298,7 +307,7 @@ namespace Procurement.Engine
             await _auditLogger.LogAsync("PurchaseRequestLine", line.Id.ToString(), "OFFERS_BUILT", "Success",
                 requestPayload: $"OfferCount={offers.Count}");
 
-            var selectionResult = SupplierSelectionEngine.SelectBestOffer(offers, line, packagingPolicy);
+            var selectionResult = SupplierSelectionEngine.SelectBestOffer(offers, line, packagingPolicy, maxUnitCost);
             if (selectionResult.SelectedOffer == null)
             {
                 await _auditLogger.LogAsync("PurchaseRequestLine", line.Id.ToString(), "SELECTION_FAILED", "Exception",
@@ -307,8 +316,7 @@ namespace Procurement.Engine
             }
 
             var preference = await _policyRepository.GetSupplierPreferenceAsync(selectionResult.SelectedOffer.SupplierCode);
-            var referencePrice = ApprovalEvaluator.GetReferenceUnitPrice(await _erp.GetPartCostAsync(line.ErpArticleId));
-            var evaluation = ApprovalEvaluator.Evaluate(selectionResult.SelectedOffer, line, approvalPolicy, preference, referencePrice);
+            var evaluation = ApprovalEvaluator.Evaluate(selectionResult.SelectedOffer, line, approvalPolicy, preference, maxUnitCost);
 
             if (evaluation.IsAutoApproved)
             {
@@ -432,72 +440,122 @@ namespace Procurement.Engine
             }
         }
 
-        private async Task<SupplierOffer> BuildOfferAsync(
-            ISupplierAdapter adapter, PurchaseRequestLine line, string supplierPartNumber, MatchConfidence confidence, PackagingPolicy policy)
+        /// <summary>
+        /// UniPro_OmnifyPartType lookup (MAX). A failure (e.g. the view doesn't exist in this company
+        /// database) must not stop sourcing: it's logged and the article falls under "Default".
+        /// </summary>
+        private async Task<ComponentClassification> GetComponentClassificationAsync(PurchaseRequestLine line)
         {
-            var pricing = await adapter.GetPricingAsync(supplierPartNumber, line.RequestedQuantity);
+            try
+            {
+                return await _erp.GetComponentClassificationAsync(line.ErpArticleId);
+            }
+            catch (Exception ex)
+            {
+                await _auditLogger.LogAsync("PurchaseRequestLine", line.Id.ToString(), "COMPONENT_CLASSIFICATION_FAILED", "Error",
+                    requestPayload: $"PartId={line.ErpArticleId}", error: ex.Message);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// One offer per packaging variant the supplier has for the part (17 nov 2026: every variant is
+        /// its own offer and cost decides, see PackagingRules), or one offer when the adapter reports no
+        /// variants. Variants the packaging policy doesn't allow are still built, so the selection can
+        /// reject them with a reason that shows up in the offers grid.
+        /// </summary>
+        private async Task<List<SupplierOffer>> BuildOffersAsync(
+            ISupplierAdapter adapter, PurchaseRequestLine line, string supplierPartNumber, MatchConfidence confidence,
+            PackagingPolicy policy, int attritionQuantity, decimal? maxUnitCost)
+        {
+            var neededQuantity = line.RequestedQuantity + attritionQuantity;
+            var pricing = await adapter.GetPricingAsync(supplierPartNumber, neededQuantity);
             var availability = await adapter.GetAvailabilityAsync(supplierPartNumber);
 
             IReadOnlyList<SupplierPackagingOption> packagingOptions = new List<SupplierPackagingOption>();
             if (adapter.Capabilities.Packaging == CapabilityStatus.Supported)
-                packagingOptions = await adapter.GetPackagingOptionsAsync(supplierPartNumber, line.RequestedQuantity);
+                packagingOptions = await adapter.GetPackagingOptionsAsync(supplierPartNumber, neededQuantity);
 
-            var chosenPackaging = ChoosePackagingOption(packagingOptions, line, policy);
-            var orderMultiple = chosenPackaging != null && chosenPackaging.PackagingQuantity > 0
-                ? chosenPackaging.PackagingQuantity
-                : Math.Max(pricing.OrderMultiple, 1);
+            var variants = packagingOptions != null && packagingOptions.Count > 0
+                ? packagingOptions.ToList()
+                : new List<SupplierPackagingOption> { null };
 
-            var orderedQuantity = QuantityCalculator.CalculateOrderedQuantity(
-                line.RequestedQuantity, orderMultiple, pricing.MinimumOrderQuantity);
+            return variants
+                .Select(variant => BuildVariantOffer(adapter.SupplierCode, line, supplierPartNumber, confidence, policy,
+                    attritionQuantity, maxUnitCost, pricing, availability, variant))
+                .ToList();
+        }
 
-            var reelingFee = chosenPackaging?.ReelingFee ?? 0m;
-            var landedCost = LandedCostCalculator.Calculate(orderedQuantity, pricing.UnitPrice, reelingFee, shippingCost: 0m, tax: 0m);
+        private static SupplierOffer BuildVariantOffer(
+            string supplierCode, PurchaseRequestLine line, string supplierPartNumber, MatchConfidence confidence, PackagingPolicy policy,
+            int attritionQuantity, decimal? maxUnitCost, SupplierPricing pricing, SupplierAvailability availability, SupplierPackagingOption variant)
+        {
+            var neededQuantity = line.RequestedQuantity + attritionQuantity;
+            var ownPriceBreaks = variant?.PriceBreaks != null && variant.PriceBreaks.Count > 0 ? variant.PriceBreaks : null;
 
-            var offer = new SupplierOffer
+            var minimumOrderQuantity = variant != null && variant.MinimumOrderQuantity > 0
+                ? variant.MinimumOrderQuantity
+                : ownPriceBreaks?.Min(pb => pb.BreakQuantity) ?? pricing.MinimumOrderQuantity;
+
+            // Only a full (original) reel rounds up to whole reels; cut tape, re-reel, tray and tube
+            // are sold per piece above the MOQ.
+            int orderMultiple;
+            if (variant != null && variant.PackagingType == PackagingType.OriginalReel && variant.PackagingQuantity > 0)
+                orderMultiple = variant.PackagingQuantity;
+            else if (ownPriceBreaks != null)
+                orderMultiple = 1;
+            else
+                orderMultiple = Math.Max(pricing.OrderMultiple, 1);
+
+            var orderedQuantity = QuantityCalculator.CalculateOrderedQuantity(neededQuantity, orderMultiple, minimumOrderQuantity);
+            var unitPrice = PriceAt(ownPriceBreaks ?? pricing.PriceBreaks, orderedQuantity) ?? pricing.UnitPrice;
+            var reelingFee = variant?.ReelingFee ?? 0m;
+            var landedCost = LandedCostCalculator.Calculate(orderedQuantity, unitPrice, reelingFee, shippingCost: 0m, tax: 0m);
+            var surplusQuantity = Math.Max(orderedQuantity - neededQuantity, 0);
+            var comparisonCost = PackagingRules.CalculateComparisonCost(
+                landedCost, surplusQuantity, maxUnitCost ?? unitPrice, policy?.SurplusPenaltyFactor ?? 0m);
+
+            return new SupplierOffer
             {
                 PurchaseRequestLineId = line.Id,
-                SupplierCode = adapter.SupplierCode,
-                SupplierPartNumber = supplierPartNumber,
+                SupplierCode = supplierCode,
+                SupplierPartNumber = string.IsNullOrWhiteSpace(variant?.SupplierPartNumber) ? supplierPartNumber : variant.SupplierPartNumber,
                 Manufacturer = line.Manufacturer,
                 ManufacturerPartNumber = line.ManufacturerPartNumber,
                 RequestedQuantity = line.RequestedQuantity,
                 OfferedQuantity = orderedQuantity,
-                UnitPrice = pricing.UnitPrice,
+                AttritionQuantity = attritionQuantity,
+                SurplusQuantity = surplusQuantity,
+                UnitPrice = unitPrice,
                 Currency = pricing.Currency ?? "EUR",
-                TotalPrice = orderedQuantity * pricing.UnitPrice,
-                MinimumOrderQuantity = pricing.MinimumOrderQuantity,
+                TotalPrice = orderedQuantity * unitPrice,
+                MinimumOrderQuantity = minimumOrderQuantity,
                 OrderMultiple = orderMultiple,
-                PackagingType = chosenPackaging?.PackagingType ?? PackagingType.Any,
-                PackagingQuantity = chosenPackaging?.PackagingQuantity ?? 0,
-                ReelType = chosenPackaging?.ReelType,
+                PackagingType = variant?.PackagingType ?? PackagingType.Any,
+                PackagingQuantity = variant?.PackagingQuantity ?? 0,
+                ReelType = variant?.ReelType,
                 ReelingFee = reelingFee,
-                AvailableQuantity = availability.AvailableQuantity,
+                // A variant's own stock where the supplier reports it (DigiKey per package type),
+                // otherwise the part's overall availability.
+                AvailableQuantity = variant != null && variant.AvailableQuantity > 0 ? variant.AvailableQuantity : availability.AvailableQuantity,
                 LeadTimeDays = availability.LeadTimeDays,
                 EstimatedDeliveryDate = availability.EstimatedDeliveryDate,
                 ShippingCost = 0m,
                 Tax = 0m,
                 LandedCost = landedCost,
+                ComparisonCost = comparisonCost,
                 MatchConfidence = confidence,
                 ExpiresAt = DateTime.UtcNow.AddHours(24)
             };
-
-            return offer;
         }
 
-        private static SupplierPackagingOption ChoosePackagingOption(
-            IReadOnlyList<SupplierPackagingOption> options, PurchaseRequestLine line, PackagingPolicy policy)
+        /// <summary>Unit price of the highest price break at or below the quantity (the first break below the lowest). Null without breaks.</summary>
+        private static decimal? PriceAt(IReadOnlyCollection<PriceBreak> priceBreaks, int quantity)
         {
-            if (options == null || options.Count == 0) return null;
-
-            if (line.ReelRequirement)
-            {
-                var reelOption = options.FirstOrDefault(o => o.PackagingType == PackagingType.OriginalReel)
-                    ?? options.FirstOrDefault(o => o.ReelType.HasValue);
-                if (reelOption != null) return reelOption;
-            }
-
-            var preferred = policy != null ? options.FirstOrDefault(o => o.PackagingType == policy.PreferredPackaging) : null;
-            return preferred ?? options[0];
+            if (priceBreaks == null || priceBreaks.Count == 0) return null;
+            var ordered = priceBreaks.Where(pb => pb.UnitPrice > 0m).OrderBy(pb => pb.BreakQuantity).ToList();
+            if (ordered.Count == 0) return null;
+            return (ordered.LastOrDefault(pb => pb.BreakQuantity <= quantity) ?? ordered[0]).UnitPrice;
         }
 
         private async Task RecomputeRequestStatusIfFullySelectedAsync(int purchaseRequestId)
@@ -696,7 +754,9 @@ namespace Procurement.Engine
                 var minimumOrderQuantity = members.Max(i => i.Offer.MinimumOrderQuantity);
 
                 var quantities = OrderBundler.AllocateQuantities(
-                    members.Select(i => i.Line.RequestedQuantity).ToList(), earliestIndex: 0, orderMultiple, minimumOrderQuantity);
+                    // Each line's own attrition extra (17 nov 2026) is part of what it needs, before the
+                    // bundle is rounded to MOQ/reel once.
+                    members.Select(i => i.Line.RequestedQuantity + i.Offer.AttritionQuantity).ToList(), earliestIndex: 0, orderMultiple, minimumOrderQuantity);
 
                 for (var n = 0; n < members.Count; n++)
                 {

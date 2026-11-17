@@ -22,6 +22,7 @@ namespace Procurement.Data
             SeedSuppliers(context);
             SeedSupplierPreferences(context);
             SeedPackagingPolicies(context);
+            SeedAttritionRules(context);
             SeedApprovalPolicy(context);
         }
 
@@ -202,7 +203,6 @@ namespace Procurement.Data
                 var policy = new PackagingPolicy
                 {
                     ComponentCategory = "Default",
-                    MinimumQuantity = 0,
                     PreferredPackaging = PackagingType.EitherReel,
                     OriginalReelRequired = false
                 };
@@ -213,10 +213,64 @@ namespace Procurement.Data
                     PackagingType.EitherReel,
                     PackagingType.CutTape,
                     PackagingType.Tray,
-                    PackagingType.Tube
+                    PackagingType.Tube,
+                    PackagingType.Bulk
                 };
                 context.PackagingPolicies.Add(policy);
             }
+
+            // Per component type/category (user, 17 nov 2026, doc "Voorstel: verpakkingsbeleid per
+            // componentsoort"): SMT always on a reel (full reel or re-reel), cut tape/tray only from a
+            // unit cost of €5 (€2 for ICs); THT anything but bulk, bulk only from €5. Starting values,
+            // editable in Settings > Packaging policy.
+            SeedPolicyIfMissing(context, "SMT", 5m,
+                new[] { PackagingType.OriginalReel, PackagingType.ReReel },
+                new[] { PackagingType.CutTape, PackagingType.Tray });
+            SeedPolicyIfMissing(context, "Integrated Circuits SMT", 2m,
+                new[] { PackagingType.OriginalReel, PackagingType.ReReel },
+                new[] { PackagingType.CutTape, PackagingType.Tray });
+            SeedPolicyIfMissing(context, "THT", 5m,
+                new[] { PackagingType.OriginalReel, PackagingType.ReReel, PackagingType.CutTape, PackagingType.Tray, PackagingType.Tube },
+                new[] { PackagingType.Bulk });
+
+            context.SaveChanges();
+        }
+
+        private static void SeedPolicyIfMissing(ProcurementDbContext context, string name, decimal exceptionPriceThreshold,
+            PackagingType[] allowed, PackagingType[] exception)
+        {
+            if (context.PackagingPolicies.Any(p => p.ComponentCategory == name)) return;
+            context.PackagingPolicies.Add(new PackagingPolicy
+            {
+                ComponentCategory = name,
+                PreferredPackaging = PackagingType.Any,
+                AllowedPackaging = allowed.ToList(),
+                ExceptionPriceThreshold = exceptionPriceThreshold,
+                ExceptionPackaging = exception.ToList(),
+                SurplusPenaltyFactor = 0.5m,
+                OriginalReelRequired = false
+            });
+        }
+
+        /// <summary>
+        /// "Extra voor uitval" starting table (17 nov 2026), only when the table is still empty so
+        /// rows deleted in Settings stay deleted. Guesses, not measured values: the user tunes them.
+        /// </summary>
+        private static void SeedAttritionRules(ProcurementDbContext context)
+        {
+            if (context.AttritionRules.Any()) return;
+
+            foreach (var category in new[] { "Resistors SMT", "Capacitors SMT", "Inductors SMT", "Ferrites SMT" })
+                context.AttritionRules.Add(new AttritionRule { AppliesTo = category, Percentage = 10m, MinimumExtra = 100 });
+            foreach (var category in new[] { "Diodes SMT", "Transistors SMT" })
+                context.AttritionRules.Add(new AttritionRule { AppliesTo = category, MaxUnitPrice = 1m, Percentage = 5m, MinimumExtra = 20 });
+            context.AttritionRules.Add(new AttritionRule { AppliesTo = "Integrated Circuits SMT", Percentage = 1m, MinimumExtra = 1 });
+
+            context.AttritionRules.Add(new AttritionRule { AppliesTo = "SMT", MaxUnitPrice = 0.10m, Percentage = 10m, MinimumExtra = 50 });
+            context.AttritionRules.Add(new AttritionRule { AppliesTo = "SMT", MinUnitPrice = 0.10m, MaxUnitPrice = 1m, Percentage = 5m, MinimumExtra = 10 });
+            context.AttritionRules.Add(new AttritionRule { AppliesTo = "SMT", MinUnitPrice = 1m, MaxUnitPrice = 10m, Percentage = 2m, MinimumExtra = 2 });
+            context.AttritionRules.Add(new AttritionRule { AppliesTo = "SMT", MinUnitPrice = 10m, Percentage = 0m, MinimumExtra = 0 });
+            context.AttritionRules.Add(new AttritionRule { AppliesTo = "THT", Percentage = 0m, MinimumExtra = 0 });
 
             context.SaveChanges();
         }

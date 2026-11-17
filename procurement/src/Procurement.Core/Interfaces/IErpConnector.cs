@@ -38,5 +38,11 @@ namespace Procurement.Core.Interfaces
         /// approval policy's price-variance check. Null when unknown.
         /// </summary>
         Task<decimal?> GetPartCostAsync(string partId);
+
+        /// <summary>
+        /// The article's component type (SMT/THT) and category (MAX: view UniPro_OmnifyPartType,
+        /// EntryType 16 = SMT, 17 = THT), for the packaging policy and the attrition rules. Null when unknown.
+        /// </summary>
+        Task<ComponentClassification> GetComponentClassificationAsync(string partId);
     }
 }

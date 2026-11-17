@@ -143,5 +143,104 @@ namespace Procurement.Tests.BusinessLogic
 
             Assert.Null(result.SelectedOffer);
         }
+
+        // Packaging policy per component type (17 nov 2026).
+
+        private static SupplierOffer BuildVariant(PackagingType packaging, int offered, decimal unitPrice, decimal reelingFee, int needed)
+        {
+            var landed = LandedCostCalculator.Calculate(offered, unitPrice, reelingFee, 0m, 0m);
+            return new SupplierOffer
+            {
+                SupplierCode = "DIGIKEY",
+                SupplierPartNumber = "DK-" + packaging,
+                RequestedQuantity = needed,
+                OfferedQuantity = offered,
+                UnitPrice = unitPrice,
+                ReelingFee = reelingFee,
+                PackagingType = packaging,
+                ReelType = packaging == PackagingType.ReReel ? ReelType.SupplierReReel : (ReelType?)null,
+                AvailableQuantity = 100000,
+                EstimatedDeliveryDate = DateTime.UtcNow.AddDays(2),
+                LandedCost = landed,
+                SurplusQuantity = offered - needed,
+                ComparisonCost = PackagingRules.CalculateComparisonCost(landed, offered - needed, 0.0025m, 0.5m),
+                MatchConfidence = MatchConfidence.Exact
+            };
+        }
+
+        private static PackagingPolicy SmtPolicy() => new PackagingPolicy
+        {
+            ComponentCategory = "SMT",
+            AllowedPackaging = new List<PackagingType> { PackagingType.OriginalReel, PackagingType.ReReel },
+            ExceptionPriceThreshold = 5m,
+            ExceptionPackaging = new List<PackagingType> { PackagingType.CutTape, PackagingType.Tray },
+            SurplusPenaltyFactor = 0.5m
+        };
+
+        private static PurchaseRequestLine SmtLine(int quantity) => new PurchaseRequestLine
+        {
+            Id = 2,
+            RequestedQuantity = quantity,
+            RequiredDate = DateTime.UtcNow.AddDays(30)
+        };
+
+        [Fact]
+        public void SmtPolicy_RejectsCutTape_ForCheapPart()
+        {
+            var offers = new List<SupplierOffer>
+            {
+                BuildVariant(PackagingType.CutTape, 300, 0.01m, 0m, 300),
+                BuildVariant(PackagingType.ReReel, 300, 0.012m, 7m, 300)
+            };
+
+            var result = SupplierSelectionEngine.SelectBestOffer(offers, SmtLine(300), SmtPolicy(), referenceUnitCost: 0.0025m);
+
+            Assert.Equal(PackagingType.ReReel, result.SelectedOffer.PackagingType);
+            Assert.Contains(result.RejectedOffers, r => r.Offer.PackagingType == PackagingType.CutTape);
+        }
+
+        [Fact]
+        public void SmtPolicy_SmallQuantity_ReReelBeatsFullReel()
+        {
+            // Doc example: 300 pcs — re-reel €10.60 vs full reel €12.50 plus 4700 surplus.
+            var offers = new List<SupplierOffer>
+            {
+                BuildVariant(PackagingType.OriginalReel, 5000, 0.0025m, 0m, 300),
+                BuildVariant(PackagingType.ReReel, 300, 0.012m, 7m, 300)
+            };
+
+            var result = SupplierSelectionEngine.SelectBestOffer(offers, SmtLine(300), SmtPolicy(), referenceUnitCost: 0.0025m);
+
+            Assert.Equal(PackagingType.ReReel, result.SelectedOffer.PackagingType);
+        }
+
+        [Fact]
+        public void SmtPolicy_LargeQuantity_FullReelBeatsReReel()
+        {
+            // Doc example: 4800 pcs — full reel €12.50 (+ small surplus penalty) vs re-reel €26.20.
+            var offers = new List<SupplierOffer>
+            {
+                BuildVariant(PackagingType.OriginalReel, 5000, 0.0025m, 0m, 4800),
+                BuildVariant(PackagingType.ReReel, 4800, 0.004m, 7m, 4800)
+            };
+
+            var result = SupplierSelectionEngine.SelectBestOffer(offers, SmtLine(4800), SmtPolicy(), referenceUnitCost: 0.0025m);
+
+            Assert.Equal(PackagingType.OriginalReel, result.SelectedOffer.PackagingType);
+        }
+
+        [Fact]
+        public void SmtPolicy_ExpensivePart_AllowsCutTape()
+        {
+            var offers = new List<SupplierOffer>
+            {
+                BuildVariant(PackagingType.CutTape, 10, 8m, 0m, 10),
+                BuildVariant(PackagingType.ReReel, 10, 8m, 7m, 10)
+            };
+
+            var result = SupplierSelectionEngine.SelectBestOffer(offers, SmtLine(10), SmtPolicy(), referenceUnitCost: 8m);
+
+            Assert.Equal(PackagingType.CutTape, result.SelectedOffer.PackagingType);
+        }
     }
 }

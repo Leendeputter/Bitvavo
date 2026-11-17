@@ -135,7 +135,11 @@ namespace Procurement.Suppliers.DigiKey
 
             var reelSize = DeterministicMock.Pick(supplierPartNumber + "|reel", new[] { 1000, 2000, 2500, 4000, 5000, 10000 });
             var available = DeterministicMock.NextInt(supplierPartNumber + "|avail", 500, 120000);
+            var reelPrice = BuildPricing(supplierPartNumber, quantity).UnitPrice;
 
+            // Like real DigiKey (17 nov 2026): each package type has its own part number and price
+            // breaks — Tape & Reel (full reels), Cut Tape (per piece, dearer) and Digi-Reel (per piece,
+            // cut-tape price plus a reeling fee) — so the per-variant offers can be tried in mock mode.
             return new List<SupplierPackagingOption>
             {
                 new SupplierPackagingOption
@@ -145,18 +149,44 @@ namespace Procurement.Suppliers.DigiKey
                     PackagingQuantity = reelSize,
                     ReelType = Core.Enums.ReelType.ManufacturerOriginal,
                     ReelingFee = 0m,
-                    AvailableQuantity = available
+                    AvailableQuantity = available,
+                    MinimumOrderQuantity = reelSize,
+                    PriceBreaks = new List<PriceBreak>
+                    {
+                        new PriceBreak { BreakQuantity = reelSize, UnitPrice = reelPrice },
+                        new PriceBreak { BreakQuantity = reelSize * 2, UnitPrice = Math.Round(reelPrice * 0.95m, 4) }
+                    }
                 },
                 new SupplierPackagingOption
                 {
-                    SupplierPartNumber = supplierPartNumber,
+                    SupplierPartNumber = supplierPartNumber + "-CT",
                     PackagingType = PackagingType.CutTape,
                     PackagingQuantity = 1,
                     ReelType = null,
                     ReelingFee = 0m,
-                    AvailableQuantity = Math.Min(available, 500)
+                    AvailableQuantity = Math.Min(available, 500),
+                    MinimumOrderQuantity = 1,
+                    PriceBreaks = CutTapePriceBreaks(reelPrice)
+                },
+                new SupplierPackagingOption
+                {
+                    SupplierPartNumber = supplierPartNumber + "-DKR",
+                    PackagingType = PackagingType.ReReel,
+                    PackagingQuantity = 1,
+                    ReelType = Core.Enums.ReelType.SupplierReReel,
+                    ReelingFee = 7m,
+                    AvailableQuantity = Math.Min(available, 500),
+                    MinimumOrderQuantity = 1,
+                    PriceBreaks = CutTapePriceBreaks(reelPrice)
                 }
             };
         }
+
+        private static List<PriceBreak> CutTapePriceBreaks(decimal reelPrice) => new List<PriceBreak>
+        {
+            new PriceBreak { BreakQuantity = 1, UnitPrice = Math.Round(reelPrice * 3m, 4) },
+            new PriceBreak { BreakQuantity = 100, UnitPrice = Math.Round(reelPrice * 2m, 4) },
+            new PriceBreak { BreakQuantity = 1000, UnitPrice = Math.Round(reelPrice * 1.5m, 4) }
+        };
     }
 }

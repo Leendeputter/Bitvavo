@@ -1587,3 +1587,32 @@ raken dat mock-modus zelf nooit aanraakt:
   App.config, standaard `false`: "Place Order (Selection)" staat uit ("Place Order (off)") en
   `ProcurementEngine.PlaceOrdersAsync` weigert (geen MAX-PO, niets naar een leverancier). Sourcing,
   offer-selectie en approvals werken gewoon. Op `true` zetten + herstart om bestellen aan te zetten.
+- **17 nov 2026 — Verpakkingsbeleid per componentsoort en extra voor uitval** ("SMT wil ik altijd op
+  reel. Er zijn uitzonderingen zoals je aangeeft bij hele dure IC's", "voor SMT vaak wat extra kopen om
+  uitval op de machine te compenseren", "Bij THT bulk alleen bij uitzondering ... alleen bij dure
+  onderdelen", "Overschot wordt meegeteld als nadeel"). Uitgewerkt in de Claude Doc "Voorstel:
+  verpakkingsbeleid per componentsoort".
+  - Componentsoort en Category komen live uit de MAX-view `dbo.UniPro_OmnifyPartType` (EntryType 16 =
+    SMT, 17 = THT; Category bv. "Resistors SMT"), via `IErpConnector.GetComponentClassificationAsync`.
+    Fout of niet gevonden → policy "Default" (gelogd als `COMPONENT_CLASSIFICATION_FAILED`). Mock-ERP
+    geeft altijd "onbekend".
+  - Packaging policy per Category, soort (SMT/THT) of Default; de meest specifieke wint
+    (`PackagingRules`). Per policy: altijd toegestane verpakkingen, een prijsdrempel (MAX-kostprijs
+    `COST_01/CSTCNV_01`, anders de offerprijs) met verpakkingen die vanaf die drempel ook mogen, en een
+    factor voor het overschot. Gezaaid: SMT (reel/re-reel; cut tape/tray vanaf €5), Integrated Circuits
+    SMT (idem vanaf €2), THT (alles behalve bulk; bulk vanaf €5). Onbekende verpakking mag alleen onder
+    Default. `MinimumQuantity` en `PreferredPackaging` doen niets meer (de eerste is weg, de tweede
+    verborgen).
+  - Elke verpakkingsvariant van een leverancier is een eigen offer (eigen partnummer, prijsstaffels,
+    MOQ, reeling fee). Alleen een volle reel rondt af op hele reels. De selectie kiest op
+    "Vergelijkingskosten" = landed cost + factor × overschot × kostprijs (factor standaard 0,5); niet
+    toegestane varianten worden afgewezen met reden. DigiKey levert de varianten (CT/TR/Digi-Reel, met
+    `DigiReelFee` — veldnaam nog niet bevestigd); Mouser en Farnell geven nog één optie (volle reel).
+  - Extra voor uitval: nieuwe tabel `Procurement_AttritionRule`, tab "Extra voor uitval" in Settings.
+    Extra = max(aantal × percentage, minimum), per aanvraagregel, vóór afronden en bundelen; een regel
+    voor de Category gaat voor de soort. Startwaarden uit het doc (gok, geen meetwaarden). De PO in MAX
+    krijgt het aantal inclusief extra.
+  - Offers-grid: kolommen Extra uitval, Overschot, Reeling Fee, Vergelijkingskosten.
+  - Database: bij de eerste start na deze versie zet de app een upgrade-script op het bureaublad
+    (`procurement-upgrade-packaging-*.sql`) dat alleen kolommen/een tabel toevoegt en
+    `MinimumQuantity` verwijdert; bestaande gegevens (o.a. supplier preferences) blijven staan.

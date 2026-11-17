@@ -130,6 +130,7 @@ namespace Procurement.Data
         public DbSet<ProcurementEvent> ProcurementEvents { get; set; }
         public DbSet<SupplierPreference> SupplierPreferences { get; set; }
         public DbSet<PackagingPolicy> PackagingPolicies { get; set; }
+        public DbSet<AttritionRule> AttritionRules { get; set; }
         public DbSet<ApprovalPolicy> ApprovalPolicies { get; set; }
         public DbSet<Supplier> Suppliers { get; set; }
         public DbSet<SupplierCapabilityRecord> SupplierCapabilityRecords { get; set; }
@@ -161,6 +162,7 @@ namespace Procurement.Data
             modelBuilder.Configurations.Add(new ProcurementEventConfiguration());
             modelBuilder.Configurations.Add(new SupplierPreferenceConfiguration());
             modelBuilder.Configurations.Add(new PackagingPolicyConfiguration());
+            modelBuilder.Configurations.Add(new AttritionRuleConfiguration());
             modelBuilder.Configurations.Add(new ApprovalPolicyConfiguration());
 
             base.OnModelCreating(modelBuilder);

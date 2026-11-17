@@ -256,14 +256,21 @@ namespace Procurement.Suppliers.DigiKey
             if (variations == null || variations.Count == 0)
                 return new List<SupplierPackagingOption>();
 
+            // Each variation is its own DigiKey part number (…-CT, …-TR, …-DKR) with its own price
+            // breaks and MOQ (17 nov 2026: every variation becomes its own offer).
             return variations.Select(v => new SupplierPackagingOption
             {
-                SupplierPartNumber = dto.DigiKeyPartNumber,
+                SupplierPartNumber = !string.IsNullOrWhiteSpace(v.DigiKeyProductNumber) ? v.DigiKeyProductNumber : dto.DigiKeyPartNumber,
                 PackagingType = MapPackagingType(v.PackageType?.Value),
                 PackagingQuantity = v.StandardPackage > 0 ? v.StandardPackage : v.MinimumOrderQuantity,
                 ReelType = MapReelType(v.PackageType?.Value),
-                ReelingFee = 0m,
-                AvailableQuantity = v.QuantityAvailableForPackageType
+                ReelingFee = v.DigiReelFee,
+                AvailableQuantity = v.QuantityAvailableForPackageType,
+                MinimumOrderQuantity = v.MinimumOrderQuantity,
+                PriceBreaks = (v.StandardPricing ?? new List<DigiKeyPriceBreakDto>())
+                    .Select(pb => new PriceBreak { BreakQuantity = pb.BreakQuantity, UnitPrice = pb.UnitPrice })
+                    .OrderBy(pb => pb.BreakQuantity)
+                    .ToList()
             }).ToList();
         }
 
@@ -276,6 +283,7 @@ namespace Procurement.Suppliers.DigiKey
             if (packageTypeValue.IndexOf("Cut Tape", StringComparison.OrdinalIgnoreCase) >= 0) return PackagingType.CutTape;
             if (packageTypeValue.IndexOf("Tray", StringComparison.OrdinalIgnoreCase) >= 0) return PackagingType.Tray;
             if (packageTypeValue.IndexOf("Tube", StringComparison.OrdinalIgnoreCase) >= 0) return PackagingType.Tube;
+            if (packageTypeValue.IndexOf("Bulk", StringComparison.OrdinalIgnoreCase) >= 0) return PackagingType.Bulk;
             if (packageTypeValue.IndexOf("Digi-Reel", StringComparison.OrdinalIgnoreCase) >= 0) return PackagingType.ReReel;
             if (packageTypeValue.IndexOf("Reel", StringComparison.OrdinalIgnoreCase) >= 0) return PackagingType.OriginalReel;
             return PackagingType.Any;

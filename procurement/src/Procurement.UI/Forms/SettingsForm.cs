@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Windows.Forms;
 using Procurement.Core.Entities;
+using Procurement.Core.Enums;
 using Procurement.Core.Exceptions;
 using Procurement.Data.Repositories;
 using Procurement.Data.Secrets;
@@ -35,9 +37,15 @@ namespace Procurement.UI.Forms
             InitializeComponent();
             ClassicStyle.ApplyClassicStyle(this);
             this.BackColor = ClassicStyle.ClassicScreenBackColor;
-            foreach (var grid in new[] { dgv_suppliers, dgv_supplierPreferences, dgv_packagingPolicies, dgv_capabilities })
+            foreach (var grid in new[] { dgv_suppliers, dgv_supplierPreferences, dgv_packagingPolicies, dgv_attritionRules, dgv_capabilities })
                 EnableRowNumberHeaders(grid);
             GridColumnSettingsHelper.Attach(this); // remembers column widths per user, like UniPro
+            // Unknown (Any) isn't something to allow or forbid, and EitherReel is just OriginalReel + ReReel.
+            foreach (var type in SelectablePackagingTypes)
+            {
+                lst_allowedPackaging.Items.Add(type);
+                lst_exceptionPackaging.Items.Add(type);
+            }
             Load += SettingsForm_Load;
         }
 
@@ -54,6 +62,80 @@ namespace Procurement.UI.Forms
         private async void bt_savePackaging_Click(object sender, EventArgs e) => await SavePackagingPoliciesAsync();
 
         private async void bt_saveApproval_Click(object sender, EventArgs e) => await SaveApprovalPolicyAsync();
+
+        private async void bt_saveAttrition_Click(object sender, EventArgs e) => await SaveAttritionRulesAsync();
+
+        private static readonly PackagingType[] SelectablePackagingTypes =
+        {
+            PackagingType.OriginalReel, PackagingType.ReReel, PackagingType.CutTape,
+            PackagingType.Tray, PackagingType.Tube, PackagingType.Bulk
+        };
+
+        // True while the two packaging lists are being filled from the selected policy, so their
+        // ItemCheck events don't write that same state back.
+        private bool _loadingPackagingLists;
+
+        private PackagingPolicy SelectedPackagingPolicy => dgv_packagingPolicies.CurrentRow?.DataBoundItem as PackagingPolicy;
+
+        private void dgv_packagingPolicies_SelectionChanged(object sender, EventArgs e) => LoadPackagingLists();
+
+        private void LoadPackagingLists()
+        {
+            var policy = SelectedPackagingPolicy;
+            _loadingPackagingLists = true;
+            try
+            {
+                gb_packaging.Enabled = policy != null;
+                FillChecks(lst_allowedPackaging, Expand(policy?.AllowedPackaging));
+                FillChecks(lst_exceptionPackaging, Expand(policy?.ExceptionPackaging));
+                gb_packaging.Text = policy == null
+                    ? "Verpakkingen van geselecteerde regel"
+                    : $"Verpakkingen: {policy.ComponentCategory}";
+            }
+            finally
+            {
+                _loadingPackagingLists = false;
+            }
+        }
+
+        private static HashSet<PackagingType> Expand(IEnumerable<PackagingType> types)
+        {
+            var set = new HashSet<PackagingType>(types ?? Enumerable.Empty<PackagingType>());
+            if (set.Remove(PackagingType.EitherReel))
+            {
+                set.Add(PackagingType.OriginalReel);
+                set.Add(PackagingType.ReReel);
+            }
+            return set;
+        }
+
+        private static void FillChecks(CheckedListBox list, HashSet<PackagingType> checkedTypes)
+        {
+            for (var i = 0; i < list.Items.Count; i++)
+                list.SetItemChecked(i, checkedTypes.Contains((PackagingType)list.Items[i]));
+        }
+
+        private void lst_allowedPackaging_ItemCheck(object sender, ItemCheckEventArgs e) =>
+            ApplyPackagingCheck(lst_allowedPackaging, e, (policy, types) => policy.AllowedPackaging = types);
+
+        private void lst_exceptionPackaging_ItemCheck(object sender, ItemCheckEventArgs e) =>
+            ApplyPackagingCheck(lst_exceptionPackaging, e, (policy, types) => policy.ExceptionPackaging = types);
+
+        // ItemCheck fires before the item's state changes, so the new state comes from e.NewValue.
+        private void ApplyPackagingCheck(CheckedListBox list, ItemCheckEventArgs e, Action<PackagingPolicy, List<PackagingType>> assign)
+        {
+            if (_loadingPackagingLists) return;
+            var policy = SelectedPackagingPolicy;
+            if (policy == null) return;
+
+            var types = new List<PackagingType>();
+            for (var i = 0; i < list.Items.Count; i++)
+            {
+                var isChecked = i == e.Index ? e.NewValue == CheckState.Checked : list.GetItemChecked(i);
+                if (isChecked) types.Add((PackagingType)list.Items[i]);
+            }
+            assign(policy, types);
+        }
 
         private async System.Threading.Tasks.Task RefreshAllAsync()
         {
@@ -98,19 +180,38 @@ namespace Procurement.UI.Forms
             dgv_packagingPolicies.DataSource = new BindingList<PackagingPolicy>(packagingPolicies.ToList());
             if (dgv_packagingPolicies.Columns["Id"] != null)
                 dgv_packagingPolicies.Columns["Id"].ReadOnly = true;
-            // The NotMapped List<PackagingType> convenience property also gets auto-bound; only
-            // the underlying CSV string column is meant to be edited here.
-            if (dgv_packagingPolicies.Columns["AllowedPackaging"] != null)
-                dgv_packagingPolicies.Columns["AllowedPackaging"].Visible = false;
-            if (dgv_packagingPolicies.Columns["AllowedPackagingCsv"] != null)
-                dgv_packagingPolicies.Columns["AllowedPackagingCsv"].HeaderText = "AllowedPackaging (csv)";
-            ApplyQuantityColumns(dgv_packagingPolicies, "MinimumQuantity");
+            // The packaging lists are edited with the two checklists next to the grid (17 nov 2026),
+            // not as csv text; PreferredPackaging no longer does anything (cost decides).
+            foreach (var column in new[] { "AllowedPackaging", "AllowedPackagingCsv", "ExceptionPackaging", "ExceptionPackagingCsv", "PreferredPackaging" })
+                if (dgv_packagingPolicies.Columns[column] != null)
+                    dgv_packagingPolicies.Columns[column].Visible = false;
+            SetHeaderText(dgv_packagingPolicies, "ComponentCategory", "Category / soort");
+            SetHeaderText(dgv_packagingPolicies, "ExceptionPriceThreshold", "Prijsdrempel (€)");
+            SetHeaderText(dgv_packagingPolicies, "SurplusPenaltyFactor", "Factor overschot");
+            SetHeaderText(dgv_packagingPolicies, "OriginalReelRequired", "Originele reel verplicht");
+            ApplyNullableDecimalColumns(dgv_packagingPolicies, "ExceptionPriceThreshold");
             SetCharacterBasedColumnWidth(dgv_packagingPolicies, "Id", 6);
-            SetCharacterBasedColumnWidth(dgv_packagingPolicies, "ComponentCategory", 20);
-            SetCharacterBasedColumnWidth(dgv_packagingPolicies, "MinimumQuantity", 12);
-            SetCharacterBasedColumnWidth(dgv_packagingPolicies, "PreferredPackaging", 16);
-            SetCharacterBasedColumnWidth(dgv_packagingPolicies, "AllowedPackagingCsv", 30);
-            SetCharacterBasedColumnWidth(dgv_packagingPolicies, "OriginalReelRequired", 14);
+            SetCharacterBasedColumnWidth(dgv_packagingPolicies, "ComponentCategory", 26);
+            SetCharacterBasedColumnWidth(dgv_packagingPolicies, "ExceptionPriceThreshold", 14);
+            SetCharacterBasedColumnWidth(dgv_packagingPolicies, "SurplusPenaltyFactor", 14);
+            SetCharacterBasedColumnWidth(dgv_packagingPolicies, "OriginalReelRequired", 20);
+            LoadPackagingLists();
+
+            var attritionRules = await _policyRepository.GetAttritionRulesAsync();
+            dgv_attritionRules.DataSource = new BindingList<AttritionRule>(attritionRules.ToList());
+            if (dgv_attritionRules.Columns["Id"] != null)
+                dgv_attritionRules.Columns["Id"].Visible = false;
+            SetHeaderText(dgv_attritionRules, "AppliesTo", "Geldt voor (Category of SMT/THT)");
+            SetHeaderText(dgv_attritionRules, "MinUnitPrice", "Prijs vanaf (€)");
+            SetHeaderText(dgv_attritionRules, "MaxUnitPrice", "Prijs tot (€)");
+            SetHeaderText(dgv_attritionRules, "Percentage", "Percentage");
+            SetHeaderText(dgv_attritionRules, "MinimumExtra", "Minimum extra (st)");
+            ApplyNullableDecimalColumns(dgv_attritionRules, "MinUnitPrice", "MaxUnitPrice");
+            SetCharacterBasedColumnWidth(dgv_attritionRules, "AppliesTo", 32);
+            SetCharacterBasedColumnWidth(dgv_attritionRules, "MinUnitPrice", 14);
+            SetCharacterBasedColumnWidth(dgv_attritionRules, "MaxUnitPrice", 14);
+            SetCharacterBasedColumnWidth(dgv_attritionRules, "Percentage", 12);
+            SetCharacterBasedColumnWidth(dgv_attritionRules, "MinimumExtra", 16);
 
             _approvalPolicy = await _policyRepository.GetApprovalPolicyAsync() ?? new ApprovalPolicy();
             nud_maxOrderValue.Value = _approvalPolicy.MaxOrderValueForAutoApproval;
@@ -282,6 +383,7 @@ namespace Procurement.UI.Forms
 
         private async System.Threading.Tasks.Task SavePackagingPoliciesAsync()
         {
+            dgv_packagingPolicies.EndEdit();
             var items = ((BindingList<PackagingPolicy>)dgv_packagingPolicies.DataSource)
                 .Where(p => !string.IsNullOrWhiteSpace(p.ComponentCategory)).ToList();
             foreach (var item in items)
@@ -289,6 +391,32 @@ namespace Procurement.UI.Forms
 
             await RefreshAllAsync();
             MessageBox.Show(this, "Packaging policies opgeslagen.", "Opgeslagen", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        private async System.Threading.Tasks.Task SaveAttritionRulesAsync()
+        {
+            dgv_attritionRules.EndEdit();
+            var items = ((BindingList<AttritionRule>)dgv_attritionRules.DataSource)
+                .Where(r => !string.IsNullOrWhiteSpace(r.AppliesTo)).ToList();
+            foreach (var item in items)
+                item.AppliesTo = item.AppliesTo.Trim();
+
+            await _policyRepository.SaveAttritionRulesAsync(items);
+
+            await RefreshAllAsync();
+            MessageBox.Show(this, "Extra voor uitval opgeslagen.", "Opgeslagen", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        /// <summary>An empty cell in a nullable decimal column means "no value" (null), not an input error.</summary>
+        private static void ApplyNullableDecimalColumns(DataGridView grid, params string[] columnNames)
+        {
+            foreach (var name in columnNames)
+            {
+                var column = grid.Columns[name];
+                if (column == null) continue;
+                column.DefaultCellStyle.NullValue = string.Empty;
+                column.DefaultCellStyle.DataSourceNullValue = null;
+            }
         }
 
         private async System.Threading.Tasks.Task SaveApprovalPolicyAsync()

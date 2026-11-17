@@ -395,6 +395,9 @@ namespace Procurement.Erp
         /// <summary>Part_Master.COST_01 / CSTCNV_01 per piece (user, 16 nov 2026: "de prijs uit de PartMaster, dat is de waarheid").</summary>
         public Task<decimal?> GetPartCostAsync(string partId) => _maxOrderRepository.GetPartCostAsync(partId);
 
+        public Task<ComponentClassification> GetComponentClassificationAsync(string partId) =>
+            _maxOrderRepository.GetComponentClassificationAsync(partId);
+
         /// <summary>
         /// Local tracking (ConfirmedQuantity/ConfirmedUnitPrice/PurchaseOrderDelivery, PO status)
         /// always gets updated, same as mock mode — the real-mode-only extra step is writing MAX's

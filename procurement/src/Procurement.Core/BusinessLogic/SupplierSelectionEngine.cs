@@ -27,12 +27,16 @@ namespace Procurement.Core.BusinessLogic
 
     /// <summary>
     /// Spec §6 step 7 / §7: filters offers on match confidence, stock, packaging/reel requirement
-    /// and lead time, then picks the lowest landed cost among what remains. Pure logic, no I/O —
-    /// this is the class exercised by the §7 unit test scenario.
+    /// and lead time, then picks the lowest comparison cost among what remains (landed cost plus the
+    /// surplus penalty, 17 nov 2026; plain landed cost for offers without one). Since 17 nov 2026 the
+    /// packaging policy's allowed packaging types are enforced too, with its price exception judged on
+    /// the MAX unit cost (or the offer's own price when MAX has none). Pure logic, no I/O — this is
+    /// the class exercised by the §7 unit test scenario.
     /// </summary>
     public static class SupplierSelectionEngine
     {
-        public static SelectionResult SelectBestOffer(IEnumerable<SupplierOffer> offers, PurchaseRequestLine line, PackagingPolicy policy)
+        public static SelectionResult SelectBestOffer(
+            IEnumerable<SupplierOffer> offers, PurchaseRequestLine line, PackagingPolicy policy, decimal? referenceUnitCost = null)
         {
             if (line == null) throw new ArgumentNullException(nameof(line));
 
@@ -63,6 +67,15 @@ namespace Procurement.Core.BusinessLogic
                     continue;
                 }
 
+                var allowedPackaging = PackagingRules.GetAllowedPackaging(policy, referenceUnitCost ?? offer.UnitPrice);
+                if (!PackagingRules.IsAllowed(offer.PackagingType, allowedPackaging))
+                {
+                    result.RejectedOffers.Add(new RejectedOffer(offer, offer.PackagingType == PackagingType.Any
+                        ? $"Verpakking onbekend; policy '{policy.ComponentCategory}' vereist een bekende verpakking."
+                        : $"Verpakking {offer.PackagingType} is niet toegestaan door policy '{policy.ComponentCategory}'."));
+                    continue;
+                }
+
                 if (line.RequiredDate.HasValue && offer.EstimatedDeliveryDate.Date > line.RequiredDate.Value.Date)
                 {
                     result.RejectedOffers.Add(new RejectedOffer(offer,
@@ -80,11 +93,14 @@ namespace Procurement.Core.BusinessLogic
                 return result;
             }
 
-            var best = candidates.OrderBy(o => o.LandedCost).First();
+            var best = candidates.OrderBy(EffectiveComparisonCost).ThenBy(o => o.LandedCost).First();
             result.SelectedOffer = best;
             result.ReasonSummary = BuildReasonSummary(best, originalReelRequired);
             return result;
         }
+
+        public static decimal EffectiveComparisonCost(SupplierOffer offer) =>
+            offer.ComparisonCost > 0m ? offer.ComparisonCost : offer.LandedCost;
 
         private static string BuildReasonSummary(SupplierOffer offer, bool originalReelRequired)
         {
@@ -92,7 +108,10 @@ namespace Procurement.Core.BusinessLogic
             var reelText = originalReelRequired ? "originele reel beschikbaar" : "geschikte packaging beschikbaar";
             return $"Geselecteerde leverancier: {offer.SupplierCode}\n" +
                    $"Reden: {matchText}, {reelText}, voldoende voorraad, " +
-                   "levering binnen vereiste datum, laagste landed cost.";
+                   "levering binnen vereiste datum, laagste totale kosten" +
+                   (offer.SurplusQuantity > 0 ? $" (incl. overschot van {offer.SurplusQuantity} st als nadeel)." : ".") +
+                   $"\nVerpakking: {offer.PackagingType}" +
+                   (offer.AttritionQuantity > 0 ? $", extra voor uitval: {offer.AttritionQuantity} st." : ".");
         }
     }
 }
