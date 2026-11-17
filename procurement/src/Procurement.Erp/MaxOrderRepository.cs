@@ -250,8 +250,8 @@ WHERE dbo.Order_Master.ORDNUM_10 IN ({string.Join(",", paramNames)})";
                     while (await reader.ReadAsync())
                     {
                         var entryType = reader["EntryType"] == DBNull.Value ? (int?)null : Convert.ToInt32(reader["EntryType"]);
-                        var category = reader["Category"] == DBNull.Value ? null : Convert.ToString(reader["Category"])?.Trim();
-                        rows.Add((entryType, string.IsNullOrEmpty(category) ? null : category));
+                        var rowCategory = reader["Category"] == DBNull.Value ? null : Convert.ToString(reader["Category"])?.Trim();
+                        rows.Add((entryType, string.IsNullOrEmpty(rowCategory) ? null : rowCategory));
                     }
                 }
             }
