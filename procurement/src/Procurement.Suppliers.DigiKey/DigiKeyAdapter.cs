@@ -163,7 +163,25 @@ namespace Procurement.Suppliers.DigiKey
         // DigiKey's V4 API has no separate pricing/availability/packaging endpoints — a single
         // "productdetails" call returns all of it, so every real-mode read method above funnels
         // through here.
+        // Pricing, availability and packaging for one part each call productdetails, so sourcing one
+        // part would cost three API calls against DigiKey's daily limit. The response is kept for a
+        // few minutes (17 nov 2026), long enough for one sourcing run, short enough to stay current.
+        private static readonly TimeSpan ProductDetailsCacheDuration = TimeSpan.FromMinutes(5);
+        private readonly ConcurrentDictionary<string, (DateTime FetchedAtUtc, DigiKeyProductDto Product)> _productDetailsCache =
+            new ConcurrentDictionary<string, (DateTime FetchedAtUtc, DigiKeyProductDto Product)>(StringComparer.OrdinalIgnoreCase);
+
         private async Task<DigiKeyProductDto> FetchProductDetailsAsync(string supplierPartNumber)
+        {
+            if (_productDetailsCache.TryGetValue(supplierPartNumber, out var cached) &&
+                DateTime.UtcNow - cached.FetchedAtUtc < ProductDetailsCacheDuration)
+                return cached.Product;
+
+            var product = await FetchProductDetailsUncachedAsync(supplierPartNumber).ConfigureAwait(false);
+            _productDetailsCache[supplierPartNumber] = (DateTime.UtcNow, product);
+            return product;
+        }
+
+        private async Task<DigiKeyProductDto> FetchProductDetailsUncachedAsync(string supplierPartNumber)
         {
             RequireHttpClient();
             var responseJson = await _httpClient

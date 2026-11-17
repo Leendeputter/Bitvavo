@@ -1616,3 +1616,10 @@ raken dat mock-modus zelf nooit aanraakt:
   - Database: bij de eerste start na deze versie zet de app een upgrade-script op het bureaublad
     (`procurement-upgrade-packaging-*.sql`) dat alleen kolommen/een tabel toevoegt en
     `MinimumQuantity` verwijdert; bestaande gegevens (o.a. supplier preferences) blijven staan.
+- **17 nov 2026 — "Fetch Orders from MAX" sneller** ("duurt behoorlijk lang ... Wat maakt dat die zo
+  lang duurt?"). De sync deed per MAX-order een eigen lookup én een eigen save in de Unitron-database,
+  en bij elke save liep EF alle al geladen regels opnieuw na; met duizenden orders groeit dat
+  kwadratisch. Nu: één query voor alle bestaande aanvragen, één save voor alle nieuwe, en hetzelfde voor
+  de Part_Vendor-mappings. De Part_Vendor-query gaat in blokken van 2000 (SQL Server-limiet van 2100
+  parameters). DigiKey: de productdetails worden 5 minuten onthouden, zodat één onderdeel één API-call
+  kost in plaats van drie.

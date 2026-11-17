@@ -69,6 +69,32 @@ namespace Procurement.Data.Repositories
                 .Include(l => l.PurchaseRequest)
                 .FirstOrDefaultAsync(l => l.PurchaseRequest.CompanyId == _session.CompanyId && l.Id == purchaseRequestLineId));
 
+        /// <summary>
+        /// Every request of this company (with lines), keyed by ErpRequestNumber — one query instead of
+        /// one FindByErpRequestNumberAsync per MAX order (17 nov 2026: "Fetch Orders from MAX" was slow
+        /// because it did a separate lookup, and a separate save, for every order in the batch).
+        /// </summary>
+        public Task<Dictionary<string, PurchaseRequest>> GetAllByErpRequestNumberAsync() => _context.RunGuardedAsync(async () =>
+        {
+            var all = await _context.PurchaseRequests
+                .Include(pr => pr.Lines)
+                .Where(pr => pr.CompanyId == _session.CompanyId && pr.ErpRequestNumber != null)
+                .ToListAsync();
+            return all
+                .GroupBy(pr => pr.ErpRequestNumber)
+                .ToDictionary(g => g.Key, g => g.OrderBy(pr => pr.Id).First());
+        });
+
+        /// <summary>Adds several requests with a single SaveChanges.</summary>
+        public Task AddRangeAsync(IReadOnlyCollection<PurchaseRequest> requests) => _context.RunGuardedAsync(async () =>
+        {
+            if (requests.Count == 0) return;
+            foreach (var request in requests)
+                request.CompanyId = _session.CompanyId;
+            _context.PurchaseRequests.AddRange(requests);
+            await _context.SaveChangesAsync();
+        });
+
         public Task<PurchaseRequest> AddAsync(PurchaseRequest request) => _context.RunGuardedAsync(async () =>
         {
             request.CompanyId = _session.CompanyId;

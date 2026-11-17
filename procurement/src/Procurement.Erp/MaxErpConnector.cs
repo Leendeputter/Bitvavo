@@ -121,10 +121,16 @@ namespace Procurement.Erp
             var maxOrders = await _maxOrderRepository.GetOpenOrdersAsync(filter);
             LastMaxOrderCount = maxOrders.Count;
 
+            // One query for all existing requests and one save for all new ones (17 nov 2026), instead
+            // of a lookup + a save per MAX order — the save per order also made EF re-scan every
+            // tracked entity each time, so the sync slowed down quadratically with the batch size.
+            var existingByOrderNumber = await _purchaseRequestRepository.GetAllByErpRequestNumberAsync();
+            var newRequests = new List<PurchaseRequest>();
+
             foreach (var order in maxOrders)
             {
-                var existing = await _purchaseRequestRepository.FindByErpRequestNumberAsync(order.OrderNumber);
-                if (existing != null)
+                var orderNumber = Truncate(order.OrderNumber, 50);
+                if (orderNumber != null && existingByOrderNumber.TryGetValue(orderNumber, out var existing))
                 {
                     // These fields were added after some requests were already synced (and the
                     // dedup-by-ErpRequestNumber above otherwise never revisits an existing row),
@@ -170,10 +176,13 @@ namespace Procurement.Erp
                     }
                 };
 
-                await _purchaseRequestRepository.AddAsync(request);
+                newRequests.Add(request);
+                if (orderNumber != null)
+                    existingByOrderNumber[orderNumber] = request; // guards against the same order twice in one batch
             }
 
             await _purchaseRequestRepository.SaveAsync();
+            await _purchaseRequestRepository.AddRangeAsync(newRequests);
             await SyncVendorPartMappingsAsync(maxOrders);
             await ReconcileAgainstMaxAsync();
 
@@ -322,16 +331,22 @@ namespace Procurement.Erp
 
             var vendorParts = await _maxVendorPartRepository.GetForPartsAsync(partIds);
 
+            // One query for the existing mappings and one save for the new ones (17 nov 2026).
+            var existingKeys = await _supplierProductMappingRepository.GetExistingKeysAsync();
+            var newMappings = new List<SupplierProductMapping>();
+
             foreach (var vendorPart in vendorParts)
             {
                 if (string.IsNullOrEmpty(vendorPart.VendorId) || !vendorIdToSupplierCode.TryGetValue(vendorPart.VendorId, out var supplierCode))
                     continue;
 
                 var erpArticleId = Truncate(vendorPart.PartId, 50);
-                var existing = await _supplierProductMappingRepository.FindAsync(erpArticleId, supplierCode);
-                if (existing != null) continue;
+                if (string.IsNullOrEmpty(erpArticleId)) continue;
+                // Add returns false when the key is already there: an existing mapping, or a second
+                // Part_Vendor row for the same article and supplier in this batch.
+                if (!existingKeys.Add(SupplierProductMappingRepository.Key(erpArticleId, supplierCode))) continue;
 
-                await _supplierProductMappingRepository.AddAsync(new SupplierProductMapping
+                newMappings.Add(new SupplierProductMapping
                 {
                     ErpArticleId = erpArticleId,
                     SupplierCode = supplierCode,
@@ -339,6 +354,8 @@ namespace Procurement.Erp
                     MatchConfidence = MatchConfidence.Verified
                 });
             }
+
+            await _supplierProductMappingRepository.AddRangeAsync(newMappings);
         }
 
         public Task<string> CreatePurchaseOrderAsync(PurchaseOrderDraft draft) => UseMockPurchaseOrders

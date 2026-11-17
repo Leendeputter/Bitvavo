@@ -35,6 +35,25 @@ namespace Procurement.Data.Repositories
             return result;
         });
 
+        /// <summary>"ErpArticleId|SupplierCode" of every existing mapping, for a bulk "already mapped?" check.</summary>
+        public Task<HashSet<string>> GetExistingKeysAsync() => _context.RunGuardedAsync(async () =>
+        {
+            var keys = await _context.SupplierProductMappings
+                .Select(m => new { m.ErpArticleId, m.SupplierCode })
+                .ToListAsync();
+            return new HashSet<string>(keys.Select(k => Key(k.ErpArticleId, k.SupplierCode)), System.StringComparer.OrdinalIgnoreCase);
+        });
+
+        public static string Key(string erpArticleId, string supplierCode) => erpArticleId + "|" + supplierCode;
+
+        /// <summary>Adds several mappings with a single SaveChanges.</summary>
+        public Task AddRangeAsync(IReadOnlyCollection<SupplierProductMapping> mappings) => _context.RunGuardedAsync(async () =>
+        {
+            if (mappings.Count == 0) return;
+            _context.SupplierProductMappings.AddRange(mappings);
+            await _context.SaveChangesAsync();
+        });
+
         public Task<SupplierProductMapping> AddAsync(SupplierProductMapping mapping) => _context.RunGuardedAsync(async () =>
         {
             _context.SupplierProductMappings.Add(mapping);

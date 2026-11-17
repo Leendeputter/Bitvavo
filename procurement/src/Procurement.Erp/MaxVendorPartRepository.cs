@@ -27,8 +27,20 @@ namespace Procurement.Erp
             if (partIds == null || partIds.Count == 0)
                 return new List<MaxVendorPart>();
 
+            // SQL Server allows at most 2100 parameters per command, so large batches are split
+            // (17 nov 2026; same ceiling and approach as MaxOrderRepository's batched lookups).
             var results = new List<MaxVendorPart>();
-            var partList = partIds.ToList();
+            var all = partIds.ToList();
+            for (var start = 0; start < all.Count; start += BatchSize)
+                results.AddRange(await GetBatchAsync(all.Skip(start).Take(BatchSize).ToList()));
+            return results;
+        }
+
+        private const int BatchSize = 2000;
+
+        private async Task<List<MaxVendorPart>> GetBatchAsync(List<string> partList)
+        {
+            var results = new List<MaxVendorPart>();
             var paramNames = partList.Select((p, i) => $"@part{i}").ToList();
 
             var sql = $@"
