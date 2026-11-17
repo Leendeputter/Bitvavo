@@ -1623,3 +1623,7 @@ raken dat mock-modus zelf nooit aanraakt:
   de Part_Vendor-mappings. De Part_Vendor-query gaat in blokken van 2000 (SQL Server-limiet van 2100
   parameters). DigiKey: de productdetails worden 5 minuten onthouden, zodat één onderdeel één API-call
   kost in plaats van drie.
+- **17 nov 2026 — Sorteren in Purchase Requests** ("de optie om de kolommen te sorteren in Purchase
+  Requests"). Klik op een kolomkop om te sorteren, nog eens voor omgekeerd. Werkt voor alle kolommen
+  (ook Firm); lege waarden eerst bij oplopend. De sortering blijft staan na Query/Source.
+  `Support/SortableBindingList.cs`.

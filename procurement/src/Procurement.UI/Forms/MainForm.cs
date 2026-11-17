@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
@@ -362,8 +363,19 @@ namespace Procurement.UI.Forms
             // Assigning DataSource can itself raise SelectionChanged (when the grid picks a
             // default current cell); detach first so that doesn't race with the explicit reload
             // below against the same shared DbContext.
+            // Sortable by clicking a column header (user request, 17 nov 2026). The current sort is
+            // remembered and re-applied after a refresh, so a Query or Source run keeps the order.
+            var previousSortColumn = dgv_requests.SortedColumn?.DataPropertyName;
+            var previousSortDirection = dgv_requests.SortOrder == SortOrder.Descending
+                ? ListSortDirection.Descending
+                : ListSortDirection.Ascending;
+
             dgv_requests.SelectionChanged -= dgv_requests_SelectionChanged;
-            dgv_requests.DataSource = rows;
+            dgv_requests.DataSource = SortableBindingList.Create(rows);
+            foreach (DataGridViewColumn column in dgv_requests.Columns)
+                column.SortMode = DataGridViewColumnSortMode.Automatic; // checkbox columns (Firm) default to NotSortable
+            if (previousSortColumn != null && dgv_requests.Columns[previousSortColumn] != null)
+                dgv_requests.Sort(dgv_requests.Columns[previousSortColumn], previousSortDirection);
             dgv_requests.SelectionChanged += dgv_requests_SelectionChanged;
 
             if (dgv_requests.Columns["Id"] != null)
