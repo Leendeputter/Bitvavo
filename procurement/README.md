@@ -1626,4 +1626,6 @@ raken dat mock-modus zelf nooit aanraakt:
 - **17 nov 2026 — Sorteren in Purchase Requests** ("de optie om de kolommen te sorteren in Purchase
   Requests"). Klik op een kolomkop om te sorteren, nog eens voor omgekeerd. Werkt voor alle kolommen
   (ook Firm); lege waarden eerst bij oplopend. De sortering blijft staan na Query/Source.
-  `Support/SortableBindingList.cs`.
+  `Support/SortableBindingList.cs`. Daarna ("Ja graag ook in andere grids") in alle grids via
+  `GridFormatting.BindSortable`: Offers, Approvals, Audit Log, Orders (+ regels), Order Confirmation
+  Exceptions, Supplier Mapping, App Secrets en alle Settings-tabbladen.

@@ -140,7 +140,7 @@ namespace Procurement.UI.Forms
         private async System.Threading.Tasks.Task RefreshAllAsync()
         {
             var suppliersForGrid = await _supplierRepository.GetAllAsync();
-            dgv_suppliers.DataSource = new BindingList<Supplier>(suppliersForGrid.ToList());
+            BindSortable(dgv_suppliers, suppliersForGrid);
             foreach (var column in new[] { "Id", "SupplierCode", "Name" })
                 if (dgv_suppliers.Columns[column] != null)
                     dgv_suppliers.Columns[column].ReadOnly = true;
@@ -167,7 +167,7 @@ namespace Procurement.UI.Forms
             SetCharacterBasedColumnWidth(dgv_suppliers, "UseMockData", 12);
 
             var preferences = await _policyRepository.GetSupplierPreferencesAsync();
-            dgv_supplierPreferences.DataSource = new BindingList<SupplierPreference>(preferences.ToList());
+            BindSortable(dgv_supplierPreferences, preferences);
             if (dgv_supplierPreferences.Columns["Id"] != null)
                 dgv_supplierPreferences.Columns["Id"].ReadOnly = true;
             SetCharacterBasedColumnWidth(dgv_supplierPreferences, "Id", 6);
@@ -177,7 +177,7 @@ namespace Procurement.UI.Forms
             SetCharacterBasedColumnWidth(dgv_supplierPreferences, "AllowedForAutoOrder", 14);
 
             var packagingPolicies = await _policyRepository.GetPackagingPoliciesAsync();
-            dgv_packagingPolicies.DataSource = new BindingList<PackagingPolicy>(packagingPolicies.ToList());
+            BindSortable(dgv_packagingPolicies, packagingPolicies);
             if (dgv_packagingPolicies.Columns["Id"] != null)
                 dgv_packagingPolicies.Columns["Id"].ReadOnly = true;
             // The packaging lists are edited with the two checklists next to the grid (17 nov 2026),
@@ -198,7 +198,7 @@ namespace Procurement.UI.Forms
             LoadPackagingLists();
 
             var attritionRules = await _policyRepository.GetAttritionRulesAsync();
-            dgv_attritionRules.DataSource = new BindingList<AttritionRule>(attritionRules.ToList());
+            BindSortable(dgv_attritionRules, attritionRules);
             if (dgv_attritionRules.Columns["Id"] != null)
                 dgv_attritionRules.Columns["Id"].Visible = false;
             SetHeaderText(dgv_attritionRules, "AppliesTo", "Geldt voor (Category of SMT/THT)");
@@ -221,7 +221,7 @@ namespace Procurement.UI.Forms
             chk_allowAlternativePart.Checked = _approvalPolicy.AllowAlternativePart;
 
             var suppliers = await _supplierRepository.GetAllAsync();
-            dgv_capabilities.DataSource = suppliers
+            BindSortable(dgv_capabilities, suppliers
                 .SelectMany(s => s.Capabilities.Select(c => new
                 {
                     Supplier = s.SupplierCode,
@@ -229,7 +229,7 @@ namespace Procurement.UI.Forms
                     Status = c.Status.ToString()
                 }))
                 .OrderBy(x => x.Supplier).ThenBy(x => x.Capability)
-                .ToList();
+                );
             SetCharacterBasedColumnWidth(dgv_capabilities, "Supplier", 14);
             SetCharacterBasedColumnWidth(dgv_capabilities, "Capability", 16);
             SetCharacterBasedColumnWidth(dgv_capabilities, "Status", 16);

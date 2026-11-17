@@ -56,7 +56,7 @@ namespace Procurement.UI.Forms
                 filter = (MatchConfidence)Enum.Parse(typeof(MatchConfidence), (string)cb_filter.SelectedItem);
 
             var mappings = await _repository.GetAllAsync(filter);
-            dgv_mappings.DataSource = mappings.Select(m => new
+            BindSortable(dgv_mappings, mappings.Select(m => new
             {
                 m.Id,
                 m.ErpArticleId,
@@ -66,7 +66,7 @@ namespace Procurement.UI.Forms
                 m.ManufacturerPartNumber,
                 MatchConfidence = m.MatchConfidence.ToString(),
                 m.CreatedAt
-            }).ToList();
+            }));
             ApplyDateTimeColumns(dgv_mappings, "CreatedAt");
             // Fixed widths, no Fill (user feedback, 16 nov 2026: maximizing stretched every column,
             // "niet handig als ik de kolomrijen even breed wil houden"). The grid itself still grows

@@ -52,6 +52,8 @@ namespace Procurement.UI.Forms
             this.BackColor = ClassicStyle.ClassicScreenBackColor;
             EnableRowNumberHeaders(dgv_orders);
             EnableRowNumberHeaders(dgv_lines);
+            // Sorting rebuilds the rows and drops their colour, so the deviation highlight is re-applied.
+            dgv_lines.Sorted += (sender, e) => HighlightDeviatingLines(dgv_lines);
             GridColumnSettingsHelper.Attach(this); // remembers column widths per user, like UniPro
             Load += OrdersForm_Load;
         }
@@ -103,7 +105,7 @@ namespace Procurement.UI.Forms
             // race with LoadLinesForSelectedOrder below against the same in-memory list (same
             // reasoning as MainForm's own grids).
             dgv_orders.SelectionChanged -= dgv_orders_SelectionChanged;
-            dgv_orders.DataSource = visibleOrders.Select(po => new
+            BindSortable(dgv_orders, visibleOrders.Select(po => new
             {
                 po.Id,
                 po.ErpPoNumber,
@@ -116,7 +118,7 @@ namespace Procurement.UI.Forms
                 po.OrderTotal,
                 po.Currency,
                 Lines = po.Lines.Count
-            }).ToList();
+            }));
             dgv_orders.SelectionChanged += dgv_orders_SelectionChanged;
 
             if (dgv_orders.Columns["Id"] != null)
@@ -182,7 +184,7 @@ namespace Procurement.UI.Forms
             var visibleLines = order.Lines
                 .Where(l => chk_includeCompleted.Checked || !IsCompletedInMax(order.ErpPoNumber, l))
                 .ToList();
-            dgv_lines.DataSource = visibleLines.Select(l =>
+            BindSortable(dgv_lines, visibleLines.Select(l =>
             {
                 requestLines.TryGetValue(l.PurchaseRequestLineId, out var requestLine);
                 var confirmed = l.ConfirmedQuantity.HasValue;
@@ -222,7 +224,7 @@ namespace Procurement.UI.Forms
                     DeliveryIsLate = confirmed ? (bool?)exception.DeliveryIsLate : null,
                     l.LineTotal
                 };
-            }).ToList();
+            }));
             ApplyQuantityColumns(dgv_lines, "Quantity", "ConfirmedQuantity");
             ApplyCurrencyColumns(dgv_lines, "UnitPrice", "ConfirmedUnitPrice", "LineTotal");
             ApplyDateColumns(dgv_lines, "RequiredDate", "ConfirmedShipDate");

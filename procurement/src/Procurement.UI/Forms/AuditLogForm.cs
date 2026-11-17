@@ -71,7 +71,7 @@ namespace Procurement.UI.Forms
                 from: chk_from.Checked ? dtp_from.Value : (DateTime?)null,
                 to: chk_to.Checked ? dtp_to.Value : (DateTime?)null);
 
-            dgv_auditlog.DataSource = events.Select(e => new
+            BindSortable(dgv_auditlog, events.Select(e => new
             {
                 e.Timestamp,
                 e.EntityType,
@@ -83,7 +83,7 @@ namespace Procurement.UI.Forms
                 e.RequestPayload,
                 e.ResponsePayload,
                 e.Error
-            }).ToList();
+            }));
             ApplyDateTimeColumns(dgv_auditlog, "Timestamp");
             SetCharacterBasedColumnWidth(dgv_auditlog, "Timestamp", 19);
             SetCharacterBasedColumnWidth(dgv_auditlog, "EntityType", 16);

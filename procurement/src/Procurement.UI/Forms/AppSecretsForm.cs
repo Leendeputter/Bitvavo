@@ -215,8 +215,7 @@ namespace Procurement.UI.Forms
 
         private void LoadAccessEntries()
         {
-            _accessEntries = new BindingList<SecretAccessEntry>(_accessRepo.GetAll());
-            dgv_access.DataSource = _accessEntries;
+            _accessEntries = GridFormatting.BindSortable(dgv_access, _accessRepo.GetAll());
             RefreshCopyFromOptions();
         }
 

@@ -363,19 +363,10 @@ namespace Procurement.UI.Forms
             // Assigning DataSource can itself raise SelectionChanged (when the grid picks a
             // default current cell); detach first so that doesn't race with the explicit reload
             // below against the same shared DbContext.
-            // Sortable by clicking a column header (user request, 17 nov 2026). The current sort is
-            // remembered and re-applied after a refresh, so a Query or Source run keeps the order.
-            var previousSortColumn = dgv_requests.SortedColumn?.DataPropertyName;
-            var previousSortDirection = dgv_requests.SortOrder == SortOrder.Descending
-                ? ListSortDirection.Descending
-                : ListSortDirection.Ascending;
-
+            // Sortable by clicking a column header (user request, 17 nov 2026); the current sort is
+            // re-applied after a refresh, so a Query or Source run keeps the order.
             dgv_requests.SelectionChanged -= dgv_requests_SelectionChanged;
-            dgv_requests.DataSource = SortableBindingList.Create(rows);
-            foreach (DataGridViewColumn column in dgv_requests.Columns)
-                column.SortMode = DataGridViewColumnSortMode.Automatic; // checkbox columns (Firm) default to NotSortable
-            if (previousSortColumn != null && dgv_requests.Columns[previousSortColumn] != null)
-                dgv_requests.Sort(dgv_requests.Columns[previousSortColumn], previousSortDirection);
+            BindSortable(dgv_requests, rows);
             dgv_requests.SelectionChanged += dgv_requests_SelectionChanged;
 
             if (dgv_requests.Columns["Id"] != null)
@@ -590,7 +581,7 @@ namespace Procurement.UI.Forms
             var offers = await _composition.Engine.GetOffersForLineAsync(line.Id);
             var selection = await _composition.Engine.GetSelectionForLineAsync(line.Id);
 
-            dgv_offers.DataSource = offers.Select(o => new OfferGridRow
+            BindSortable(dgv_offers, offers.Select(o => new OfferGridRow
             {
                 Id = o.Id,
                 Select = selection != null && selection.SelectedOfferId == o.Id,
@@ -610,7 +601,7 @@ namespace Procurement.UI.Forms
                 LeadTimeDays = o.LeadTimeDays,
                 AvailableQuantity = o.AvailableQuantity,
                 DueDate = o.EstimatedDeliveryDate
-            }).ToList();
+            }));
 
             if (dgv_offers.Columns["Id"] != null)
                 dgv_offers.Columns["Id"].Visible = false;

@@ -37,7 +37,7 @@ namespace Procurement.UI.Forms
         private async System.Threading.Tasks.Task RefreshAsync()
         {
             var pending = await _engine.GetPendingApprovalsAsync();
-            dgv_approvals.DataSource = pending.Select(a => new
+            BindSortable(dgv_approvals, pending.Select(a => new
             {
                 // Kept in the DataSource (DecideAsync reads it back from the grid) but hidden below
                 // — just a sequential id, and the row header already shows a row number (user
@@ -51,7 +51,7 @@ namespace Procurement.UI.Forms
                 Price = a.ProposedOffer?.UnitPrice,
                 Reason = a.Reasons,
                 a.CreatedAt
-            }).ToList();
+            }));
             ApplyQuantityColumns(dgv_approvals, "OfferedQty");
             ApplyCurrencyColumns(dgv_approvals, "Price");
             ApplyDateTimeColumns(dgv_approvals, "CreatedAt");

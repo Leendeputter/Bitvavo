@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.ComponentModel;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Reflection;
@@ -31,6 +33,34 @@ namespace Procurement.UI.Support
         /// rather than blending into the form itself.
         /// </summary>
         public static readonly Color ClassicScreenBackColor = Color.FromArgb(230, 240, 250);
+
+        /// <summary>
+        /// Binds rows so every column sorts on a header click (user request, 17 nov 2026: sorting in
+        /// all grids). A sort the user already chose is re-applied after a refresh. Returns the bound
+        /// list (a BindingList, so existing casts of DataSource keep working).
+        /// </summary>
+        public static SortableBindingList<T> BindSortable<T>(DataGridView grid, IEnumerable<T> items)
+        {
+            var previousSortColumn = grid.SortedColumn?.DataPropertyName;
+            var previousSortDirection = grid.SortOrder == SortOrder.Descending
+                ? ListSortDirection.Descending
+                : ListSortDirection.Ascending;
+
+            var list = SortableBindingList.Create(items);
+            grid.DataSource = list;
+            EnableSorting(grid);
+
+            if (!string.IsNullOrEmpty(previousSortColumn) && grid.Columns[previousSortColumn] != null)
+                grid.Sort(grid.Columns[previousSortColumn], previousSortDirection);
+            return list;
+        }
+
+        /// <summary>Checkbox columns default to NotSortable; this makes every column sortable.</summary>
+        public static void EnableSorting(DataGridView grid)
+        {
+            foreach (DataGridViewColumn column in grid.Columns)
+                column.SortMode = DataGridViewColumnSortMode.Automatic;
+        }
 
         public static void ApplyQuantityColumns(DataGridView grid, params string[] columnNames)
         {

@@ -27,7 +27,7 @@ namespace Procurement.UI.Forms
             EnableRowNumberHeaders(dgv_exceptions);
             GridColumnSettingsHelper.Attach(this); // remembers column widths per user, like UniPro
 
-            dgv_exceptions.DataSource = (exceptions ?? Array.Empty<OrderConfirmationException>()).Select(e => new
+            BindSortable(dgv_exceptions, (exceptions ?? Array.Empty<OrderConfirmationException>()).Select(e => new
             {
                 e.ErpPoNumber,
                 e.SupplierCode,
@@ -39,7 +39,7 @@ namespace Procurement.UI.Forms
                 e.RequiredDate,
                 e.ConfirmedShipDate,
                 Reason = DescribeReason(e)
-            }).ToList();
+            }));
 
             ApplyQuantityColumns(dgv_exceptions, "OrderedQuantity", "ConfirmedQuantity");
             ApplyCurrencyColumns(dgv_exceptions, "OrderedUnitPrice", "ConfirmedUnitPrice");
