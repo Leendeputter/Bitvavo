@@ -516,6 +516,13 @@ namespace Procurement.Engine
         }
 
         /// <summary>
+        /// False: PlaceOrdersAsync refuses to run (no MAX PO, nothing sent to a supplier). Set from
+        /// App.config "Ordering.Enabled" (17 nov 2026: test search/select against real data first).
+        /// Default true here so tests and other callers are unaffected; the app passes the config value.
+        /// </summary>
+        public bool OrderingEnabled { get; set; } = true;
+
+        /// <summary>
         /// Spec correction, aug 2026: placing orders is decoupled from sourcing/approval, and no
         /// longer one PO per line — it's grouped by supplier (never by project/customer, that's not
         /// how this business buys), one PO per supplier, exactly matching MAX's own PurchaseOrder
@@ -525,6 +532,10 @@ namespace Procurement.Engine
         /// </summary>
         public async Task PlaceOrdersAsync(IReadOnlyList<int> purchaseRequestIds, string user)
         {
+            if (!OrderingEnabled)
+                throw new InvalidOperationException(
+                    "Bestellen staat uit (App.config: Ordering.Enabled = false). Er is geen order geplaatst.");
+
             var candidates = await GatherOrderCandidatesAsync(purchaseRequestIds);
 
             if (candidates.Count == 0)

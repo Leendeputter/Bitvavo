@@ -66,6 +66,13 @@ namespace Procurement.UI.Forms
             UpdateIncludedOrderStatuses();
             cb_rangeField.SelectedIndex = 0;
 
+            // Ordering switched off in App.config (Ordering.Enabled): search/select only.
+            if (!_composition.OrderingEnabled)
+            {
+                bt_placeOrders.Enabled = false;
+                bt_placeOrders.Text = "Place Order (off)";
+            }
+
             GridColumnSettingsHelper.Attach(this); // remembers column widths per user, like UniPro
             // Nothing loads automatically on open — the grid stays empty until the user clicks "Query".
         }
@@ -1002,7 +1009,7 @@ namespace Procurement.UI.Forms
             bt_newRequest.Enabled = enabled;
             bt_startSourcing.Enabled = enabled;
             bt_sourceAll.Enabled = enabled;
-            bt_placeOrders.Enabled = enabled;
+            bt_placeOrders.Enabled = enabled && _composition.OrderingEnabled;
             bt_processConfirmations.Enabled = enabled;
             // Not strictly a race on shared MAX SqlConnections like the buttons above (their
             // CheckedChanged handler already no-ops via the same _isBusy check) — disabled anyway so

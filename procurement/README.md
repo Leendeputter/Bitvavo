@@ -1582,3 +1582,8 @@ raken dat mock-modus zelf nooit aanraakt:
   zodat "is deze regel besteld" per regel blijft werken. Een orderbevestiging wordt lokaal over die
   regels verdeeld (`OrderBundler.ConfirmationForLine`) en in MAX één keer per PO-regel verwerkt.
   Alleen binnen de selectie van Place Order.
+- **17 nov 2026 — Bestellen uitschakelbaar** ("starten met enkel zoeken en de beste optie selecteren.
+  Het order-deel wil ik nog even uitgeschakeld laten"). Nieuwe appSetting `Ordering.Enabled` in
+  App.config, standaard `false`: "Place Order (Selection)" staat uit ("Place Order (off)") en
+  `ProcurementEngine.PlaceOrdersAsync` weigert (geen MAX-PO, niets naar een leverancier). Sourcing,
+  offer-selectie en approvals werken gewoon. Op `true` zetten + herstart om bestellen aan te zetten.

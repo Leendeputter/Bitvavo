@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Configuration;
 using System.Linq;
 using Procurement.Core.Entities;
 using Procurement.Core.Interfaces;
@@ -45,6 +46,13 @@ namespace Procurement.UI.Composition
         public IReadOnlyList<ISupplierAdapter> Adapters { get; }
         public MaxErpConnector ErpConnector { get; }
         public MaxOrderRepository MaxOrderRepository { get; }
+
+        /// <summary>
+        /// App.config "Ordering.Enabled" (17 nov 2026: order part switched off while search/select is
+        /// tested against real data). Missing or unreadable counts as off — safe default.
+        /// </summary>
+        public bool OrderingEnabled { get; } =
+            bool.TryParse(ConfigurationManager.AppSettings["Ordering.Enabled"], out var orderingEnabled) && orderingEnabled;
 
         /// <summary>
         /// Non-fatal problems found while building the app (so far: a supplier secret this user has
@@ -255,7 +263,10 @@ namespace Procurement.UI.Composition
                 selectionRepository,
                 approvalRepository,
                 PurchaseOrderRepository,
-                PolicyRepository);
+                PolicyRepository)
+            {
+                OrderingEnabled = OrderingEnabled
+            };
         }
     }
 }
