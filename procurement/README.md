@@ -839,8 +839,11 @@ Secrets, Audit Log (fase 3). Bestellen staat net als op de desktop uit (`Orderin
 1. Het project gebruikt de projectvorm `MSBuild.SDK.SystemWeb` (staat bovenaan `Procurement.Web.csproj`).
    Visual Studio 2019 of 2022 haalt die bij de eerste build zelf op via NuGet; er hoeft niets
    geïnstalleerd te worden. Lukt dat niet, controleer dan of nuget.org bereikbaar is.
-2. Zet `Procurement.Web` als startproject en druk F5. IIS Express start met Windows-authenticatie
-   (zie `Properties/launchSettings.json`) op https://localhost:44380/.
+2. Zet `Procurement.Web` als startproject en druk F5. IIS Express start op https://localhost:44380/.
+   **Eenmalig:** Visual Studio neemt de Windows-login uit `Properties/launchSettings.json` niet altijd
+   over en toont die instellingen niet onder F4. Komt het inlogvenster steeds terug (18 nov 2026), stop
+   de site en zet in `.vs\Procurement\config\applicationhost.config` (verborgen map naast `Procurement.sln`)
+   `<windowsAuthentication enabled="true"` en `<anonymousAuthentication enabled="false"`.
 3. Je ziet het keuzescherm voor administratie en testmodus; je naam komt van Windows, zoals bij de desktop.
    De laatste keuze wordt onthouden.
 4. Kolombreedtes (slepen in de kop) en sortering worden per browser onthouden.
