@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Data.SqlClient;
 using System.Linq;
 using Dapper;
+using Procurement.Core.Interfaces;
 using Procurement.Core.Session;
 
 namespace Procurement.Data.Secrets
@@ -29,9 +30,20 @@ namespace Procurement.Data.Secrets
     {
         public const string ApplicationName = "Procurement";
 
+        private readonly ISessionContext _session;
+
+        /// <summary>Desktop: reads the process-wide login (ProcurementSession).</summary>
+        public AppSecretsRepository() : this(new ProcurementSessionContext()) { }
+
+        /// <summary>Web: one session per logged-in user (web app plan, 18 nov 2026).</summary>
+        public AppSecretsRepository(ISessionContext session)
+        {
+            _session = session ?? throw new ArgumentNullException(nameof(session));
+        }
+
         public List<string> GetAllNames()
         {
-            using (var cn = new SqlConnection(ProcurementSession.SharedSecretsConnectionString))
+            using (var cn = new SqlConnection(_session.SharedSecretsConnectionString))
             {
                 return cn.Query<string>(
                     "SELECT [Name] FROM dbo.AppSecrets WHERE ApplicationName = @ApplicationName AND [Value] IS NOT NULL AND [Value] <> '' ORDER BY [Name]",
@@ -42,24 +54,24 @@ namespace Procurement.Data.Secrets
 
         /// <summary>
         /// Returns null if there's no row (or an empty value) — the caller decides whether that means
-        /// "not configured". Checks first that the current user (ProcurementSession.UserName) has an
+        /// "not configured". Checks first that the current user (the session's UserName) has an
         /// explicit CanRead=1 row in dbo.SecretAccess for this exact secret, and throws a clear
         /// UnauthorizedAccessException otherwise — same rule as UniPro, so a missing grant shows up
         /// as "no permission" instead of as a confusing "API key missing" further down.
         /// </summary>
         public string GetValue(string name)
         {
-            using (var cn = new SqlConnection(ProcurementSession.SharedSecretsConnectionString))
+            using (var cn = new SqlConnection(_session.SharedSecretsConnectionString))
             {
                 bool hasAccess = cn.Query<bool>(
                     @"SELECT CanRead FROM dbo.SecretAccess
                       WHERE ApplicationName = @ApplicationName AND SecretName = @Name AND UserName = @UserName",
-                    new { ApplicationName, Name = name, UserName = ProcurementSession.UserName }).FirstOrDefault();
+                    new { ApplicationName, Name = name, UserName = _session.UserName }).FirstOrDefault();
 
                 if (!hasAccess)
                 {
                     throw new UnauthorizedAccessException(
-                        $"Je account ({ProcurementSession.UserName}) heeft geen toestemming om de instelling '{name}' te " +
+                        $"Je account ({_session.UserName}) heeft geen toestemming om de instelling '{name}' te " +
                         "gebruiken. Vraag een beheerder om dit via Beheer > App Secrets toe te kennen.");
                 }
 
@@ -91,14 +103,14 @@ namespace Procurement.Data.Secrets
                 INSERT INTO dbo.AppSecrets (ApplicationName, [Name], [Value], ModifiedBy, ModificationDate)
                 VALUES (@ApplicationName, @Name, @Value, @ModifiedBy, GETDATE())";
 
-            using (var cn = new SqlConnection(ProcurementSession.SharedSecretsConnectionString))
+            using (var cn = new SqlConnection(_session.SharedSecretsConnectionString))
             {
                 cn.Execute(sql, new
                 {
                     ApplicationName,
                     Name = name,
                     Value = string.IsNullOrWhiteSpace(value) ? null : value.Trim(),
-                    ModifiedBy = ProcurementSession.UserName
+                    ModifiedBy = _session.UserName
                 });
             }
         }

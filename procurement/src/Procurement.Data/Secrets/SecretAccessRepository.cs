@@ -4,6 +4,7 @@ using System.Data.SqlClient;
 using System.Linq;
 using Dapper;
 using Procurement.Core.Models;
+using Procurement.Core.Interfaces;
 using Procurement.Core.Session;
 
 namespace Procurement.Data.Secrets
@@ -17,9 +18,20 @@ namespace Procurement.Data.Secrets
     {
         private const string ApplicationName = AppSecretsRepository.ApplicationName;
 
+        private readonly ISessionContext _session;
+
+        /// <summary>Desktop: reads the process-wide login (ProcurementSession).</summary>
+        public SecretAccessRepository() : this(new ProcurementSessionContext()) { }
+
+        /// <summary>Web: one session per logged-in user (web app plan, 18 nov 2026).</summary>
+        public SecretAccessRepository(ISessionContext session)
+        {
+            _session = session ?? throw new ArgumentNullException(nameof(session));
+        }
+
         public List<SecretAccessEntry> GetAll()
         {
-            using (var cn = new SqlConnection(ProcurementSession.SharedSecretsConnectionString))
+            using (var cn = new SqlConnection(_session.SharedSecretsConnectionString))
             {
                 return cn.Query<SecretAccessEntry>(
                     @"SELECT SecretName, UserName, CanRead, GrantedBy, GrantedDate
@@ -48,7 +60,7 @@ namespace Procurement.Data.Secrets
                 INSERT INTO dbo.SecretAccess (ApplicationName, SecretName, UserName, CanRead, GrantedBy, GrantedDate)
                 VALUES (@ApplicationName, @SecretName, @UserName, @CanRead, @GrantedBy, GETDATE())";
 
-            using (var cn = new SqlConnection(ProcurementSession.SharedSecretsConnectionString))
+            using (var cn = new SqlConnection(_session.SharedSecretsConnectionString))
             {
                 foreach (var entry in entries)
                 {
@@ -61,7 +73,7 @@ namespace Procurement.Data.Secrets
                         entry.SecretName,
                         UserName = entry.UserName.Trim(),
                         entry.CanRead,
-                        GrantedBy = ProcurementSession.UserName
+                        GrantedBy = _session.UserName
                     });
                 }
             }
@@ -91,7 +103,7 @@ namespace Procurement.Data.Secrets
 
         public void Delete(string secretName, string userName)
         {
-            using (var cn = new SqlConnection(ProcurementSession.SharedSecretsConnectionString))
+            using (var cn = new SqlConnection(_session.SharedSecretsConnectionString))
             {
                 cn.Execute(
                     @"DELETE FROM dbo.SecretAccess

@@ -310,13 +310,14 @@ namespace Procurement.UI.Forms
             var current = await _supplierRepository.GetByCodeAsync(supplierCode);
             if (current == null) return;
 
+            var secrets = new SecretSettings();
             DigiKeyOptions options;
             try
             {
                 options = new DigiKeyOptions
                 {
-                    ClientId = SecretSettings.DigiKeyClientId,
-                    ClientSecret = SecretSettings.DigiKeyClientSecret,
+                    ClientId = secrets.DigiKeyClientId,
+                    ClientSecret = secrets.DigiKeyClientSecret,
                     IsSandbox = current.IsSandbox
                 };
             }
@@ -348,7 +349,7 @@ namespace Procurement.UI.Forms
             {
                 var code = DigiKeyOrderingAuthorizer.ExtractAuthorizationCode(pasted, state);
                 var refreshToken = await authorizer.ExchangeAuthorizationCodeAsync(options, code);
-                SecretSettings.SaveDigiKeyRefreshToken(refreshToken);
+                secrets.SaveDigiKeyRefreshToken(refreshToken);
                 MessageBox.Show(this, "DigiKey Ordering is geautoriseerd. Herstart de applicatie om de nieuwe autorisatie te gebruiken.", "Gelukt", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (SupplierException ex)

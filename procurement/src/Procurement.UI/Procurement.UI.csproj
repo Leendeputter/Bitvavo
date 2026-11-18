@@ -51,6 +51,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Procurement.Services\Procurement.Services.csproj" />
     <ProjectReference Include="..\Procurement.Core\Procurement.Core.csproj" />
     <ProjectReference Include="..\Procurement.Data\Procurement.Data.csproj" />
     <ProjectReference Include="..\Procurement.Erp\Procurement.Erp.csproj" />

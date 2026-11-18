@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Shared application layer (web app plan, 18 nov 2026): builds the object graph for one login
+    and holds the screen logic that the desktop (Procurement.UI) and the web app (Procurement.Web)
+    both use. No WinForms and no ASP.NET in here.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>7.3</LangVersion>
+    <RootNamespace>Procurement.Services</RootNamespace>
+    <AssemblyName>Procurement.Services</AssemblyName>
+    <Nullable>disable</Nullable>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="System.Data" />
+  </ItemGroup>
+
+  <!-- Same packages and MAX50 references as Procurement.Erp/Procurement.UI, so a host that only
+       references this project (the web app) also gets the MAX DLLs copied into its bin. -->
+  <ItemGroup>
+    <PackageReference Include="NLog" Version="4.7.15" />
+    <PackageReference Include="Dapper" Version="1.40.0" />
+    <PackageReference Include="DapperExtensions" Version="1.4.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="MAXCore">
+      <HintPath>F:\Software\MAX\MAX Update\MAXUpdateNet VB.NET Sample Code\bin\MAXCore.dll</HintPath>
+    </Reference>
+    <Reference Include="MaxOrderNET">
+      <HintPath>F:\Software\MAX\MAX Update\MAXUpdateNet VB.NET Sample Code\bin\MaxOrderNET.dll</HintPath>
+    </Reference>
+    <Reference Include="MaxTransNET">
+      <HintPath>F:\Software\MAX\MAX Update\MAXUpdateNet VB.NET Sample Code\bin\MaxTransNET.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Procurement.Core\Procurement.Core.csproj" />
+    <ProjectReference Include="..\Procurement.Data\Procurement.Data.csproj" />
+    <ProjectReference Include="..\Procurement.Erp\Procurement.Erp.csproj" />
+    <ProjectReference Include="..\Procurement.Engine\Procurement.Engine.csproj" />
+    <ProjectReference Include="..\Procurement.Suppliers.DigiKey\Procurement.Suppliers.DigiKey.csproj" />
+    <ProjectReference Include="..\Procurement.Suppliers.Farnell\Procurement.Suppliers.Farnell.csproj" />
+    <ProjectReference Include="..\Procurement.Suppliers.Mouser\Procurement.Suppliers.Mouser.csproj" />
+    <ProjectReference Include="..\Procurement.Suppliers.TME\Procurement.Suppliers.TME.csproj" />
+    <ProjectReference Include="..\Procurement.Suppliers.Arrow\Procurement.Suppliers.Arrow.csproj" />
+    <ProjectReference Include="..\Procurement.Suppliers.Rutronik\Procurement.Suppliers.Rutronik.csproj" />
+    <ProjectReference Include="..\Procurement.Suppliers.Other\Procurement.Suppliers.Other.csproj" />
+  </ItemGroup>
+
+</Project>

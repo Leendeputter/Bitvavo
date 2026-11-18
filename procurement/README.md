@@ -133,6 +133,7 @@ src/
   Procurement.Suppliers.Other     Eén gedeelde mock-adapter voor Arrow/Rutronik/Avnet-Silica/Karl Kruse/RS Components/Distrelec/Conrad (nog geen bevestigde API)
   Procurement.Erp                 IErpConnector + MockErpConnector
   Procurement.Engine              ProcurementEngine: orkestreert sourcing/selectie/order
+  Procurement.Services            Gedeelde laag voor desktop en web: ProcurementServices bouwt alles voor één login
   Procurement.UI                  WinForms-app (startproject) — login, MAX-koppeling, security-stub
 tests/
   Procurement.Tests               xUnit-tests, inclusief de rekenvoorbeeld-casus uit spec §7
@@ -1689,3 +1690,13 @@ raken dat mock-modus zelf nooit aanraakt:
   op te tellen om de velden logisch te houden?"). Het extra aantal van een aangepaste Quantity staat nu
   in Overschot (Quantity = behoefte + extra uitval + overschot), maar telt niet mee als nadeel in de
   vergelijkingskosten: het is een bewuste keuze.
+- **18 nov 2026 — Web-variant, fase 1a: geen statische sessie meer in de gedeelde code** ("Kun je
+  starten met dit te bouwen?", plan van aanpak webapplicatie). De samenstelling die in
+  `Procurement.UI/Composition/CompositionRoot.cs` stond, zit nu als `ProcurementServices` in het nieuwe
+  project `Procurement.Services` en krijgt een `ISessionContext` mee. De desktop gebruikt hem via een
+  dunne `CompositionRoot` (zelfde gedrag als voorheen), de web-app straks één per gebruiker met
+  `UserSessionContext`. `ISessionContext` heeft er `SharedSecretsConnectionString` bij;
+  `AppSecretsRepository`, `SecretAccessRepository` en `SecretSettings` (nu een gewone klasse in plaats
+  van statisch) lezen de gebruiker en database uit die sessie. Voor de desktop verandert er niets.
+  Bouw-opmerking: het nieuwe project heet bewust niet `Procurement.Application`, want die naamruimte
+  zou `Application.Run` in de WinForms-code overschaduwen.

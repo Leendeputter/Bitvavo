@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Procurement.Core.Interfaces;
 
 namespace Procurement.Data.Secrets
 {
@@ -13,9 +14,24 @@ namespace Procurement.Data.Secrets
     /// RefreshTokenEncrypted columns (13 nov 2026). Those columns still exist but are no longer read,
     /// except once by LegacySupplierCredentialMigration.
     /// </summary>
-    public static class SecretSettings
+    /// <remarks>
+    /// Instance class since 18 nov 2026 (web app plan, phase 1): the desktop builds one per run,
+    /// the web app one per logged-in user, so the SecretAccess check always uses the right account.
+    /// Names and <see cref="Definitions"/> stay static.
+    /// </remarks>
+    public class SecretSettings
     {
-        private static readonly AppSecretsRepository _repo = new AppSecretsRepository();
+        private readonly AppSecretsRepository _repo;
+
+        /// <summary>Desktop: uses the process-wide login (ProcurementSession).</summary>
+        public SecretSettings() : this(new AppSecretsRepository()) { }
+
+        public SecretSettings(ISessionContext session) : this(new AppSecretsRepository(session)) { }
+
+        public SecretSettings(AppSecretsRepository repo)
+        {
+            _repo = repo ?? throw new System.ArgumentNullException(nameof(repo));
+        }
 
         // Secret names (dbo.AppSecrets.[Name]). Kept as constants so the App Secrets screen, the
         // legacy migration and the getters below can't drift apart.
@@ -50,23 +66,23 @@ namespace Procurement.Data.Secrets
             (RutronikApiKeyName, "Rutronik API Key", true),
         };
 
-        public static string DigiKeyClientId => GetSecret(DigiKeyClientIdName);
-        public static string DigiKeyClientSecret => GetSecret(DigiKeyClientSecretName);
+        public string DigiKeyClientId => GetSecret(DigiKeyClientIdName);
+        public string DigiKeyClientSecret => GetSecret(DigiKeyClientSecretName);
 
         // Rotates on (almost) every use and is written back to the database automatically.
-        public static string DigiKeyRefreshToken => GetSecret(DigiKeyRefreshTokenName);
+        public string DigiKeyRefreshToken => GetSecret(DigiKeyRefreshTokenName);
 
-        public static string FarnellApiKey => GetSecret(FarnellApiKeyName);
-        public static string MouserApiKey => GetSecret(MouserApiKeyName);
-        public static string TmeToken => GetSecret(TmeTokenName);
-        public static string TmeApiKey => GetSecret(TmeApiKeyName);
-        public static string ArrowClientId => GetSecret(ArrowClientIdName);
-        public static string ArrowClientSecret => GetSecret(ArrowClientSecretName);
-        public static string RutronikApiKey => GetSecret(RutronikApiKeyName);
+        public string FarnellApiKey => GetSecret(FarnellApiKeyName);
+        public string MouserApiKey => GetSecret(MouserApiKeyName);
+        public string TmeToken => GetSecret(TmeTokenName);
+        public string TmeApiKey => GetSecret(TmeApiKeyName);
+        public string ArrowClientId => GetSecret(ArrowClientIdName);
+        public string ArrowClientSecret => GetSecret(ArrowClientSecretName);
+        public string RutronikApiKey => GetSecret(RutronikApiKeyName);
 
         /// <summary>Called by DigiKeyHttpClientWrapper.OnRefreshTokenRotated and by "Authorize Ordering...".</summary>
-        public static void SaveDigiKeyRefreshToken(string refreshToken) => _repo.Set(DigiKeyRefreshTokenName, refreshToken);
+        public void SaveDigiKeyRefreshToken(string refreshToken) => _repo.Set(DigiKeyRefreshTokenName, refreshToken);
 
-        private static string GetSecret(string secretName) => _repo.GetValue(secretName);
+        private string GetSecret(string secretName) => _repo.GetValue(secretName);
     }
 }

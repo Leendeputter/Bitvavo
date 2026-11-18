@@ -60,12 +60,13 @@ namespace Procurement.Tools.DigiKeyOrderTester
                     Console.WriteLine("Geen Supplier-rij gevonden met SupplierCode 'DIGIKEY'.");
                     return 1;
                 }
+                var secrets = new SecretSettings();
                 string clientId, clientSecret, refreshToken;
                 try
                 {
-                    clientId = SecretSettings.DigiKeyClientId;
-                    clientSecret = SecretSettings.DigiKeyClientSecret;
-                    refreshToken = SecretSettings.DigiKeyRefreshToken;
+                    clientId = secrets.DigiKeyClientId;
+                    clientSecret = secrets.DigiKeyClientSecret;
+                    refreshToken = secrets.DigiKeyRefreshToken;
                 }
                 catch (UnauthorizedAccessException ex)
                 {
@@ -110,7 +111,7 @@ namespace Procurement.Tools.DigiKeyOrderTester
                         Console.WriteLine("Refresh-token is geroteerd tijdens deze aanroep, wordt teruggeschreven...");
                         try
                         {
-                            SecretSettings.SaveDigiKeyRefreshToken(newToken);
+                            secrets.SaveDigiKeyRefreshToken(newToken);
                         }
                         catch (Exception ex)
                         {

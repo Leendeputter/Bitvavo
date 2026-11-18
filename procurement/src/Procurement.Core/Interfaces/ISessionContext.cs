@@ -20,6 +20,9 @@ namespace Procurement.Core.Interfaces
 
         bool TestMode { get; }
 
+        /// <summary>SharedSecrets database (dbo.AppSecrets/dbo.SecretAccess), no "_test" suffix.</summary>
+        string SharedSecretsConnectionString { get; }
+
         // The four below are only needed to construct a MAX50 MaxOrderModule instance for writing
         // (MaxPurchaseOrderRepository) — LoginForm already resolves/caches all of them at login,
         // this just exposes them through the interface instead of the ISessionContext consumer
