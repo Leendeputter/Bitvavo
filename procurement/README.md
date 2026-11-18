@@ -1668,3 +1668,8 @@ raken dat mock-modus zelf nooit aanraakt:
   afgerond; bij een combinatie-offer worden reels en rest over de regels verdeeld
   (`OrderBundler.AllocateAcrossPools`, vroegste regel eerst, overschot op de vroegste regel). Nieuwe
   kolommen: weer het additieve upgrade-script bij het starten.
+- **18 nov 2026 — Opnieuw sourcen ook bij WaitingApproval** (na de eerste test van sourcen per artikel:
+  "Dat is voor mij nog niet helemaal logisch"). "Sourcing starten" sloeg aanvragen in WaitingApproval
+  over (om dubbele goedkeuringsverzoeken te voorkomen); dat is nu niet meer nodig, want opnieuw sourcen
+  vervangt offers en openstaande verzoeken. Een regel met een keuze blijft wel buiten een bundel: eerst
+  uitvinken, dan opnieuw sourcen.

@@ -790,7 +790,6 @@ namespace Procurement.UI.Forms
                 var waitingApproval = 0;
                 var exceptionCount = 0;
                 var failed = 0;
-                var skippedWaitingApproval = 0;
                 var skippedOrdered = 0;
 
                 for (var i = 0; i < requestIds.Count; i++)
@@ -798,12 +797,9 @@ namespace Procurement.UI.Forms
                     SetStatus($"Sourcing {i + 1}/{requestIds.Count}...");
                     try
                     {
-                        // Re-sourcing a request that's already WaitingApproval would re-run every line
-                        // that hasn't been decided on yet — SourceAndProcessLineAsync only skips a line
-                        // once it has a SupplierSelection, which a line awaiting approval doesn't have
-                        // yet, so it would get sourced again and end up with a second, duplicate
-                        // ApprovalRequest. Harmless to re-run for Pending (never sourced) or Exception
-                        // (worth retrying).
+                        // WaitingApproval is re-sourced too since 18 nov 2026: re-sourcing now replaces
+                        // the line's old offers and pending approval request (no duplicates anymore),
+                        // and sourcing per article needs it to rebuild a bundle.
                         //
                         // Ordered must be skipped outright, not just "harmless to re-run": every line on
                         // an Ordered request already has a SupplierSelection and no pending approval or
@@ -813,11 +809,6 @@ namespace Procurement.UI.Forms
                         // Ordered rows at all — before that they were never in the grid to select.
                         var current = await _composition.PurchaseRequestRepository.GetByIdAsync(requestIds[i]);
                         if (current == null) continue;
-                        if (current.Status == PurchaseRequestStatus.WaitingApproval)
-                        {
-                            skippedWaitingApproval++;
-                            continue;
-                        }
                         if (current.Status == PurchaseRequestStatus.Ordered)
                         {
                             skippedOrdered++;
@@ -839,7 +830,6 @@ namespace Procurement.UI.Forms
 
                 var summary = $"Sourcing klaar: {readyToOrder} klaar om te bestellen, {waitingApproval} wacht op goedkeuring, {exceptionCount} met fout";
                 if (failed > 0) summary += $", {failed} mislukt";
-                if (skippedWaitingApproval > 0) summary += $", {skippedWaitingApproval} overgeslagen (al in afwachting van goedkeuring)";
                 if (skippedOrdered > 0) summary += $", {skippedOrdered} overgeslagen (al besteld)";
                 SetStatus(summary + ".");
 
