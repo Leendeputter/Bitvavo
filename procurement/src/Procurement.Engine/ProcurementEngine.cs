@@ -124,6 +124,38 @@ namespace Procurement.Engine
         /// old OfferComparisonForm dialog's reason box, for a lower-friction pick. ReasonSummary still
         /// records who made the choice, just without a mandatory free-text justification attached.
         /// </summary>
+        /// <summary>
+        /// Sources a line (and its article group) again for a total quantity the user chose (offers
+        /// grid, 18 nov 2026), e.g. 25,000 instead of the 23,495 needed. Clears an existing choice of
+        /// the line's bundle first. Prices come fresh from the suppliers at the new quantity.
+        /// </summary>
+        public async Task ResourceLineWithQuantityAsync(int purchaseRequestLineId, int totalQuantity, string user)
+        {
+            if (totalQuantity <= 0)
+                throw new InvalidOperationException("Het aantal moet groter dan 0 zijn.");
+
+            var line = await GetLineAsync(purchaseRequestLineId);
+            if (await _purchaseOrderRepository.HasOrderForLineAsync(line.Id))
+                throw new InvalidOperationException("Deze regel is al besteld; het aantal kan niet meer aangepast worden.");
+
+            if (await _selectionRepository.GetByLineIdAsync(line.Id) != null)
+                await DeselectOfferAsync(line.Id, user);
+
+            var activeAdapters = await GetActiveAdaptersAsync();
+            var approvalPolicy = await _policyRepository.GetApprovalPolicyAsync()
+                ?? new ApprovalPolicy { MaxOrderValueForAutoApproval = 0, MaxPriceVariancePercentage = 0 };
+
+            _groupedThisRun.Clear();
+            var outcome = await SourceAndProcessLineAsync(line, activeAdapters, approvalPolicy, totalQuantity);
+
+            if (outcome == LineOutcome.PendingApproval)
+                await _purchaseRequestRepository.UpdateStatusAsync(line.PurchaseRequestId, PurchaseRequestStatus.WaitingApproval);
+            else if (outcome == LineOutcome.Exception)
+                await _purchaseRequestRepository.UpdateStatusAsync(line.PurchaseRequestId, PurchaseRequestStatus.Exception);
+            else
+                await RecomputeRequestStatusIfFullySelectedAsync(line.PurchaseRequestId);
+        }
+
         public async Task SelectOfferManuallyAsync(int purchaseRequestLineId, int selectedOfferId, string reason, string user)
         {
             var offer = await _offerRepository.GetByIdAsync(selectedOfferId);
@@ -313,7 +345,8 @@ namespace Procurement.Engine
         }
 
         private async Task<LineOutcome> SourceAndProcessLineAsync(
-            PurchaseRequestLine line, IReadOnlyList<ISupplierAdapter> activeAdapters, ApprovalPolicy approvalPolicy)
+            PurchaseRequestLine line, IReadOnlyList<ISupplierAdapter> activeAdapters, ApprovalPolicy approvalPolicy,
+            int? totalQuantityOverride = null)
         {
             // A line that already has a SupplierSelection was already sourced, selected and (at
             // least attempted to be) ordered — either automatically or via manual approval/
@@ -356,6 +389,14 @@ namespace Procurement.Engine
             var attritionPerLine = group.ToDictionary(l => l.Id, l => AttritionCalculator.CalculateExtra(l.RequestedQuantity, attritionRule));
             var totalRequested = group.Sum(l => l.RequestedQuantity);
             var totalAttrition = attritionPerLine.Values.Sum();
+
+            // A quantity the user typed on an offer (18 nov 2026: "Wat nu als ik besluit om er 25000
+            // stuks te willen bestellen"): the total to source for, never below the actual need. The
+            // extra counts as planned, not as surplus.
+            var neededTotal = Math.Max(totalRequested + totalAttrition, totalQuantityOverride ?? 0);
+            if (totalQuantityOverride.HasValue)
+                await _auditLogger.LogAsync("PurchaseRequestLine", line.Id.ToString(), "QUANTITY_OVERRIDE", "Success",
+                    responsePayload: $"Requested={totalQuantityOverride}; Need={totalRequested + totalAttrition}; Used={neededTotal}");
             await _auditLogger.LogAsync("PurchaseRequestLine", line.Id.ToString(), "PACKAGING_POLICY_RESOLVED", "Success",
                 responsePayload: $"Type={classification?.ComponentType ?? "-"}; Category={classification?.Category ?? "-"}; " +
                                  $"Policy={packagingPolicy?.ComponentCategory ?? "-"}; MaxUnitCost={maxUnitCost?.ToString() ?? "-"}; " +
@@ -383,7 +424,7 @@ namespace Procurement.Engine
                 try
                 {
                     templates.AddRange(await BuildOffersAsync(adapter, line, kvp.Value.SupplierPartNumber, kvp.Value.Confidence,
-                        packagingPolicy, totalRequested, totalAttrition, maxUnitCost));
+                        packagingPolicy, totalRequested, neededTotal - totalRequested, maxUnitCost));
                 }
                 catch (SupplierException ex)
                 {
@@ -406,11 +447,11 @@ namespace Procurement.Engine
             // Every line gets its own copy of the group's offers (same quantities and prices, its own
             // requested quantity and attrition), linked by BundleKey: choosing, approving and ordering
             // one line of the bundle does the same for the others.
-            var bundleKey = group.Count > 1 ? Guid.NewGuid().ToString("N") : null;
+            var bundleKey = group.Count > 1 || totalQuantityOverride.HasValue ? Guid.NewGuid().ToString("N") : null;
             var copiesPerLine = new Dictionary<int, List<SupplierOffer>>();
             foreach (var member in group)
             {
-                var copies = templates.Select(t => CopyForLine(t, member, attritionPerLine[member.Id], bundleKey, group.Count, totalRequested + totalAttrition)).ToList();
+                var copies = templates.Select(t => CopyForLine(t, member, attritionPerLine[member.Id], bundleKey, group.Count, neededTotal)).ToList();
                 copiesPerLine[member.Id] = copies;
             }
             await _offerRepository.AddRangeAsync(copiesPerLine.Values.SelectMany(c => c).ToList());
@@ -434,7 +475,7 @@ namespace Procurement.Engine
             var selectedIndex = templates.IndexOf(selectionResult.SelectedOffer);
             var selected = selectionResult.SelectedOffer;
             var reasonSummary = group.Count > 1
-                ? $"{selectionResult.ReasonSummary} (samen gesourced met {group.Count - 1} andere regel(s) van dit artikel, totaal {totalRequested + totalAttrition} nodig)"
+                ? $"{selectionResult.ReasonSummary} (samen gesourced met {group.Count - 1} andere regel(s) van dit artikel, totaal {neededTotal} nodig)"
                 : selectionResult.ReasonSummary;
 
             var preference = await _policyRepository.GetSupplierPreferenceAsync(selected.SupplierCode);
@@ -1025,6 +1066,12 @@ namespace Procurement.Engine
                     // Each line's own attrition extra (17 nov 2026) is part of what it needs, before the
                     // bundle is rounded to MOQ/reel once.
                     members.Select(i => i.Line.RequestedQuantity + i.Offer.AttritionQuantity).ToList(), earliestIndex: 0, orderMultiple, minimumOrderQuantity);
+
+                // Never less than the offer itself says (a quantity the user raised on the offer,
+                // 18 nov 2026): the difference goes to the earliest line, like rounding surplus.
+                var offerFloor = members.Where(i => !string.IsNullOrEmpty(i.Offer.BundleKey)).Select(i => i.Offer.OfferedQuantity).DefaultIfEmpty(0).Max();
+                if (offerFloor > quantities.Sum())
+                    quantities[0] += offerFloor - quantities.Sum();
 
                 for (var n = 0; n < members.Count; n++)
                 {

@@ -55,6 +55,9 @@ namespace Procurement.UI.Forms
             EnableRowNumberHeaders(dgv_requests);
             EnableRowNumberHeaders(dgv_offers);
 
+            // Quantity on an offer is editable (18 nov 2026); accept "25.000" as well as "25000".
+            dgv_offers.CellParsing += OffersGrid_CellParsing;
+
             // ShellForm carries "Component Procurement" with company/user; this MDI child just gets its screen name.
             Text = "Purchase Requests" + (_composition.Session.TestMode ? " – TEST MODE" : string.Empty);
 
@@ -108,7 +111,8 @@ namespace Procurement.UI.Forms
         // Standard WinForms trick for a checkbox column: commit on click, so CellValueChanged fires right away.
         private void dgv_offers_CurrentCellDirtyStateChanged(object sender, EventArgs e)
         {
-            if (dgv_offers.IsCurrentCellDirty)
+            // Only the checkbox commits immediately; the quantity cell commits when editing ends.
+            if (dgv_offers.IsCurrentCellDirty && dgv_offers.CurrentCell?.OwningColumn?.Name == "Select")
                 dgv_offers.CommitEdit(DataGridViewDataErrorContexts.Commit);
         }
 
@@ -593,7 +597,8 @@ namespace Procurement.UI.Forms
                 AttritionQuantity = o.AttritionQuantity,
                 SurplusQuantity = o.SurplusQuantity,
                 // Sourcing per article (18 nov 2026): quantities are for all lines of the bundle together.
-                Bundle = o.BundleLineCount > 1 ? $"{o.BundleLineCount} regels, {o.BundleNeededQuantity:N0} nodig" : string.Empty,
+                Bundle = o.BundleLineCount > 1 ? $"{o.BundleLineCount} regels, totaal {o.BundleNeededQuantity:N0}"
+                    : o.BundleNeededQuantity > 0 ? $"totaal {o.BundleNeededQuantity:N0}" : string.Empty,
                 UnitPrice = o.UnitPrice,
                 Currency = o.Currency,
                 Packaging = o.IsCombination ? o.Composition : o.PackagingType.ToString(),
@@ -616,7 +621,7 @@ namespace Procurement.UI.Forms
             SetHeaderText(dgv_offers, "LandedCost", "Landed Cost");
             // Packaging per component type (17 nov 2026): each packaging variant is its own row; the
             // selection compares "Vergelijkingskosten" = landed cost + the surplus penalty.
-            SetHeaderText(dgv_offers, "AttritionQuantity", "Extra uitval (deze regel)");
+            SetHeaderText(dgv_offers, "AttritionQuantity", "Extra uitval");
             SetHeaderText(dgv_offers, "SurplusQuantity", "Overschot");
             SetHeaderText(dgv_offers, "Bundle", "Bundel");
             SetHeaderText(dgv_offers, "ReelingFee", "Reeling Fee");
@@ -635,7 +640,7 @@ namespace Procurement.UI.Forms
             SetCharacterBasedColumnWidth(dgv_offers, "SupplierPartNumber", 32);
             SetCharacterBasedColumnWidth(dgv_offers, "MatchConfidence", 10);
             SetCharacterBasedColumnWidth(dgv_offers, "OfferedQuantity", 10);
-            SetCharacterBasedColumnWidth(dgv_offers, "AttritionQuantity", 22);
+            SetCharacterBasedColumnWidth(dgv_offers, "AttritionQuantity", 12);
             SetCharacterBasedColumnWidth(dgv_offers, "SurplusQuantity", 10);
             SetCharacterBasedColumnWidth(dgv_offers, "Bundle", 22);
             SetCharacterBasedColumnWidth(dgv_offers, "UnitPrice", 12);
@@ -649,9 +654,9 @@ namespace Procurement.UI.Forms
             SetCharacterBasedColumnWidth(dgv_offers, "AvailableQuantity", 12);
             SetCharacterBasedColumnWidth(dgv_offers, "DueDate", 12);
 
-            // Enkel "Select" mag bewerkt worden — zie de ReadOnly=false op de grid zelf.
+            // Enkel "Select" en het aantal (18 nov 2026) mogen bewerkt worden — zie de ReadOnly=false op de grid zelf.
             foreach (DataGridViewColumn column in dgv_offers.Columns)
-                column.ReadOnly = column.Name != "Select";
+                column.ReadOnly = column.Name != "Select" && column.Name != "OfferedQuantity";
         }
 
         /// <summary>
@@ -693,9 +698,65 @@ namespace Procurement.UI.Forms
         /// springt dan terug van ReadyToOrder naar Sourcing). Uitvinken van een andere (niet eerder
         /// gekozen) regel kan niet gebeuren — die stond al uit — dus die tak wordt nooit bereikt.
         /// </summary>
+        private void OffersGrid_CellParsing(object sender, DataGridViewCellParsingEventArgs e)
+        {
+            if (dgv_offers.Columns[e.ColumnIndex].Name != "OfferedQuantity" || e.Value == null) return;
+            if (decimal.TryParse(e.Value.ToString(), System.Globalization.NumberStyles.Number,
+                    System.Globalization.CultureInfo.CurrentCulture, out var parsed) && parsed > 0 && parsed <= int.MaxValue)
+            {
+                e.Value = (int)Math.Ceiling(parsed);
+                e.ParsingApplied = true;
+            }
+        }
+
+        /// <summary>
+        /// A different quantity typed on an offer (user, 18 nov 2026: "Wat nu als ik besluit om er
+        /// 25000 stuks te willen bestellen") sources the line and its article bundle again for that
+        /// total: fresh prices at the new quantity, a new comparison, and a new choice/approval.
+        /// </summary>
+        private async System.Threading.Tasks.Task OffersGrid_QuantityChangedAsync(DataGridViewCellEventArgs e)
+        {
+            if (_currentLineId == null) return;
+            var newQuantity = (int)dgv_offers.Rows[e.RowIndex].Cells["OfferedQuantity"].Value;
+
+            var answer = MessageBox.Show(this,
+                $"Opnieuw sourcen voor een totaal van {newQuantity:N0} stuks?\n\n" +
+                "Alle offers van deze regel (en van de andere regels in de bundel) worden opnieuw opgehaald voor dat aantal; " +
+                "een bestaande keuze of goedkeuring vervalt.",
+                "Aantal aanpassen", MessageBoxButtons.OKCancel, MessageBoxIcon.Question);
+            if (answer != DialogResult.OK)
+            {
+                await LoadLocalRequestsAsync();
+                return;
+            }
+
+            try
+            {
+                SetBusy(true);
+                SetStatus($"Opnieuw sourcen voor {newQuantity:N0} stuks...");
+                await _composition.Engine.ResourceLineWithQuantityAsync(_currentLineId.Value, newQuantity, _composition.Session.UserName);
+                SetStatus($"Opnieuw gesourced voor {newQuantity:N0} stuks.");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message, "Fout bij aanpassen van het aantal", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                await LoadLocalRequestsAsync();
+                SetBusy(false);
+            }
+        }
+
         private async System.Threading.Tasks.Task OffersGrid_CellValueChangedAsync(DataGridViewCellEventArgs e)
         {
-            if (e.RowIndex < 0 || dgv_offers.Columns[e.ColumnIndex].Name != "Select") return;
+            if (e.RowIndex < 0) return;
+            if (dgv_offers.Columns[e.ColumnIndex].Name == "OfferedQuantity")
+            {
+                await OffersGrid_QuantityChangedAsync(e);
+                return;
+            }
+            if (dgv_offers.Columns[e.ColumnIndex].Name != "Select") return;
             if (_currentLineId == null) return;
 
             var row = dgv_offers.Rows[e.RowIndex];

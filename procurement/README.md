@@ -1677,3 +1677,11 @@ raken dat mock-modus zelf nooit aanraakt:
   heeft geen reels waar er 23495 oppassen, dus dit kan helemaal niet"). Is de behoefte minstens een volle
   reel van die leverancier, dan komen ReReel en CutTape niet meer als los offer; ze blijven wel de rest
   van een combinatie-offer.
+- **18 nov 2026 — Aantal aanpassen op een offer** ("Wat nu als ik besluit om er 25000 stuks te willen
+  bestellen. Kan ik dan ergens de aantallen aanpassen van de offers?"). De kolom Quantity in het
+  offers-grid is bewerkbaar. Na bevestiging sourcet `ProcurementEngine.ResourceLineWithQuantityAsync` de
+  regel en zijn bundel opnieuw voor dat totaal (nooit minder dan de echte behoefte): verse prijzen bij
+  dat aantal, nieuwe vergelijking, en een bestaande keuze/goedkeuring vervalt. Het extra aantal telt als
+  gepland, niet als overschot. Bij bestellen wordt nooit minder besteld dan het offer aangeeft; het
+  verschil komt op de vroegste regel. Kolom "Bundel" toont nu "8 regels, totaal 25.000". De hernoeming
+  naar "Extra uitval (deze regel)" is teruggedraaid ("de benaming Extra uitval volstaat").
