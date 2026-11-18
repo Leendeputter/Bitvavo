@@ -616,7 +616,7 @@ namespace Procurement.UI.Forms
             SetHeaderText(dgv_offers, "LandedCost", "Landed Cost");
             // Packaging per component type (17 nov 2026): each packaging variant is its own row; the
             // selection compares "Vergelijkingskosten" = landed cost + the surplus penalty.
-            SetHeaderText(dgv_offers, "AttritionQuantity", "Extra uitval");
+            SetHeaderText(dgv_offers, "AttritionQuantity", "Extra uitval (deze regel)");
             SetHeaderText(dgv_offers, "SurplusQuantity", "Overschot");
             SetHeaderText(dgv_offers, "Bundle", "Bundel");
             SetHeaderText(dgv_offers, "ReelingFee", "Reeling Fee");
@@ -635,7 +635,7 @@ namespace Procurement.UI.Forms
             SetCharacterBasedColumnWidth(dgv_offers, "SupplierPartNumber", 32);
             SetCharacterBasedColumnWidth(dgv_offers, "MatchConfidence", 10);
             SetCharacterBasedColumnWidth(dgv_offers, "OfferedQuantity", 10);
-            SetCharacterBasedColumnWidth(dgv_offers, "AttritionQuantity", 12);
+            SetCharacterBasedColumnWidth(dgv_offers, "AttritionQuantity", 22);
             SetCharacterBasedColumnWidth(dgv_offers, "SurplusQuantity", 10);
             SetCharacterBasedColumnWidth(dgv_offers, "Bundle", 22);
             SetCharacterBasedColumnWidth(dgv_offers, "UnitPrice", 12);
