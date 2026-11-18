@@ -198,6 +198,8 @@ namespace Procurement.Erp
                             PurchaseRequestLineId = bundleLines[0].PurchaseRequestLineId,
                             SupplierPartNumber = bundle.Key,
                             Quantity = bundleLines.Sum(l => l.Quantity),
+                            // Earliest requested date of the bundle (user's choice, 18 nov 2026).
+                            RequestedDeliveryDate = bundleLines.Where(l => l.RequestedDeliveryDate.HasValue).Select(l => l.RequestedDeliveryDate).Min(),
                             UnitPrice = bundleLines[0].UnitPrice,
                             LineTotal = bundleLines.Sum(l => l.LineTotal)
                         };
@@ -211,7 +213,10 @@ namespace Procurement.Erp
                         // MAX's own function, not this app's own date math — see the class comment.
                         // Earliest required date of the bundle (its first line).
                         var mrpDueDate = requestLine.RequiredDate ?? DateTime.Now;
-                        var poDueDate = await _maxOrderRepository.CalculatePoDueDateAsync(mrpDueDate, requestLine.ErpArticleId);
+                        // A delivery date the user chose on the offer (18 nov 2026) is the PO due date
+                        // as-is: it already says when the goods should arrive.
+                        var poDueDate = draftLine.RequestedDeliveryDate
+                            ?? await _maxOrderRepository.CalculatePoDueDateAsync(mrpDueDate, requestLine.ErpArticleId);
 
                         var isFirstLine = erpPoNumber == null;
                         var poLine = BuildPurchaseOrderLine(supplier.VendorId, requestLine, draftLine, partInfo, poDueDate, erpPoNumber, lineNumber, isFirstLine, _session.UserName);

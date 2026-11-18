@@ -1689,3 +1689,10 @@ raken dat mock-modus zelf nooit aanraakt:
   op te tellen om de velden logisch te houden?"). Het extra aantal van een aangepaste Quantity staat nu
   in Overschot (Quantity = behoefte + extra uitval + overschot), maar telt niet mee als nadeel in de
   vergelijkingskosten: het is een bewuste keuze.
+- **18 nov 2026 — Gewenste leverdatum** ("Is het ook mogelijk om de leverdatum nog aan te passen in het
+  offer? Als een item op voorraad is bij de supplier wil ik het niet altijd direct binnen krijgen").
+  Bewerkbare kolom "Gewenste leverdatum" in het offers-grid; geldt voor de regel en zijn hele bundel
+  (`SupplierOffer.RequestedDeliveryDate`, leeg = geen voorkeur). Bij bestellen wordt die datum de due
+  date van de MAX PO-regel (in plaats van wat MAX afleidt uit de behoeftedatum). Komt níet bij DigiKey
+  aan: Ordering v3 heeft per regel alleen part number, aantal en prijs, dus DigiKey verzendt direct.
+  Andere leveranciers bestellen nog handmatig. Nieuwe kolom: weer het additieve upgrade-script.

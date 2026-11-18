@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Data.Entity;
 using System.Linq;
@@ -71,6 +72,17 @@ namespace Procurement.Data.Repositories
                 .Where(o => o.BundleKey == bundleKey)
                 .ToListAsync();
             return result;
+        });
+
+        /// <summary>Sets the requested delivery date on every offer of these lines (one line, or a whole bundle).</summary>
+        public Task SetRequestedDeliveryDateAsync(IReadOnlyCollection<int> purchaseRequestLineIds, DateTime? date) => _context.RunGuardedAsync(async () =>
+        {
+            var offers = await _context.SupplierOffers
+                .Where(o => purchaseRequestLineIds.Contains(o.PurchaseRequestLineId))
+                .ToListAsync();
+            foreach (var offer in offers)
+                offer.RequestedDeliveryDate = date;
+            await _context.SaveChangesAsync();
         });
 
         public Task<SupplierOffer> GetByIdAsync(int id) => _context.RunGuardedAsync(() =>
