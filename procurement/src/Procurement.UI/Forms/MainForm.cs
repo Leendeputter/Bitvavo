@@ -9,6 +9,7 @@ using Procurement.Core.Entities;
 using Procurement.Core.Enums;
 using Procurement.Erp;
 using Procurement.Suppliers.Farnell;
+using Procurement.Services.PurchaseRequests;
 using Procurement.UI.Composition;
 using static Procurement.UI.Support.GridFormatting;
 using Procurement.UI.Support;
@@ -24,6 +25,9 @@ namespace Procurement.UI.Forms
     public partial class MainForm : Form
     {
         private readonly CompositionRoot _composition;
+
+        // Screen logic shared with the web app (18 nov 2026): filtering, rows, sourcing, choosing.
+        private readonly PurchaseRequestScreenService _screen;
 
         // The one PurchaseRequestLine the offers grid currently shows — set whenever
         // LoadOffersForSelectedRequestAsync (re)loads, read when a "Select" checkbox is ticked.
@@ -49,6 +53,7 @@ namespace Procurement.UI.Forms
         public MainForm(CompositionRoot composition)
         {
             _composition = composition ?? throw new ArgumentNullException(nameof(composition));
+            _screen = new PurchaseRequestScreenService(_composition);
             InitializeComponent();
             ClassicStyle.ApplyClassicStyle(this);
             this.BackColor = ClassicStyle.ClassicScreenBackColor;
@@ -67,8 +72,8 @@ namespace Procurement.UI.Forms
             _requestStatusCheckBoxes[PurchaseRequestStatus.ReadyToOrder] = chk_statusReadyToOrder;
             _requestStatusCheckBoxes[PurchaseRequestStatus.Exception] = chk_statusException;
 
-            // MAX Order_Master.STATUS_10 filter (1 = Planned, 2 = Approved; default only Approved).
-            UpdateIncludedOrderStatuses();
+            // MAX Order_Master.STATUS_10 filter (1 = Planned, 2 = Approved; default only Approved) is
+            // read from the checkboxes on every Query (BuildFilter).
             cb_rangeField.SelectedIndex = 0;
 
             // Ordering switched off in App.config (Ordering.Enabled): search/select only.
@@ -136,13 +141,19 @@ namespace Procurement.UI.Forms
             }
         }
 
-        private void UpdateIncludedOrderStatuses()
+        /// <summary>The filter boxes as plain data for <see cref="PurchaseRequestScreenService"/>.</summary>
+        private RequestListFilter BuildFilter() => new RequestListFilter
         {
-            var statuses = new HashSet<string>();
-            if (chk_statusPlanned.Checked) statuses.Add("1");
-            if (chk_statusApproved.Checked) statuses.Add("2");
-            _composition.ErpConnector.IncludedOrderStatuses = statuses;
-        }
+            Statuses = GetCheckedRequestStatuses(),
+            IncludePlanned = chk_statusPlanned.Checked,
+            IncludeApproved = chk_statusApproved.Checked,
+            DueDateStart = chk_dueDateEnable.Checked ? dtp_dueDateStart.Value.Date : (DateTime?)null,
+            DueDateEnd = chk_dueDateEnable.Checked ? dtp_dueDateEnd.Value.Date : (DateTime?)null,
+            RangeField = GetSelectedRangeField(),
+            RangeStart = txt_rangeStart.Text,
+            RangeEnd = txt_rangeEnd.Text,
+            ShowTestRequests = chk_showTestRequests.Checked
+        };
 
         /// <summary>
         /// Laadt enkel de al lokaal gesynchroniseerde aanvragen — raakt MAX niet aan. Gefilterd op de
@@ -158,111 +169,20 @@ namespace Procurement.UI.Forms
         private async System.Threading.Tasks.Task LoadLocalRequestsAsync()
         {
             SetStatus("Aanvragen laden...");
-            var statuses = GetCheckedRequestStatuses();
-            var allRequests = await _composition.PurchaseRequestRepository.GetAllAsync();
-            var requests = ApplyRangeAndDueDateFilters(allRequests.Where(r => statuses.Contains(r.Status)))
-                .Where(r => chk_showTestRequests.Checked || !IsManualTestRequest(r.ErpRequestNumber))
-                .ToList();
-            await PopulateRequestsGrid(requests);
-            SetStatus($"{requests.Count} aanvraag/aanvragen getoond (statusfilter).");
+            var result = await _screen.LoadLocalAsync(BuildFilter());
+            PopulateRequestsGrid(result.Rows);
+            SetStatus(result.StatusText);
             await LoadOffersForSelectedRequestAsync();
         }
 
-        /// <summary>
-        /// Client-side herbouw van het Due Date Range/Select By-filter dat ApplyFiltersToErpConnector
-        /// op MAX-niveau doorgeeft aan MaxOrderRepository.GetOpenOrdersAsync — nodig omdat
-        /// LoadLocalRequestsAsync (anders dan RefreshRequestsAsync/"Query") nooit MAX raakt, dus moet
-        /// hetzelfde filter hier lokaal nagebootst worden, anders verdwijnt het zodra een
-        /// "Weergeven"-checkbox wordt omgezet. Handmatige testaanvragen ("TEST-"-prefix) slaan dit
-        /// filter altijd over, consistent met GetOpenPurchaseRequestsAsync's eigen
-        /// IsManualTestRequest-uitzondering.
-        /// </summary>
-        private IReadOnlyList<PurchaseRequest> ApplyRangeAndDueDateFilters(IEnumerable<PurchaseRequest> requests)
-        {
-            IEnumerable<PurchaseRequest> result = requests.ToList();
-
-            if (chk_dueDateEnable.Checked)
-            {
-                var start = dtp_dueDateStart.Value.Date;
-                var end = dtp_dueDateEnd.Value.Date;
-                result = result.Where(r => IsManualTestRequest(r.ErpRequestNumber) ||
-                    (r.RequiredDate.HasValue && r.RequiredDate.Value.Date >= start && r.RequiredDate.Value.Date <= end));
-            }
-
-            var rangeStart = txt_rangeStart.Text.Trim();
-            var rangeEnd = txt_rangeEnd.Text.Trim();
-            if (!string.IsNullOrEmpty(rangeStart) || !string.IsNullOrEmpty(rangeEnd))
-            {
-                var field = GetSelectedRangeField();
-                result = result.Where(r => IsManualTestRequest(r.ErpRequestNumber) || MatchesRange(r, field, rangeStart, rangeEnd));
-            }
-
-            return result.ToList();
-        }
-
-        private static bool IsManualTestRequest(string erpRequestNumber) =>
-            !string.IsNullOrEmpty(erpRequestNumber) && erpRequestNumber.StartsWith("TEST-", StringComparison.Ordinal);
-
-        private static bool MatchesRange(PurchaseRequest request, MaxOrderRangeField field, string rangeStart, string rangeEnd)
-        {
-            string value;
-            switch (field)
-            {
-                case MaxOrderRangeField.Part:
-                    value = request.Lines?.FirstOrDefault()?.ErpArticleId;
-                    break;
-                case MaxOrderRangeField.Customer:
-                    value = request.Lines?.FirstOrDefault()?.Customer;
-                    break;
-                default:
-                    value = request.ErpRequestNumber;
-                    break;
-            }
-
-            if (string.IsNullOrEmpty(value)) return false;
-            if (!string.IsNullOrEmpty(rangeStart) && string.CompareOrdinal(value, rangeStart) < 0) return false;
-            if (!string.IsNullOrEmpty(rangeEnd) && string.CompareOrdinal(value, rangeEnd) > 0) return false;
-            return true;
-        }
-
-        /// <summary>Vraagt open orders op uit MAX (Order_Master/Part_Master, incl. Part_Vendor-mapping sync) met de huidige filterinstellingen, en synchroniseert ze naar lokale aanvragen — enkel aangeroepen via de "Query"-knop.</summary>
+        /// <summary>Vraagt open orders op uit MAX met de huidige filterinstellingen en synchroniseert ze naar lokale aanvragen — enkel via de "Query"-knop.</summary>
         private async System.Threading.Tasks.Task RefreshRequestsAsync()
         {
             SetStatus("Orders opvragen uit MAX...");
-            ApplyFiltersToErpConnector();
-            var requests = await _composition.Engine.GetOpenPurchaseRequestsAsync();
-            // Dezelfde "Weergeven"-statusfilter als LoadLocalRequestsAsync, voor consistent gedrag
-            // ongeacht hoe het grid gevuld werd. Ordered zou hier toch nooit iets opleveren, ook los
-            // van het ontbreken van een checkbox ervoor (zie BuildRequestStatusFilterGroup):
-            // GetOpenPurchaseRequestsAsync synchroniseert MAX-orders en geeft enkel nog-openstaande
-            // aanvragen terug (Query = "wat moet er nog gesourced worden") — een al bestelde aanvraag
-            // bekijk je voortaan via het aparte "Orders..."-scherm.
-            var statuses = GetCheckedRequestStatuses();
-            var filteredRequests = requests.Where(r => statuses.Contains(r.Status))
-                .Where(r => chk_showTestRequests.Checked || !IsManualTestRequest(r.ErpRequestNumber))
-                .ToList();
-            await PopulateRequestsGrid(filteredRequests);
-            // Toont ook hoeveel orders de MAX-query zelf teruggaf (voor het filter toepassen op de
-            // lokale lijst) — handig om te zien of een filter al op MAX-niveau iets doet, los van
-            // hoeveel er uiteindelijk in de grid staan.
-            SetStatus($"{filteredRequests.Count} aanvraag/aanvragen getoond ({_composition.ErpConnector.LastMaxOrderCount} orders uit MAX opgehaald met huidig filter).");
+            var result = await _screen.QueryMaxAsync(BuildFilter());
+            PopulateRequestsGrid(result.Rows);
+            SetStatus(result.StatusText);
             await LoadOffersForSelectedRequestAsync();
-        }
-
-        private void ApplyFiltersToErpConnector()
-        {
-            UpdateIncludedOrderStatuses();
-
-            _composition.ErpConnector.DueDateFilterStart = chk_dueDateEnable.Checked ? dtp_dueDateStart.Value.Date : (DateTime?)null;
-            _composition.ErpConnector.DueDateFilterEnd = chk_dueDateEnable.Checked ? dtp_dueDateEnd.Value.Date : (DateTime?)null;
-
-            var rangeStart = txt_rangeStart.Text.Trim();
-            var rangeEnd = txt_rangeEnd.Text.Trim();
-            var hasRange = !string.IsNullOrEmpty(rangeStart) || !string.IsNullOrEmpty(rangeEnd);
-
-            _composition.ErpConnector.RangeFilterField = hasRange ? GetSelectedRangeField() : (MaxOrderRangeField?)null;
-            _composition.ErpConnector.RangeFilterStart = string.IsNullOrEmpty(rangeStart) ? null : rangeStart;
-            _composition.ErpConnector.RangeFilterEnd = string.IsNullOrEmpty(rangeEnd) ? null : rangeEnd;
         }
 
         private MaxOrderRangeField GetSelectedRangeField()
@@ -291,79 +211,9 @@ namespace Procurement.UI.Forms
             }
         }
 
-        private async System.Threading.Tasks.Task PopulateRequestsGrid(IReadOnlyList<PurchaseRequest> requests)
+        /// <summary>Rows come from PurchaseRequestScreenService.BuildRowsAsync; this only binds and formats.</summary>
+        private void PopulateRequestsGrid(IReadOnlyList<RequestRow> rows)
         {
-            // Kolomvolgorde/-namen op verzoek: Order, Workflow, Status, Firm, Type, PartID, Rev,
-            // Desc1, Desc2, Quantity, Cost, Cnv, DueDate, Reference, Manufacturing Part, Customer,
-            // StockID, dan de gekozen-offerte-kolommen — Order/Status/etc. zoals in de MAX
-            // Order_Master/Part_Master-query, Workflow bewust vooraan (naast Order) i.p.v. achteraan
-            // zodat je in één oogopslag ziet waar een aanvraag staat zonder helemaal naar rechts te
-            // hoeven scrollen. Elke MAX-order sync't naar precies één PurchaseRequestLine (zie
-            // MaxErpConnector), dus de eerste regel volstaat hier; handmatige testaanvragen hebben
-            // ook altijd precies één regel.
-            var selectionsByLineId = await GetSelectionsByLineIdAsync(requests.Select(r => r.Lines.FirstOrDefault()?.Id));
-            var poDueDatesByKey = await GetPoDueDatesByKeyAsync(requests.Select(r => r.Lines.FirstOrDefault()));
-            var preferredVendorIdsByPartId = await _composition.MaxOrderRepository.GetPreferredVendorIdsByPartIdsAsync(
-                requests.Select(r => r.Lines.FirstOrDefault()?.ErpArticleId).Where(p => !string.IsNullOrEmpty(p)).ToList());
-
-            var rows = requests
-                .Select(r =>
-                {
-                    var line = r.Lines.FirstOrDefault();
-                    var selection = line != null && selectionsByLineId.TryGetValue(line.Id, out var s) ? s : null;
-                    var selectedOffer = selection?.SelectedOffer;
-                    return new
-                    {
-                        Id = r.Id,
-                        Order = r.ErpRequestNumber,
-                        // Niet uit de MAX-query — dit is dit prototype's eigen workflow-status
-                        // (Pending/Sourcing/WaitingApproval/ReadyToOrder/Ordered/Exception), los van
-                        // de ruwe MAX Order_Master.STATUS_10 die in de "Status"-kolom staat.
-                        Workflow = r.Status.ToString(),
-                        Status = r.MaxOrderStatus,
-                        Firm = line?.Firm ?? false,
-                        Type = line?.PartType,
-                        PartID = line?.ErpArticleId,
-                        Rev = line?.Revision,
-                        Desc1 = line?.Desc1,
-                        Desc2 = line?.Desc2,
-                        Quantity = line?.RequestedQuantity ?? 0,
-                        Cost = line?.Cost,
-                        Cnv = line?.CostConv,
-                        // Blank (null) rather than 0 or an exception when Cost/CostConv niet allebei
-                        // bekend zijn of CostConv 0 is — anders zou een deling door nul of een
-                        // stille 0-waarde een verkeerde indruk geven.
-                        ExtCost = ComputeExtCost(line?.RequestedQuantity ?? 0, line?.Cost, line?.CostConv),
-                        DueDate = r.RequiredDate,
-                        // MAX's own CalculateMRPDueDateFromPODueDate applied to DueDate above — the
-                        // date to actually hand the supplier, were a PO created for this line right
-                        // now (see MaxOrderRepository.CalculatePoDueDatesAsync and the class comment
-                        // on MaxPurchaseOrderRepository). Blank if DueDate or PartID is unknown.
-                        PoDueDate = GetPoDueDate(line, poDueDatesByKey),
-                        Reference = r.Project,
-                        ManufacturingPart = line?.ManufacturerPartNumber,
-                        Customer = line?.Customer,
-                        StockID = line?.StockId,
-                        // Part_Master.RECVEN_01 — confirmed by the user (okt 2026) as "the article's
-                        // preferred vendor". Live lookup, not synced/stored on the line itself (see
-                        // MaxOrderRepository.GetPreferredVendorIdsByPartIdsAsync's own comment for why).
-                        // Column header shown as "Rec. Vendor" (user request, 20 okt 2026).
-                        RecVendor = line?.ErpArticleId != null && preferredVendorIdsByPartId.TryGetValue(line.ErpArticleId, out var preferredVendorId)
-                            ? preferredVendorId
-                            : null,
-                        // De oorspronkelijke MAX-aanvraag hierboven blijft ongewijzigd zichtbaar (dat
-                        // is wat er gevraagd is) — deze vier tonen apart wat er daadwerkelijk gekozen
-                        // is bij sourcing, leeg zolang er nog geen (automatische of handmatige)
-                        // SupplierSelection is. Zie "Offers bekijken" voor alle offertes, niet alleen
-                        // de gekozen.
-                        SelectedSupplier = selectedOffer?.SupplierCode,
-                        SelectedPrice = selectedOffer?.UnitPrice,
-                        SelectedQuantity = (int?)selectedOffer?.OfferedQuantity,
-                        SelectedDueDate = selectedOffer?.EstimatedDeliveryDate
-                    };
-                })
-                .ToList();
-
             // Assigning DataSource can itself raise SelectionChanged (when the grid picks a
             // default current cell); detach first so that doesn't race with the explicit reload
             // below against the same shared DbContext.
@@ -390,63 +240,6 @@ namespace Procurement.UI.Forms
             ApplyFrozenColumns(dgv_requests,
                 "Order", "Workflow", "PartID", "Desc1", "Quantity", "Cost", "DueDate", "PoDueDate",
                 "SelectedSupplier", "SelectedPrice", "SelectedQuantity", "SelectedDueDate");
-        }
-
-        /// <summary>
-        /// One SupplierSelection lookup per line (never more than one active selection per line —
-        /// SupplierSelectionRepository.GetByLineIdAsync already picks the latest by SelectedAt), with
-        /// SelectedOffer eager-loaded so SupplierCode/UnitPrice/OfferedQuantity/EstimatedDeliveryDate
-        /// are available without a further round-trip per row. Sequential, not parallel — same
-        /// reasoning as SourceRequestsAsync: this shares one ProcurementDbContext serialized through
-        /// RunGuardedAsync, so concurrent calls wouldn't save time, only make a mid-refresh failure
-        /// harder to attribute to a specific line. Fine at prototype scale (one line per request, see
-        /// PopulateRequestsGrid's own comment).
-        /// </summary>
-        private async System.Threading.Tasks.Task<Dictionary<int, SupplierSelection>> GetSelectionsByLineIdAsync(IEnumerable<int?> lineIds)
-        {
-            var result = new Dictionary<int, SupplierSelection>();
-            foreach (var lineId in lineIds)
-            {
-                if (lineId == null || result.ContainsKey(lineId.Value)) continue;
-                var selection = await _composition.Engine.GetSelectionForLineAsync(lineId.Value);
-                if (selection != null)
-                    result[lineId.Value] = selection;
-            }
-            return result;
-        }
-
-        /// <summary>Ext. Cost voor een regel = Quantity * Cost / Cost Conv.</summary>
-        private static decimal? ComputeExtCost(int quantity, decimal? cost, decimal? costConv)
-        {
-            if (!cost.HasValue || !costConv.HasValue || costConv.Value == 0m) return null;
-            return quantity * cost.Value / costConv.Value;
-        }
-
-        /// <summary>
-        /// One batched MAX round-trip (MaxOrderRepository.CalculatePoDueDatesAsync — MAX's own
-        /// CalculateMRPDueDateFromPODueDate SQLCLR function, see MaxPurchaseOrderRepository's class
-        /// comment) for every distinct (RequiredDate, PartID) pair among the given lines, instead of
-        /// one query per grid row. Lines without both a RequiredDate and a PartID are skipped — the
-        /// function needs both arguments — and simply show a blank PoDueDate (see GetPoDueDate).
-        /// </summary>
-        private async System.Threading.Tasks.Task<IReadOnlyDictionary<(DateTime MrpDate, string PartNumber), DateTime>> GetPoDueDatesByKeyAsync(
-            IEnumerable<PurchaseRequestLine> lines)
-        {
-            var items = lines
-                .Where(l => l != null && l.RequiredDate.HasValue && !string.IsNullOrEmpty(l.ErpArticleId))
-                .Select(l => (l.RequiredDate.Value, l.ErpArticleId))
-                .ToList();
-            return await _composition.MaxOrderRepository.CalculatePoDueDatesAsync(items);
-        }
-
-        private static DateTime? GetPoDueDate(
-            PurchaseRequestLine line,
-            IReadOnlyDictionary<(DateTime MrpDate, string PartNumber), DateTime> poDueDatesByKey)
-        {
-            if (line == null || !line.RequiredDate.HasValue || string.IsNullOrEmpty(line.ErpArticleId)) return null;
-            return poDueDatesByKey.TryGetValue((line.RequiredDate.Value, line.ErpArticleId), out var poDueDate)
-                ? poDueDate
-                : (DateTime?)null;
         }
 
         /// <summary>
@@ -573,43 +366,15 @@ namespace Procurement.UI.Forms
                 return;
             }
 
-            var request = await _composition.PurchaseRequestRepository.GetByIdAsync(requestId.Value);
-            var line = request?.Lines.FirstOrDefault();
-            _currentLineId = line?.Id;
-            if (line == null)
+            var offers = await _screen.GetOffersAsync(requestId.Value);
+            _currentLineId = offers.LineId;
+            if (offers.LineId == null)
             {
                 dgv_offers.DataSource = null;
                 return;
             }
 
-            var offers = await _composition.Engine.GetOffersForLineAsync(line.Id);
-            var selection = await _composition.Engine.GetSelectionForLineAsync(line.Id);
-
-            BindSortable(dgv_offers, offers.Select(o => new OfferGridRow
-            {
-                Id = o.Id,
-                Select = selection != null && selection.SelectedOfferId == o.Id,
-                SupplierCode = o.SupplierCode,
-                // Combination offer (full reels + rest, 18 nov 2026): both part numbers and the split.
-                SupplierPartNumber = o.IsCombination ? $"{o.SupplierPartNumber} + {o.RemainderSupplierPartNumber}" : o.SupplierPartNumber,
-                MatchConfidence = o.MatchConfidence.ToString(),
-                OfferedQuantity = o.OfferedQuantity,
-                AttritionQuantity = o.AttritionQuantity,
-                SurplusQuantity = o.SurplusQuantity,
-                // Sourcing per article (18 nov 2026): quantities are for all lines of the bundle together.
-                Bundle = o.BundleLineCount > 1 ? $"{o.BundleLineCount} regels, totaal {o.BundleNeededQuantity:N0}"
-                    : o.BundleNeededQuantity > 0 ? $"totaal {o.BundleNeededQuantity:N0}" : string.Empty,
-                UnitPrice = o.UnitPrice,
-                Currency = o.Currency,
-                Packaging = o.IsCombination ? o.Composition : o.PackagingType.ToString(),
-                Reel = o.ReelType?.ToString() ?? "-",
-                ReelingFee = o.ReelingFee,
-                LandedCost = o.LandedCost,
-                ComparisonCost = SupplierSelectionEngine.EffectiveComparisonCost(o),
-                LeadTimeDays = o.LeadTimeDays,
-                AvailableQuantity = o.AvailableQuantity,
-                DueDate = o.EstimatedDeliveryDate
-            }));
+            BindSortable(dgv_offers, offers.Rows);
 
             if (dgv_offers.Columns["Id"] != null)
                 dgv_offers.Columns["Id"].Visible = false;
@@ -660,39 +425,6 @@ namespace Procurement.UI.Forms
         }
 
         /// <summary>
-        /// Een gewone klasse i.p.v. een anoniem type (zoals elk ander grid in dit scherm wél
-        /// gebruikt) — nodig omdat een anoniem type alleen getters heeft, en DataGridView een
-        /// "ReadOnly moet True zijn voor een kolom gekoppeld aan een alleen-lezen veld"-foutmelding
-        /// geeft zodra de grid zelf niet grid-breed ReadOnly staat (wat hier moet, voor "Select") maar
-        /// de gebonden eigenschap geen setter heeft — ontdekt pas bij het echt selecteren van een rij
-        /// in de praktijk, niet bij het bouwen. "Select" heeft hierdoor een echte setter, net als elke
-        /// andere eigenschap hier (ook al wordt alleen "Select" zelf echt bewerkt — zie de ReadOnly-lus
-        /// hierboven).
-        /// </summary>
-        private class OfferGridRow
-        {
-            public int Id { get; set; }
-            public bool Select { get; set; }
-            public string SupplierCode { get; set; }
-            public string SupplierPartNumber { get; set; }
-            public string MatchConfidence { get; set; }
-            public int OfferedQuantity { get; set; }
-            public int AttritionQuantity { get; set; }
-            public int SurplusQuantity { get; set; }
-            public string Bundle { get; set; }
-            public decimal UnitPrice { get; set; }
-            public string Currency { get; set; }
-            public string Packaging { get; set; }
-            public string Reel { get; set; }
-            public decimal ReelingFee { get; set; }
-            public decimal LandedCost { get; set; }
-            public decimal ComparisonCost { get; set; }
-            public int LeadTimeDays { get; set; }
-            public int AvailableQuantity { get; set; }
-            public DateTime DueDate { get; set; }
-        }
-
-        /// <summary>
         /// Aanvinken kiest die offerte (SelectOfferManuallyAsync); uitvinken van de al-gekozen regel
         /// maakt die keuze weer ongedaan (DeselectOfferAsync, user request, 20 okt 2026 — workflow
         /// springt dan terug van ReadyToOrder naar Sourcing). Uitvinken van een andere (niet eerder
@@ -734,7 +466,7 @@ namespace Procurement.UI.Forms
             {
                 SetBusy(true);
                 SetStatus($"Opnieuw sourcen voor {newQuantity:N0} stuks...");
-                await _composition.Engine.ResourceLineWithQuantityAsync(_currentLineId.Value, newQuantity, _composition.Session.UserName);
+                await _screen.ChangeQuantityAsync(_currentLineId.Value, newQuantity);
                 SetStatus($"Opnieuw gesourced voor {newQuantity:N0} stuks.");
             }
             catch (Exception ex)
@@ -765,15 +497,8 @@ namespace Procurement.UI.Forms
             try
             {
                 SetBusy(true);
-                if (nowChecked)
-                {
-                    var offerId = (int)row.Cells["Id"].Value;
-                    await _composition.Engine.SelectOfferManuallyAsync(_currentLineId.Value, offerId, reason: null, _composition.Session.UserName);
-                }
-                else
-                {
-                    await _composition.Engine.DeselectOfferAsync(_currentLineId.Value, _composition.Session.UserName);
-                }
+                var offerId = (int)row.Cells["Id"].Value;
+                await _screen.SetOfferSelectedAsync(_currentLineId.Value, offerId, nowChecked);
             }
             catch (Exception ex)
             {
@@ -847,52 +572,8 @@ namespace Procurement.UI.Forms
             SetBusy(true);
             try
             {
-                var readyToOrder = 0;
-                var waitingApproval = 0;
-                var exceptionCount = 0;
-                var failed = 0;
-                var skippedOrdered = 0;
-
-                for (var i = 0; i < requestIds.Count; i++)
-                {
-                    SetStatus($"Sourcing {i + 1}/{requestIds.Count}...");
-                    try
-                    {
-                        // WaitingApproval is re-sourced too since 18 nov 2026: re-sourcing now replaces
-                        // the line's old offers and pending approval request (no duplicates anymore),
-                        // and sourcing per article needs it to rebuild a bundle.
-                        //
-                        // Ordered must be skipped outright, not just "harmless to re-run": every line on
-                        // an Ordered request already has a SupplierSelection and no pending approval or
-                        // exception, so SourcePurchaseRequestAsync would recompute finalStatus as
-                        // ReadyToOrder and silently downgrade an already-placed order back into the
-                        // sourcing queue. Only reachable now that the "Weergeven" status filter can show
-                        // Ordered rows at all — before that they were never in the grid to select.
-                        var current = await _composition.PurchaseRequestRepository.GetByIdAsync(requestIds[i]);
-                        if (current == null) continue;
-                        if (current.Status == PurchaseRequestStatus.Ordered)
-                        {
-                            skippedOrdered++;
-                            continue;
-                        }
-
-                        await _composition.Engine.SourcePurchaseRequestAsync(requestIds[i]);
-                        var updated = await _composition.PurchaseRequestRepository.GetByIdAsync(requestIds[i]);
-                        if (updated == null) continue;
-                        if (updated.Status == PurchaseRequestStatus.ReadyToOrder) readyToOrder++;
-                        else if (updated.Status == PurchaseRequestStatus.WaitingApproval) waitingApproval++;
-                        else if (updated.Status == PurchaseRequestStatus.Exception) exceptionCount++;
-                    }
-                    catch (Exception)
-                    {
-                        failed++;
-                    }
-                }
-
-                var summary = $"Sourcing klaar: {readyToOrder} klaar om te bestellen, {waitingApproval} wacht op goedkeuring, {exceptionCount} met fout";
-                if (failed > 0) summary += $", {failed} mislukt";
-                if (skippedOrdered > 0) summary += $", {skippedOrdered} overgeslagen (al besteld)";
-                SetStatus(summary + ".");
+                var summary = await _screen.SourceRequestsAsync(requestIds, new Progress<string>(SetStatus));
+                SetStatus(summary.ToString());
 
                 await LoadLocalRequestsAsync();
             }

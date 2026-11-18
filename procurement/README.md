@@ -1700,3 +1700,10 @@ raken dat mock-modus zelf nooit aanraakt:
   van statisch) lezen de gebruiker en database uit die sessie. Voor de desktop verandert er niets.
   Bouw-opmerking: het nieuwe project heet bewust niet `Procurement.Application`, want die naamruimte
   zou `Application.Run` in de WinForms-code overschaduwen.
+- **18 nov 2026 — Web-variant, fase 1b: logica van Purchase Requests gedeeld** (plan van aanpak
+  webapplicatie). Filteren, de rijen van beide grids opbouwen, een reeks aanvragen sourcen, een offer
+  (de)selecteren en het aantal aanpassen zitten nu in
+  `Procurement.Services/PurchaseRequests/PurchaseRequestScreenService` (met `RequestListFilter`,
+  `RequestRow`, `OfferRow`). `MainForm` vraagt alleen nog bevestiging, toont fouten en koppelt de rijen
+  aan de grids; kolommen, volgorde en teksten zijn ongewijzigd. De web-app gebruikt straks dezelfde
+  service. Nieuwe tests: `tests/Procurement.Tests/Services/RequestListFilterTests.cs`.

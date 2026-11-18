@@ -29,6 +29,7 @@
     <ProjectReference Include="..\..\src\Procurement.Suppliers.Rutronik\Procurement.Suppliers.Rutronik.csproj" />
     <ProjectReference Include="..\..\src\Procurement.Suppliers.Other\Procurement.Suppliers.Other.csproj" />
     <ProjectReference Include="..\..\src\Procurement.Erp\Procurement.Erp.csproj" />
+    <ProjectReference Include="..\..\src\Procurement.Services\Procurement.Services.csproj" />
   </ItemGroup>
 
   <!--
