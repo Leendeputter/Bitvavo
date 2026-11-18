@@ -115,6 +115,10 @@ namespace Procurement.UI.Composition
                 ClientId = Secret(digiKeySupplier, () => SecretSettings.DigiKeyClientId),
                 ClientSecret = Secret(digiKeySupplier, () => SecretSettings.DigiKeyClientSecret),
                 IsSandbox = digiKeySupplier?.IsSandbox ?? true,
+                // The 3-legged route for Product Information only works around DigiKey's Sandbox
+                // 2-legged bug. In production search/pricing use the normal 2-legged client-credentials
+                // token (18 nov 2026), so price lookups don't depend on the Ordering authorization.
+                UseThreeLeggedForProductInformation = digiKeySupplier?.IsSandbox ?? true,
                 UseMockData = digiKeySupplier?.UseMockData ?? true,
                 RefreshToken = Secret(digiKeySupplier, () => SecretSettings.DigiKeyRefreshToken),
                 AccountId = digiKeySupplier?.AccountId,

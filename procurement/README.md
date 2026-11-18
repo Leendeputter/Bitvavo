@@ -1629,3 +1629,9 @@ raken dat mock-modus zelf nooit aanraakt:
   `Support/SortableBindingList.cs`. Daarna ("Ja graag ook in andere grids") in alle grids via
   `GridFormatting.BindSortable`: Offers, Approvals, Audit Log, Orders (+ regels), Order Confirmation
   Exceptions, Supplier Mapping, App Secrets en alle Settings-tabbladen.
+- **18 nov 2026 — DigiKey live: zoeken zonder Ordering-autorisatie** ("moet ik de ordering app van
+  Digikey in de live-omgeving ook al activeren, hoewel we nu alleen nog maar prijzen en
+  beschikbaarheid opzoeken"). `UseThreeLeggedForProductInformation` volgt nu `IsSandbox`: in Sandbox
+  blijft Product Information via het 3-legged Ordering-token lopen (workaround voor DigiKey's
+  Sandbox-bug), in productie via het gewone 2-legged client-credentials-token. Voor alleen zoeken,
+  prijzen en beschikbaarheid is in productie dus alleen de Product Information API nodig.
