@@ -592,6 +592,8 @@ namespace Procurement.UI.Forms
                 OfferedQuantity = o.OfferedQuantity,
                 AttritionQuantity = o.AttritionQuantity,
                 SurplusQuantity = o.SurplusQuantity,
+                // Sourcing per article (18 nov 2026): quantities are for all lines of the bundle together.
+                Bundle = o.BundleLineCount > 1 ? $"{o.BundleLineCount} regels, {o.BundleNeededQuantity:N0} nodig" : string.Empty,
                 UnitPrice = o.UnitPrice,
                 Currency = o.Currency,
                 Packaging = o.IsCombination ? o.Composition : o.PackagingType.ToString(),
@@ -616,6 +618,7 @@ namespace Procurement.UI.Forms
             // selection compares "Vergelijkingskosten" = landed cost + the surplus penalty.
             SetHeaderText(dgv_offers, "AttritionQuantity", "Extra uitval");
             SetHeaderText(dgv_offers, "SurplusQuantity", "Overschot");
+            SetHeaderText(dgv_offers, "Bundle", "Bundel");
             SetHeaderText(dgv_offers, "ReelingFee", "Reeling Fee");
             SetHeaderText(dgv_offers, "ComparisonCost", "Vergelijkingskosten");
             SetHeaderText(dgv_offers, "LeadTimeDays", "Lead Time (Working Days)");
@@ -634,6 +637,7 @@ namespace Procurement.UI.Forms
             SetCharacterBasedColumnWidth(dgv_offers, "OfferedQuantity", 10);
             SetCharacterBasedColumnWidth(dgv_offers, "AttritionQuantity", 12);
             SetCharacterBasedColumnWidth(dgv_offers, "SurplusQuantity", 10);
+            SetCharacterBasedColumnWidth(dgv_offers, "Bundle", 22);
             SetCharacterBasedColumnWidth(dgv_offers, "UnitPrice", 12);
             SetCharacterBasedColumnWidth(dgv_offers, "Currency", 8);
             SetCharacterBasedColumnWidth(dgv_offers, "Packaging", 30);
@@ -670,6 +674,7 @@ namespace Procurement.UI.Forms
             public int OfferedQuantity { get; set; }
             public int AttritionQuantity { get; set; }
             public int SurplusQuantity { get; set; }
+            public string Bundle { get; set; }
             public decimal UnitPrice { get; set; }
             public string Currency { get; set; }
             public string Packaging { get; set; }

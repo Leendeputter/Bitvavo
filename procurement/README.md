@@ -1654,3 +1654,17 @@ raken dat mock-modus zelf nooit aanraakt:
   omdat de vorige ook blijven staan"). Voor een regel zonder selectie worden bij opnieuw sourcen eerst
   de openstaande goedkeuringsverzoeken en alle offers waar geen selectie of besliste goedkeuring naar
   verwijst verwijderd (`SupplierOfferRepository.DeleteForResourcingAsync`, auditregel `OLD_OFFERS_REMOVED`).
+- **18 nov 2026 — Sourcen per artikel** (keuze van de gebruiker: "Sourcen per artikel", na "Eerder hebben
+  we het gehad om die lijnen te combineren in de bestelling, zodat we niet voor iedere regel apart een
+  volle reel bestellen"). Sourcing van een regel neemt alle open regels van hetzelfde artikel mee
+  (`PurchaseRequestRepository.GetOpenLinesForArticleAsync`: aanvraag Pending/Sourcing/WaitingApproval/
+  Exception, geen selectie, niet op een PO). Offers, verpakkingskeuze, overschot en combinatie-offers
+  worden berekend op de totale behoefte (som van aantal + uitval per regel); de keuze en de
+  goedkeuringsbeoordeling gebeuren één keer, met de vroegste regel als referentie voor de leverdatum.
+  Elke regel krijgt een kopie van de offers met een gedeelde `BundleKey` (plus `BundleLineCount`,
+  `BundleNeededQuantity`; kolom "Bundel" in het offers-grid). Kiezen, uitvinken, goedkeuren en afkeuren
+  van één regel doet hetzelfde voor de hele bundel, en "Order plaatsen" neemt altijd de hele bundel mee,
+  ook als maar één aanvraag geselecteerd is. Bij bestellen wordt de totale hoeveelheid één keer
+  afgerond; bij een combinatie-offer worden reels en rest over de regels verdeeld
+  (`OrderBundler.AllocateAcrossPools`, vroegste regel eerst, overschot op de vroegste regel). Nieuwe
+  kolommen: weer het additieve upgrade-script bij het starten.

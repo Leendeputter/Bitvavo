@@ -37,6 +37,17 @@ namespace Procurement.Data.Repositories
             return result;
         });
 
+        /// <summary>Removes a line's undecided approval requests (a manual choice replaces the proposal; 18 nov 2026).</summary>
+        public Task DeletePendingForLineAsync(int purchaseRequestLineId) => _context.RunGuardedAsync(async () =>
+        {
+            var pending = await _context.ApprovalRequests
+                .Where(a => a.PurchaseRequestLineId == purchaseRequestLineId && a.Decision == ApprovalDecision.Pending)
+                .ToListAsync();
+            if (pending.Count == 0) return;
+            _context.ApprovalRequests.RemoveRange(pending);
+            await _context.SaveChangesAsync();
+        });
+
         public Task DecideAsync(int id, ApprovalDecision decision, string comment, string decidedBy) => _context.RunGuardedAsync(async () =>
         {
             var request = await _context.ApprovalRequests.FindAsync(id);

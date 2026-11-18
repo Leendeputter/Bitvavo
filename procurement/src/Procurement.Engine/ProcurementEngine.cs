@@ -38,6 +38,9 @@ namespace Procurement.Engine
         private readonly PurchaseOrderRepository _purchaseOrderRepository;
         private readonly PolicyRepository _policyRepository;
 
+        /// <summary>Lines sourced as part of an article group during the current SourcePurchaseRequestAsync call.</summary>
+        private readonly Dictionary<int, LineOutcome> _groupedThisRun = new Dictionary<int, LineOutcome>();
+
         public ProcurementEngine(
             IErpConnector erp,
             IEnumerable<ISupplierAdapter> adapters,
@@ -90,10 +93,14 @@ namespace Procurement.Engine
 
             var anyPendingApproval = false;
             var anyException = false;
+            _groupedThisRun.Clear();
 
             foreach (var line in request.Lines)
             {
-                var outcome = await SourceAndProcessLineAsync(line, activeAdapters, approvalPolicy);
+                // Already handled as part of another line's article group in this run (18 nov 2026).
+                var outcome = _groupedThisRun.TryGetValue(line.Id, out var groupedOutcome)
+                    ? groupedOutcome
+                    : await SourceAndProcessLineAsync(line, activeAdapters, approvalPolicy);
                 if (outcome == LineOutcome.PendingApproval) anyPendingApproval = true;
                 if (outcome == LineOutcome.Exception) anyException = true;
             }
@@ -123,15 +130,36 @@ namespace Procurement.Engine
             if (offer == null || offer.PurchaseRequestLineId != purchaseRequestLineId)
                 throw new InvalidOperationException("Offer does not belong to the given purchase request line.");
 
+            var reasonSummary = string.IsNullOrWhiteSpace(reason)
+                ? $"Handmatig gekozen door {user}"
+                : $"Handmatig gekozen door {user}: {reason}";
+
+            await SelectOnLineAsync(purchaseRequestLineId, offer, reasonSummary, user, replaceExisting: false);
+
+            // Sourcing per article (18 nov 2026): the same choice on every other line of the bundle
+            // that isn't ordered yet and hasn't chosen outside the bundle.
+            foreach (var sibling in await GetBundleSiblingsAsync(offer))
+            {
+                var existing = await _selectionRepository.GetByLineIdAsync(sibling.PurchaseRequestLineId);
+                if (existing != null && existing.SelectedOffer?.BundleKey != offer.BundleKey) continue;
+                await SelectOnLineAsync(sibling.PurchaseRequestLineId, sibling, reasonSummary + " (via bundel)", user, replaceExisting: true);
+            }
+        }
+
+        private async Task SelectOnLineAsync(int purchaseRequestLineId, SupplierOffer offer, string reasonSummary, string user, bool replaceExisting)
+        {
             var line = await GetLineAsync(purchaseRequestLineId);
+            if (replaceExisting)
+                await _selectionRepository.DeleteByLineIdAsync(purchaseRequestLineId);
+
+            // A manual choice replaces a pending proposal.
+            await _approvalRepository.DeletePendingForLineAsync(purchaseRequestLineId);
 
             var selection = new SupplierSelection
             {
                 PurchaseRequestLineId = purchaseRequestLineId,
                 SelectedOfferId = offer.Id,
-                ReasonSummary = string.IsNullOrWhiteSpace(reason)
-                    ? $"Handmatig gekozen door {user}"
-                    : $"Handmatig gekozen door {user}: {reason}",
+                ReasonSummary = reasonSummary,
                 Mode = SelectionMode.Manual
             };
             await _selectionRepository.AddAsync(selection);
@@ -139,6 +167,21 @@ namespace Procurement.Engine
                 offer.SupplierCode, responsePayload: selection.ReasonSummary, userOrSystem: user);
 
             await RecomputeRequestStatusIfFullySelectedAsync(line.PurchaseRequestId);
+        }
+
+        /// <summary>The same offer (VariantKey) on the other lines of its bundle, for lines not on a PO yet. Empty when not bundled.</summary>
+        private async Task<List<SupplierOffer>> GetBundleSiblingsAsync(SupplierOffer offer)
+        {
+            var result = new List<SupplierOffer>();
+            if (string.IsNullOrEmpty(offer?.BundleKey)) return result;
+
+            foreach (var sibling in await _offerRepository.GetByBundleKeyAsync(offer.BundleKey))
+            {
+                if (sibling.PurchaseRequestLineId == offer.PurchaseRequestLineId || sibling.VariantKey != offer.VariantKey) continue;
+                if (await _purchaseOrderRepository.HasOrderForLineAsync(sibling.PurchaseRequestLineId)) continue;
+                result.Add(sibling);
+            }
+            return result;
         }
 
         /// <summary>
@@ -160,8 +203,25 @@ namespace Procurement.Engine
             if (request != null && request.Status == PurchaseRequestStatus.Ordered)
                 throw new InvalidOperationException("Deze aanvraag is al besteld — de offertekeuze kan niet meer ongedaan gemaakt worden.");
 
-            await _selectionRepository.DeleteByLineIdAsync(purchaseRequestLineId);
-            await _auditLogger.LogAsync("PurchaseRequestLine", purchaseRequestLineId.ToString(), "SUPPLIER_SELECTION_CLEARED", "Success", userOrSystem: user);
+            var current = await _selectionRepository.GetByLineIdAsync(purchaseRequestLineId);
+            await ClearSelectionAsync(line, user);
+
+            // Bundle (18 nov 2026): unticking one line clears the bundle's choice on its other lines too.
+            if (current?.SelectedOffer != null)
+            {
+                foreach (var sibling in await GetBundleSiblingsAsync(current.SelectedOffer))
+                {
+                    var siblingSelection = await _selectionRepository.GetByLineIdAsync(sibling.PurchaseRequestLineId);
+                    if (siblingSelection?.SelectedOffer?.BundleKey != current.SelectedOffer.BundleKey) continue;
+                    await ClearSelectionAsync(await GetLineAsync(sibling.PurchaseRequestLineId), user);
+                }
+            }
+        }
+
+        private async Task ClearSelectionAsync(PurchaseRequestLine line, string user)
+        {
+            await _selectionRepository.DeleteByLineIdAsync(line.Id);
+            await _auditLogger.LogAsync("PurchaseRequestLine", line.Id.ToString(), "SUPPLIER_SELECTION_CLEARED", "Success", userOrSystem: user);
 
             await _purchaseRequestRepository.UpdateStatusAsync(line.PurchaseRequestId, PurchaseRequestStatus.Sourcing);
             await _auditLogger.LogAsync("PurchaseRequest", line.PurchaseRequestId.ToString(), "SELECTION_CLEARED_BACK_TO_SOURCING", "Success", userOrSystem: user);
@@ -170,35 +230,46 @@ namespace Procurement.Engine
         /// <summary>Spec §8.3: decide a line that failed the auto-approve criteria.</summary>
         public async Task ApproveAsync(int approvalRequestId, bool approve, string comment, string user)
         {
-            var pending = (await _approvalRepository.GetPendingAsync()).FirstOrDefault(a => a.Id == approvalRequestId);
+            var allPending = await _approvalRepository.GetPendingAsync();
+            var pending = allPending.FirstOrDefault(a => a.Id == approvalRequestId);
             if (pending == null)
                 throw new InvalidOperationException($"Approval request {approvalRequestId} not found or already decided.");
 
-            await _approvalRepository.DecideAsync(
-                approvalRequestId,
-                approve ? ApprovalDecision.Approved : ApprovalDecision.Rejected,
-                comment,
-                user);
+            // Sourcing per article (18 nov 2026): deciding one line of a bundle decides the bundle.
+            var toDecide = new List<ApprovalRequest> { pending };
+            var bundleKey = pending.ProposedOffer?.BundleKey;
+            if (!string.IsNullOrEmpty(bundleKey))
+                toDecide.AddRange(allPending.Where(a => a.Id != pending.Id && a.ProposedOffer?.BundleKey == bundleKey));
 
-            await _auditLogger.LogAsync("ApprovalRequest", approvalRequestId.ToString(),
-                approve ? "APPROVAL_GRANTED" : "APPROVAL_REJECTED", "Success",
-                responsePayload: comment, userOrSystem: user);
-
-            if (!approve) return;
-
-            var offer = await _offerRepository.GetByIdAsync(pending.ProposedOfferId);
-            var line = await GetLineAsync(pending.PurchaseRequestLineId);
-
-            var selection = new SupplierSelection
+            foreach (var request in toDecide)
             {
-                PurchaseRequestLineId = pending.PurchaseRequestLineId,
-                SelectedOfferId = offer.Id,
-                ReasonSummary = $"Handmatig goedgekeurd door {user}. Reden(en) voor goedkeuring: {pending.Reasons}. Commentaar: {comment}",
-                Mode = SelectionMode.Manual
-            };
-            await _selectionRepository.AddAsync(selection);
+                var requestComment = request.Id == pending.Id ? comment : $"{comment} (via bundel, verzoek {pending.Id})";
+                await _approvalRepository.DecideAsync(
+                    request.Id,
+                    approve ? ApprovalDecision.Approved : ApprovalDecision.Rejected,
+                    requestComment,
+                    user);
 
-            await RecomputeRequestStatusIfFullySelectedAsync(line.PurchaseRequestId);
+                await _auditLogger.LogAsync("ApprovalRequest", request.Id.ToString(),
+                    approve ? "APPROVAL_GRANTED" : "APPROVAL_REJECTED", "Success",
+                    responsePayload: requestComment, userOrSystem: user);
+
+                if (!approve) continue;
+
+                var offer = await _offerRepository.GetByIdAsync(request.ProposedOfferId);
+                var line = await GetLineAsync(request.PurchaseRequestLineId);
+
+                var selection = new SupplierSelection
+                {
+                    PurchaseRequestLineId = request.PurchaseRequestLineId,
+                    SelectedOfferId = offer.Id,
+                    ReasonSummary = $"Handmatig goedgekeurd door {user}. Reden(en) voor goedkeuring: {request.Reasons}. Commentaar: {requestComment}",
+                    Mode = SelectionMode.Manual
+                };
+                await _selectionRepository.AddAsync(selection);
+
+                await RecomputeRequestStatusIfFullySelectedAsync(line.PurchaseRequestId);
+            }
         }
 
         private static void ValidateRequest(PurchaseRequest request)
@@ -256,22 +327,40 @@ namespace Procurement.Engine
                 return LineOutcome.Selected;
             }
 
+            // Sourcing per article (user decision, 18 nov 2026): every open line of the same article
+            // is sourced together — offers and the packaging choice on the summed need, so a full reel
+            // is compared against the total demand instead of against one line. A line without an
+            // article id (manual test request) is a group of one.
+            var group = new List<PurchaseRequestLine>();
+            if (!string.IsNullOrWhiteSpace(line.ErpArticleId))
+                group.AddRange(await _purchaseRequestRepository.GetOpenLinesForArticleAsync(line.ErpArticleId));
+            if (group.All(l => l.Id != line.Id))
+                group.Add(line);
+            group = group.OrderBy(l => l.RequiredDate ?? DateTime.MaxValue).ThenBy(l => l.Id).ToList();
+
             // Sourcing again replaces the previous offers instead of adding to them (18 nov 2026).
-            var removedOffers = await _offerRepository.DeleteForResourcingAsync(line.Id);
-            if (removedOffers > 0)
-                await _auditLogger.LogAsync("PurchaseRequestLine", line.Id.ToString(), "OLD_OFFERS_REMOVED", "Success",
-                    responsePayload: $"Removed={removedOffers}");
+            foreach (var member in group)
+            {
+                var removedOffers = await _offerRepository.DeleteForResourcingAsync(member.Id);
+                if (removedOffers > 0)
+                    await _auditLogger.LogAsync("PurchaseRequestLine", member.Id.ToString(), "OLD_OFFERS_REMOVED", "Success",
+                        responsePayload: $"Removed={removedOffers}");
+            }
 
             // Packaging policy + attrition per component type/category (user request, 17 nov 2026).
+            // Attrition stays per line (each line is its own production run), summed for the group.
             var maxUnitCost = ApprovalEvaluator.GetReferenceUnitPrice(await _erp.GetPartCostAsync(line.ErpArticleId));
             var classification = await GetComponentClassificationAsync(line);
             var packagingPolicy = PackagingRules.ResolvePolicy(await _policyRepository.GetPackagingPoliciesAsync(), classification);
             var attritionRule = AttritionCalculator.FindRule(await _policyRepository.GetAttritionRulesAsync(), classification, maxUnitCost);
-            var attritionQuantity = AttritionCalculator.CalculateExtra(line.RequestedQuantity, attritionRule);
+            var attritionPerLine = group.ToDictionary(l => l.Id, l => AttritionCalculator.CalculateExtra(l.RequestedQuantity, attritionRule));
+            var totalRequested = group.Sum(l => l.RequestedQuantity);
+            var totalAttrition = attritionPerLine.Values.Sum();
             await _auditLogger.LogAsync("PurchaseRequestLine", line.Id.ToString(), "PACKAGING_POLICY_RESOLVED", "Success",
                 responsePayload: $"Type={classification?.ComponentType ?? "-"}; Category={classification?.Category ?? "-"}; " +
                                  $"Policy={packagingPolicy?.ComponentCategory ?? "-"}; MaxUnitCost={maxUnitCost?.ToString() ?? "-"}; " +
-                                 $"AttritionRule={(attritionRule == null ? "-" : attritionRule.AppliesTo)}; Extra={attritionQuantity}");
+                                 $"AttritionRule={(attritionRule == null ? "-" : attritionRule.AppliesTo)}; Extra={totalAttrition}; " +
+                                 $"GroupLines={group.Count}; GroupRequested={totalRequested}");
 
             var mappings = await ResolveProductMappingsAsync(line, activeAdapters);
             if (mappings.Count == 0)
@@ -280,7 +369,7 @@ namespace Procurement.Engine
                 return LineOutcome.Exception;
             }
 
-            var offers = new List<SupplierOffer>();
+            var templates = new List<SupplierOffer>();
             foreach (var kvp in mappings)
             {
                 var adapter = kvp.Key;
@@ -293,8 +382,8 @@ namespace Procurement.Engine
 
                 try
                 {
-                    offers.AddRange(await BuildOffersAsync(adapter, line, kvp.Value.SupplierPartNumber, kvp.Value.Confidence,
-                        packagingPolicy, attritionQuantity, maxUnitCost));
+                    templates.AddRange(await BuildOffersAsync(adapter, line, kvp.Value.SupplierPartNumber, kvp.Value.Confidence,
+                        packagingPolicy, totalRequested, totalAttrition, maxUnitCost));
                 }
                 catch (SupplierException ex)
                 {
@@ -303,53 +392,137 @@ namespace Procurement.Engine
                 }
             }
 
-            if (offers.Count == 0)
+            if (templates.Count == 0)
             {
                 await _auditLogger.LogAsync("PurchaseRequestLine", line.Id.ToString(), "SOURCING_NO_OFFERS", "Exception");
                 return LineOutcome.Exception;
             }
 
-            await _offerRepository.AddRangeAsync(offers);
-            await _auditLogger.LogAsync("PurchaseRequestLine", line.Id.ToString(), "OFFERS_BUILT", "Success",
-                requestPayload: $"OfferCount={offers.Count}");
+            // The choice is made once, on the group totals; the earliest line is the reference for
+            // the required date (the strictest one).
+            var referenceLine = group[0];
+            var selectionResult = SupplierSelectionEngine.SelectBestOffer(templates, referenceLine, packagingPolicy, maxUnitCost);
 
-            var selectionResult = SupplierSelectionEngine.SelectBestOffer(offers, line, packagingPolicy, maxUnitCost);
+            // Every line gets its own copy of the group's offers (same quantities and prices, its own
+            // requested quantity and attrition), linked by BundleKey: choosing, approving and ordering
+            // one line of the bundle does the same for the others.
+            var bundleKey = group.Count > 1 ? Guid.NewGuid().ToString("N") : null;
+            var copiesPerLine = new Dictionary<int, List<SupplierOffer>>();
+            foreach (var member in group)
+            {
+                var copies = templates.Select(t => CopyForLine(t, member, attritionPerLine[member.Id], bundleKey, group.Count, totalRequested + totalAttrition)).ToList();
+                copiesPerLine[member.Id] = copies;
+            }
+            await _offerRepository.AddRangeAsync(copiesPerLine.Values.SelectMany(c => c).ToList());
+            foreach (var member in group)
+                await _auditLogger.LogAsync("PurchaseRequestLine", member.Id.ToString(), "OFFERS_BUILT", "Success",
+                    requestPayload: $"OfferCount={templates.Count}; GroupLines={group.Count}" + (bundleKey != null ? $"; BundleKey={bundleKey}" : ""));
+
             if (selectionResult.SelectedOffer == null)
             {
-                await _auditLogger.LogAsync("PurchaseRequestLine", line.Id.ToString(), "SELECTION_FAILED", "Exception",
-                    error: selectionResult.ReasonSummary);
+                foreach (var member in group)
+                {
+                    await _auditLogger.LogAsync("PurchaseRequestLine", member.Id.ToString(), "SELECTION_FAILED", "Exception",
+                        error: selectionResult.ReasonSummary);
+                    if (member.Id != line.Id)
+                        await _purchaseRequestRepository.UpdateStatusAsync(member.PurchaseRequestId, PurchaseRequestStatus.Exception);
+                }
+                foreach (var member in group) _groupedThisRun[member.Id] = LineOutcome.Exception;
                 return LineOutcome.Exception;
             }
 
-            var preference = await _policyRepository.GetSupplierPreferenceAsync(selectionResult.SelectedOffer.SupplierCode);
-            var evaluation = ApprovalEvaluator.Evaluate(selectionResult.SelectedOffer, line, approvalPolicy, preference, maxUnitCost);
+            var selectedIndex = templates.IndexOf(selectionResult.SelectedOffer);
+            var selected = selectionResult.SelectedOffer;
+            var reasonSummary = group.Count > 1
+                ? $"{selectionResult.ReasonSummary} (samen gesourced met {group.Count - 1} andere regel(s) van dit artikel, totaal {totalRequested + totalAttrition} nodig)"
+                : selectionResult.ReasonSummary;
+
+            var preference = await _policyRepository.GetSupplierPreferenceAsync(selected.SupplierCode);
+            var evaluation = ApprovalEvaluator.Evaluate(selected, referenceLine, approvalPolicy, preference, maxUnitCost);
 
             if (evaluation.IsAutoApproved)
             {
-                var selection = new SupplierSelection
+                foreach (var member in group)
                 {
-                    PurchaseRequestLineId = line.Id,
-                    SelectedOfferId = selectionResult.SelectedOffer.Id,
-                    ReasonSummary = selectionResult.ReasonSummary,
-                    Mode = SelectionMode.Automatic
-                };
-                await _selectionRepository.AddAsync(selection);
-                await _auditLogger.LogAsync("PurchaseRequestLine", line.Id.ToString(), "SUPPLIER_SELECTED", "Success",
-                    selectionResult.SelectedOffer.SupplierCode, responsePayload: selectionResult.ReasonSummary);
+                    var memberOffer = copiesPerLine[member.Id][selectedIndex];
+                    await _selectionRepository.AddAsync(new SupplierSelection
+                    {
+                        PurchaseRequestLineId = member.Id,
+                        SelectedOfferId = memberOffer.Id,
+                        ReasonSummary = reasonSummary,
+                        Mode = SelectionMode.Automatic
+                    });
+                    await _auditLogger.LogAsync("PurchaseRequestLine", member.Id.ToString(), "SUPPLIER_SELECTED", "Success",
+                        selected.SupplierCode, responsePayload: reasonSummary);
+                    if (member.Id != line.Id)
+                        await RecomputeRequestStatusIfFullySelectedAsync(member.PurchaseRequestId);
+                    _groupedThisRun[member.Id] = LineOutcome.Selected;
+                }
 
                 return LineOutcome.Selected;
             }
 
-            var approval = new ApprovalRequest
+            var reasons = string.Join("; ", evaluation.Reasons);
+            foreach (var member in group)
+            {
+                var approval = new ApprovalRequest
+                {
+                    PurchaseRequestLineId = member.Id,
+                    ProposedOfferId = copiesPerLine[member.Id][selectedIndex].Id,
+                    Reasons = reasons
+                };
+                await _approvalRepository.AddAsync(approval);
+                await _auditLogger.LogAsync("PurchaseRequestLine", member.Id.ToString(), "APPROVAL_REQUIRED", "Pending",
+                    selected.SupplierCode, responsePayload: reasons);
+                if (member.Id != line.Id)
+                    await _purchaseRequestRepository.UpdateStatusAsync(member.PurchaseRequestId, PurchaseRequestStatus.WaitingApproval);
+                _groupedThisRun[member.Id] = LineOutcome.PendingApproval;
+            }
+            return LineOutcome.PendingApproval;
+        }
+
+        /// <summary>One line's copy of a group offer: the group's quantities/prices, this line's own requested quantity and attrition.</summary>
+        private static SupplierOffer CopyForLine(SupplierOffer template, PurchaseRequestLine line, int attritionQuantity,
+            string bundleKey, int bundleLineCount, int bundleNeededQuantity)
+        {
+            return new SupplierOffer
             {
                 PurchaseRequestLineId = line.Id,
-                ProposedOfferId = selectionResult.SelectedOffer.Id,
-                Reasons = string.Join("; ", evaluation.Reasons)
+                SupplierCode = template.SupplierCode,
+                SupplierPartNumber = template.SupplierPartNumber,
+                Manufacturer = template.Manufacturer,
+                ManufacturerPartNumber = template.ManufacturerPartNumber,
+                RequestedQuantity = line.RequestedQuantity,
+                OfferedQuantity = template.OfferedQuantity,
+                AttritionQuantity = attritionQuantity,
+                SurplusQuantity = template.SurplusQuantity,
+                UnitPrice = template.UnitPrice,
+                MainUnitPrice = template.MainUnitPrice,
+                Currency = template.Currency,
+                TotalPrice = template.TotalPrice,
+                MinimumOrderQuantity = template.MinimumOrderQuantity,
+                OrderMultiple = template.OrderMultiple,
+                PackagingType = template.PackagingType,
+                PackagingQuantity = template.PackagingQuantity,
+                ReelType = template.ReelType,
+                ReelingFee = template.ReelingFee,
+                RemainderSupplierPartNumber = template.RemainderSupplierPartNumber,
+                RemainderQuantity = template.RemainderQuantity,
+                RemainderUnitPrice = template.RemainderUnitPrice,
+                RemainderPackagingType = template.RemainderPackagingType,
+                AvailableQuantity = template.AvailableQuantity,
+                LeadTimeDays = template.LeadTimeDays,
+                EstimatedDeliveryDate = template.EstimatedDeliveryDate,
+                ShippingCost = template.ShippingCost,
+                Tax = template.Tax,
+                LandedCost = template.LandedCost,
+                ComparisonCost = template.ComparisonCost,
+                MatchConfidence = template.MatchConfidence,
+                ExpiresAt = template.ExpiresAt,
+                BundleKey = bundleKey,
+                BundleLineCount = bundleKey != null ? bundleLineCount : 0,
+                BundleNeededQuantity = bundleKey != null ? bundleNeededQuantity : 0
             };
-            await _approvalRepository.AddAsync(approval);
-            await _auditLogger.LogAsync("PurchaseRequestLine", line.Id.ToString(), "APPROVAL_REQUIRED", "Pending",
-                selectionResult.SelectedOffer.SupplierCode, responsePayload: approval.Reasons);
-            return LineOutcome.PendingApproval;
         }
 
         private async Task<Dictionary<ISupplierAdapter, (string SupplierPartNumber, MatchConfidence Confidence)>> ResolveProductMappingsAsync(
@@ -472,9 +645,10 @@ namespace Procurement.Engine
         /// </summary>
         private async Task<List<SupplierOffer>> BuildOffersAsync(
             ISupplierAdapter adapter, PurchaseRequestLine line, string supplierPartNumber, MatchConfidence confidence,
-            PackagingPolicy policy, int attritionQuantity, decimal? maxUnitCost)
+            PackagingPolicy policy, int requestedQuantity, int attritionQuantity, decimal? maxUnitCost)
         {
-            var neededQuantity = line.RequestedQuantity + attritionQuantity;
+            // requestedQuantity/attritionQuantity are the totals of the article group (18 nov 2026).
+            var neededQuantity = requestedQuantity + attritionQuantity;
             var pricing = await adapter.GetPricingAsync(supplierPartNumber, neededQuantity);
             var availability = await adapter.GetAvailabilityAsync(supplierPartNumber);
 
@@ -493,7 +667,7 @@ namespace Procurement.Engine
             foreach (var variant in variants)
             {
                 var offer = BuildVariantOffer(adapter.SupplierCode, line, supplierPartNumber, confidence, policy,
-                    attritionQuantity, maxUnitCost, pricing, availability, variant);
+                    requestedQuantity, attritionQuantity, maxUnitCost, pricing, availability, variant);
                 offers.Add(offer);
 
                 // Full reels + rest from another variant of this supplier (18 nov 2026).
@@ -508,9 +682,9 @@ namespace Procurement.Engine
 
         private static SupplierOffer BuildVariantOffer(
             string supplierCode, PurchaseRequestLine line, string supplierPartNumber, MatchConfidence confidence, PackagingPolicy policy,
-            int attritionQuantity, decimal? maxUnitCost, SupplierPricing pricing, SupplierAvailability availability, SupplierPackagingOption variant)
+            int requestedQuantity, int attritionQuantity, decimal? maxUnitCost, SupplierPricing pricing, SupplierAvailability availability, SupplierPackagingOption variant)
         {
-            var neededQuantity = line.RequestedQuantity + attritionQuantity;
+            var neededQuantity = requestedQuantity + attritionQuantity;
             var ownPriceBreaks = variant?.PriceBreaks != null && variant.PriceBreaks.Count > 0 ? variant.PriceBreaks : null;
 
             var minimumOrderQuantity = variant != null && variant.MinimumOrderQuantity > 0
@@ -542,7 +716,7 @@ namespace Procurement.Engine
                 SupplierPartNumber = string.IsNullOrWhiteSpace(variant?.SupplierPartNumber) ? supplierPartNumber : variant.SupplierPartNumber,
                 Manufacturer = line.Manufacturer,
                 ManufacturerPartNumber = line.ManufacturerPartNumber,
-                RequestedQuantity = line.RequestedQuantity,
+                RequestedQuantity = requestedQuantity,
                 OfferedQuantity = orderedQuantity,
                 AttritionQuantity = attritionQuantity,
                 SurplusQuantity = surplusQuantity,
@@ -662,6 +836,25 @@ namespace Procurement.Engine
                 }
             }
 
+            // Sourcing per article (18 nov 2026): a bundle is always ordered whole, also when only one
+            // of its requests is selected — otherwise that one line alone would get the full reel(s).
+            var bundleKeys = candidates.Select(c => c.Offer.BundleKey).Where(k => !string.IsNullOrEmpty(k)).Distinct().ToList();
+            foreach (var bundleKey in bundleKeys)
+            {
+                foreach (var sibling in await _offerRepository.GetByBundleKeyAsync(bundleKey))
+                {
+                    if (candidates.Any(c => c.Line.Id == sibling.PurchaseRequestLineId)) continue;
+                    var selection = await _selectionRepository.GetByLineIdAsync(sibling.PurchaseRequestLineId);
+                    if (selection == null || selection.SelectedOfferId != sibling.Id) continue;
+                    if (await _purchaseOrderRepository.HasOrderForLineAsync(sibling.PurchaseRequestLineId)) continue;
+
+                    var siblingLine = await _purchaseRequestRepository.GetLineByIdAsync(sibling.PurchaseRequestLineId);
+                    if (siblingLine == null) continue;
+                    var siblingOffer = await _offerRepository.GetByIdAsync(sibling.Id);
+                    candidates.Add((siblingLine, siblingOffer));
+                }
+            }
+
             return candidates;
         }
 
@@ -765,26 +958,41 @@ namespace Procurement.Engine
         {
             var result = new List<PurchaseOrderDraftLine>();
 
-            // A combination offer (full reels + rest, 18 nov 2026) is already exact for its own line:
-            // two draft lines (reels, rest), not bundled with other lines.
-            foreach (var item in items.Where(i => i.Offer.IsCombination))
+            // A combination offer (full reels + rest, 18 nov 2026) already holds the exact quantities:
+            // per line, or per bundle of lines sourced together (BundleKey). Its reels and rest are
+            // spread over the lines earliest required date first, surplus on the earliest line.
+            foreach (var combination in items.Where(i => i.Offer.IsCombination).GroupBy(i => i.Offer.BundleKey ?? $"line:{i.Line.Id}"))
             {
-                result.Add(new PurchaseOrderDraftLine
+                var members = combination
+                    .OrderBy(i => i.Line.RequiredDate ?? DateTime.MaxValue)
+                    .ThenBy(i => i.Line.Id)
+                    .ToList();
+                var offer = members[0].Offer;
+                var pools = new[]
                 {
-                    PurchaseRequestLineId = item.Line.Id,
-                    SupplierPartNumber = item.Offer.SupplierPartNumber,
-                    Quantity = item.Offer.MainQuantity,
-                    UnitPrice = item.Offer.MainUnitPrice,
-                    LineTotal = item.Offer.MainQuantity * item.Offer.MainUnitPrice
-                });
-                result.Add(new PurchaseOrderDraftLine
+                    (PartNumber: offer.SupplierPartNumber, Quantity: offer.MainQuantity, UnitPrice: offer.MainUnitPrice),
+                    (PartNumber: offer.RemainderSupplierPartNumber, Quantity: offer.RemainderQuantity, UnitPrice: offer.RemainderUnitPrice)
+                };
+
+                var allocation = OrderBundler.AllocateAcrossPools(
+                    members.Select(i => i.Line.RequestedQuantity + i.Offer.AttritionQuantity).ToList(),
+                    pools.Select(pool => pool.Quantity).ToList());
+
+                for (var n = 0; n < members.Count; n++)
                 {
-                    PurchaseRequestLineId = item.Line.Id,
-                    SupplierPartNumber = item.Offer.RemainderSupplierPartNumber,
-                    Quantity = item.Offer.RemainderQuantity,
-                    UnitPrice = item.Offer.RemainderUnitPrice,
-                    LineTotal = item.Offer.RemainderQuantity * item.Offer.RemainderUnitPrice
-                });
+                    for (var p = 0; p < pools.Length; p++)
+                    {
+                        if (allocation[n][p] <= 0) continue;
+                        result.Add(new PurchaseOrderDraftLine
+                        {
+                            PurchaseRequestLineId = members[n].Line.Id,
+                            SupplierPartNumber = pools[p].PartNumber,
+                            Quantity = allocation[n][p],
+                            UnitPrice = pools[p].UnitPrice,
+                            LineTotal = allocation[n][p] * pools[p].UnitPrice
+                        });
+                    }
+                }
             }
 
             foreach (var bundle in items.Where(i => !i.Offer.IsCombination).GroupBy(i => i.Offer.SupplierPartNumber))

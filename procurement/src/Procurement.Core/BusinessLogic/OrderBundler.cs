@@ -41,6 +41,44 @@ namespace Procurement.Core.BusinessLogic
         }
 
         /// <summary>
+        /// Spreads fixed pools (e.g. full reels, then the rest on a re-reel) over lines in the given
+        /// order: each line takes from the first pool, then the next. Whatever the pools hold beyond
+        /// the total need (surplus) goes to the first line. Result[line][pool].
+        /// A line can end up with quantities from two pools (two PO lines for one request line).
+        /// </summary>
+        public static int[][] AllocateAcrossPools(IReadOnlyList<int> neededQuantities, IReadOnlyList<int> poolQuantities)
+        {
+            if (neededQuantities == null || neededQuantities.Count == 0)
+                throw new ArgumentException("At least one needed quantity is required.", nameof(neededQuantities));
+            if (poolQuantities == null || poolQuantities.Count == 0)
+                throw new ArgumentException("At least one pool is required.", nameof(poolQuantities));
+
+            var result = neededQuantities.Select(_ => new int[poolQuantities.Count]).ToArray();
+            var remainingInPool = poolQuantities.ToArray();
+            var needs = neededQuantities.ToArray();
+
+            // Surplus first on the earliest line, so later lines still get exactly what they need.
+            var surplus = Math.Max(poolQuantities.Sum() - needs.Sum(), 0);
+            needs[0] += surplus;
+
+            var pool = 0;
+            for (var line = 0; line < needs.Length; line++)
+            {
+                var need = needs[line];
+                while (need > 0 && pool < remainingInPool.Length)
+                {
+                    var take = Math.Min(need, remainingInPool[pool]);
+                    result[line][pool] += take;
+                    remainingInPool[pool] -= take;
+                    need -= take;
+                    if (remainingInPool[pool] == 0) pool++;
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>
         /// The supplier's confirmation for one PO line. A supplier confirms per part number, so when
         /// several PO lines share one supplier part number (a bundle), the confirmed quantity is
         /// split over them in line order: each gets up to its own ordered quantity, the last one gets

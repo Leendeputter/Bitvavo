@@ -64,6 +64,15 @@ namespace Procurement.Data.Repositories
             return offers.Count;
         });
 
+        /// <summary>Every copy of every offer of one bundle (sourcing per article, 18 nov 2026).</summary>
+        public Task<IReadOnlyList<SupplierOffer>> GetByBundleKeyAsync(string bundleKey) => _context.RunGuardedAsync(async () =>
+        {
+            IReadOnlyList<SupplierOffer> result = await _context.SupplierOffers
+                .Where(o => o.BundleKey == bundleKey)
+                .ToListAsync();
+            return result;
+        });
+
         public Task<SupplierOffer> GetByIdAsync(int id) => _context.RunGuardedAsync(() =>
             _context.SupplierOffers
                 .Include(o => o.PackagingOptions)

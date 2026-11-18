@@ -19,6 +19,8 @@ namespace Procurement.Data.Configurations
             Ignore(o => o.IsCombination);
             Ignore(o => o.MainQuantity);
             Ignore(o => o.Composition);
+            Ignore(o => o.VariantKey);
+            Property(o => o.BundleKey).HasMaxLength(32);
 
             HasRequired(o => o.PurchaseRequestLine)
                 .WithMany()

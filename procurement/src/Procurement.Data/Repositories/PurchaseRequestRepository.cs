@@ -70,6 +70,34 @@ namespace Procurement.Data.Repositories
                 .FirstOrDefaultAsync(l => l.PurchaseRequest.CompanyId == _session.CompanyId && l.Id == purchaseRequestLineId));
 
         /// <summary>
+        /// Sourcing per article (user decision, 18 nov 2026): every line of this article that is still
+        /// open for sourcing (request not ReadyToOrder/Ordered, no selection, not on a PO), with its
+        /// request, earliest required date first.
+        /// </summary>
+        public Task<IReadOnlyList<PurchaseRequestLine>> GetOpenLinesForArticleAsync(string erpArticleId) => _context.RunGuardedAsync(async () =>
+        {
+            var statuses = new[]
+            {
+                PurchaseRequestStatus.Pending,
+                PurchaseRequestStatus.Sourcing,
+                PurchaseRequestStatus.WaitingApproval,
+                PurchaseRequestStatus.Exception
+            };
+
+            IReadOnlyList<PurchaseRequestLine> result = await _context.PurchaseRequestLines
+                .Include(l => l.PurchaseRequest)
+                .Where(l => l.ErpArticleId == erpArticleId
+                            && l.PurchaseRequest.CompanyId == _session.CompanyId
+                            && statuses.Contains(l.PurchaseRequest.Status)
+                            && !_context.SupplierSelections.Any(s => s.PurchaseRequestLineId == l.Id)
+                            && !_context.PurchaseOrderLines.Any(o => o.PurchaseRequestLineId == l.Id))
+                .OrderBy(l => l.RequiredDate ?? System.DateTime.MaxValue)
+                .ThenBy(l => l.Id)
+                .ToListAsync();
+            return result;
+        });
+
+        /// <summary>
         /// Every request of this company (with lines), keyed by ErpRequestNumber — one query instead of
         /// one FindByErpRequestNumberAsync per MAX order (17 nov 2026: "Fetch Orders from MAX" was slow
         /// because it did a separate lookup, and a separate save, for every order in the batch).
