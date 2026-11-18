@@ -561,9 +561,8 @@ duidelijke melding. Procurement's rijen hebben `ApplicationName = 'Procurement'`
   ene gebruiker naar andere te kopiëren. Het menu is (net als bij UniPro) alleen zichtbaar/te openen
   met MAX-recht **`MGR.Activity.User Security`** op minimaal `USERSEC_READWRITE`
   (`Security/AccessRights.cs`). De oude knop "Edit Credentials..." in Settings → Suppliers is weg.
-- **Lezen** (`Procurement.Data.Secrets.SecretSettings`, port van UniPro's `SecretSettings`): eerst een
-  environment variable als die gezet is (`PROCUREMENT_DIGIKEY_CLIENT_ID`, `PROCUREMENT_FARNELL_API_KEY`,
-  ... — handig op een dev-machine), anders uit SharedSecrets. Elke database-read controleert eerst
+- **Lezen** (`Procurement.Data.Secrets.SecretSettings`, port van UniPro's `SecretSettings`): alleen uit
+  SharedSecrets, kolom `[Value]` (sinds 18 nov 2026 geen environment-variabelen meer als voorrang). Elke database-read controleert eerst
   `SecretAccess` en geeft anders een duidelijke "geen toestemming"-fout. `CompositionRoot` leest alleen
   secrets van suppliers met `UseMockData = false`; ontbreekt een recht, dan krijg je na het opstarten
   één waarschuwing in plaats van dat de app niet start.
@@ -576,14 +575,14 @@ duidelijke melding. Procurement's rijen hebben `ApplicationName = 'Procurement'`
 - **Eenmalige verhuizing** (`LegacySupplierCredentialMigration`, draait bij elke start maar doet
   alleen iets als er nog oude waarden zijn die niet in SharedSecrets staan): leest de oude
   `Procurement_Supplier.*Encrypted`-kolommen met de oude `PROCUREMENT_SECRET_KEY`, schrijft ze naar
-  SharedSecrets met de nieuwe sleutel, en geeft de gebruiker die de verhuizing draait meteen
+  SharedSecrets (`[Value]`), en geeft de gebruiker die de verhuizing draait meteen
   leesrecht. Zonder `PROCUREMENT_SECRET_KEY` op die machine slaat hij over met een melding — dan
   gewoon opnieuw invullen via Beheer → App Secrets. De oude kolommen blijven bewust staan (niet
   gewist, niet gedropt), zelfde voorzichtigheid als UniPro bij zijn oude `UniPro2026_AppSecrets`.
 - **Samenvoegen met UniPro later**: de klassen hebben bewust UniPro's namen en vorm
   (`AppSecretsRepository`, `SecretAccessRepository`, `SecretAccessEntry`, `SecretSettings`,
-  `AppSecretsForm`, `AccessRights.MgrUserSecurity`) en dezelfde sleutel (`UNIPRO_SECRET_KEY`), dus bij
-  het samenvoegen hoeft er niets opnieuw versleuteld te worden: Procurement's secret-namen toevoegen
+  `AppSecretsForm`, `AccessRights.MgrUserSecurity`) en dezelfde opslag (platte tekst in `[Value]`), dus bij
+  het samenvoegen: Procurement's secret-namen toevoegen
   aan UniPro's lijst en één `UPDATE dbo.AppSecrets/SecretAccess SET ApplicationName = 'UniPro' WHERE
   ApplicationName = 'Procurement'` is genoeg.
 
@@ -598,20 +597,15 @@ ingevulde dialoog: **Instellingen → Suppliers → "Verzendgegevens bewerken...
 Suppliers-grid zelf getoond (tien extra kolommen voor iets dat je een handvol keer ooit instelt, is
 pure ruis).
 
-**Hoe dat versleutelen werkt** (`Procurement.Core.Security.SecretProtector`, identiek aan UniPro's):
-AES-256, met de sleutel gelezen uit de omgevingsvariabele **`UNIPRO_SECRET_KEY`** — dezelfde als
-UniPro gebruikt (tot 13 nov 2026 had Procurement een eigen `PROCUREMENT_SECRET_KEY`; die is alleen nog
-nodig voor de eenmalige verhuizing hierboven). De sleutel staat dus zelf nergens in de database of in
-`App.config`; zet 'm (dezelfde waarde) op elke machine die UniPro of deze app draait, bv. als System
-Environment Variable of via GPO. Bewust geen volwaardige secrets-manager — overstappen naar bv. Azure
-Key Vault raakt alleen `SecretProtector.GetKey()`.
-
-Twee dingen die *niet* hetzelfde zijn, ondanks dat ze allebei "de sleutel wijzigen" heten:
-- **De credentials zelf wijzigen** (bv. na een DigiKey/Farnell-sleutelrotatie) — hoort vaak voor te
-  komen: een paar klikken in Beheer → App Secrets, geen rebuild.
-- **`UNIPRO_SECRET_KEY` zelf wijzigen** — geen routinehandeling: alle opgeslagen secrets van UniPro
-  **én** Procurement worden daarmee onleesbaar (geen sleutel-versionering), dus alles opnieuw
-  invoeren. Behandel dat als een incident-response-scenario.
+**Opslag sinds 18 nov 2026** (zelfde wijziging als UniPro die dag): de waarden staan als platte tekst
+in `SharedSecrets.dbo.AppSecrets.[Value]`; `UNIPRO_SECRET_KEY` en de versleuteling zijn weg. De
+bescherming zit in de SQL-rechten op de SharedSecrets-database plus de `SecretAccess`-controle per
+secret. De oude kolom `ValueEncrypted` wordt niet meer gelezen of geschreven. UniPro's migratie
+`2026-11-18_sharedsecrets-plaintext-value.sql` voegt `[Value]` toe en het PowerShell-script
+`2026-11-18_decrypt-secrets-to-plaintext.ps1` zet álle bestaande rijen om (ook die van Procurement,
+het script filtert niet op ApplicationName). Alternatief: de waarden opnieuw invullen via Beheer →
+App Secrets. `SecretProtector` bestaat alleen nog voor de eenmalige verhuizing met de oude
+`PROCUREMENT_SECRET_KEY`.
 
 **HTTP-laag (leesacties, groep 1)**: `Http/*HttpClientWrapper.cs` in elk van de vier projecten doet
 echte HTTP-aanroepen tegen de publiek gedocumenteerde Product Information API van die supplier zodra
@@ -735,7 +729,6 @@ de app — de Windows-gebruiker die het draait heeft dus een SecretAccess-recht 
 `Procurement_Supplier`, nooit enige MAX-tabel. Draai het met:
 
 ```
-set UNIPRO_SECRET_KEY=<dezelfde sleutel als UniPro en de hoofdapplicatie>
 set PROCUREMENT_TEST_CONNECTION_STRING=<connection string naar de echte Unitron-database>
 Procurement.Tools.DigiKeyOrderTester.exe <DigiKeyPartNumber> [quantity] [unitPrice]
 Procurement.Tools.DigiKeyOrderTester.exe status <SalesOrderId>
@@ -1635,3 +1628,10 @@ raken dat mock-modus zelf nooit aanraakt:
   blijft Product Information via het 3-legged Ordering-token lopen (workaround voor DigiKey's
   Sandbox-bug), in productie via het gewone 2-legged client-credentials-token. Voor alleen zoeken,
   prijzen en beschikbaarheid is in productie dus alleen de Product Information API nodig.
+- **18 nov 2026 — Alleen SharedSecrets, platte tekst, net als UniPro** ("Enkel de sharedSecrets
+  gebruiken?" ... "Nee, in UniPro hebben we dat ook zo gedaan"). `SecretSettings` leest alleen nog uit
+  SharedSecrets (alle `PROCUREMENT_*`-environment-variabelen als voorrang weg). `AppSecretsRepository`
+  leest en schrijft de nieuwe kolom `[Value]` (`GetDecryptedValue` heet nu `GetValue`);
+  `SecretProtector.Encrypt/Decrypt` en `UNIPRO_SECRET_KEY` zijn weg, alleen `DecryptLegacy` blijft voor
+  de oude verhuizing. Vereist UniPro's migratie die `[Value]` toevoegt; Procurement-waarden komen daar
+  via UniPro's decrypt-script of door ze opnieuw in te vullen in Beheer → App Secrets.

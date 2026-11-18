@@ -1,14 +1,13 @@
-using System;
 using System.Collections.Generic;
 
 namespace Procurement.Data.Secrets
 {
     /// <summary>
-    /// Reads Procurement's supplier credentials — same rule as UniPro2026's Core/Configuration/SecretSettings.cs:
-    /// an environment variable wins if it's set (handy for a dev machine or the DigiKeyOrderTester),
-    /// otherwise the value comes from SharedSecrets.dbo.AppSecrets (encrypted, ApplicationName
-    /// "Procurement", see <see cref="AppSecretsRepository"/>), which also enforces the per-user
-    /// SecretAccess check. New/changed values are entered via Beheer > App Secrets.
+    /// Reads Procurement's supplier credentials — same rule as UniPro2026's Core/Configuration/SecretSettings.cs
+    /// since 18 nov 2026: SharedSecrets.dbo.AppSecrets is the only source (plain-text [Value] column,
+    /// ApplicationName "Procurement", see <see cref="AppSecretsRepository"/>), which also enforces the
+    /// per-user SecretAccess check. No environment-variable overrides anymore (user, 18 nov 2026:
+    /// "Enkel de sharedSecrets gebruiken"). New/changed values are entered via Beheer > App Secrets.
     ///
     /// Replaces the Procurement_Supplier.ClientIdEncrypted/ClientSecretEncrypted/ApiKeyEncrypted/
     /// RefreshTokenEncrypted columns (13 nov 2026). Those columns still exist but are no longer read,
@@ -51,29 +50,23 @@ namespace Procurement.Data.Secrets
             (RutronikApiKeyName, "Rutronik API Key", true),
         };
 
-        public static string DigiKeyClientId => GetSecret("PROCUREMENT_DIGIKEY_CLIENT_ID", DigiKeyClientIdName);
-        public static string DigiKeyClientSecret => GetSecret("PROCUREMENT_DIGIKEY_CLIENT_SECRET", DigiKeyClientSecretName);
+        public static string DigiKeyClientId => GetSecret(DigiKeyClientIdName);
+        public static string DigiKeyClientSecret => GetSecret(DigiKeyClientSecretName);
 
-        // No environment-variable override: this value rotates on (almost) every use and is written
-        // back to the database automatically, so a fixed value in an environment variable would go
-        // stale after the first call.
-        public static string DigiKeyRefreshToken => _repo.GetDecryptedValue(DigiKeyRefreshTokenName);
+        // Rotates on (almost) every use and is written back to the database automatically.
+        public static string DigiKeyRefreshToken => GetSecret(DigiKeyRefreshTokenName);
 
-        public static string FarnellApiKey => GetSecret("PROCUREMENT_FARNELL_API_KEY", FarnellApiKeyName);
-        public static string MouserApiKey => GetSecret("PROCUREMENT_MOUSER_API_KEY", MouserApiKeyName);
-        public static string TmeToken => GetSecret("PROCUREMENT_TME_TOKEN", TmeTokenName);
-        public static string TmeApiKey => GetSecret("PROCUREMENT_TME_API_KEY", TmeApiKeyName);
-        public static string ArrowClientId => GetSecret("PROCUREMENT_ARROW_CLIENT_ID", ArrowClientIdName);
-        public static string ArrowClientSecret => GetSecret("PROCUREMENT_ARROW_CLIENT_SECRET", ArrowClientSecretName);
-        public static string RutronikApiKey => GetSecret("PROCUREMENT_RUTRONIK_API_KEY", RutronikApiKeyName);
+        public static string FarnellApiKey => GetSecret(FarnellApiKeyName);
+        public static string MouserApiKey => GetSecret(MouserApiKeyName);
+        public static string TmeToken => GetSecret(TmeTokenName);
+        public static string TmeApiKey => GetSecret(TmeApiKeyName);
+        public static string ArrowClientId => GetSecret(ArrowClientIdName);
+        public static string ArrowClientSecret => GetSecret(ArrowClientSecretName);
+        public static string RutronikApiKey => GetSecret(RutronikApiKeyName);
 
         /// <summary>Called by DigiKeyHttpClientWrapper.OnRefreshTokenRotated and by "Authorize Ordering...".</summary>
         public static void SaveDigiKeyRefreshToken(string refreshToken) => _repo.Set(DigiKeyRefreshTokenName, refreshToken);
 
-        private static string GetSecret(string environmentVariableName, string secretName)
-        {
-            string fromEnvironment = Environment.GetEnvironmentVariable(environmentVariableName);
-            return string.IsNullOrEmpty(fromEnvironment) ? _repo.GetDecryptedValue(secretName) : fromEnvironment;
-        }
+        private static string GetSecret(string secretName) => _repo.GetValue(secretName);
     }
 }

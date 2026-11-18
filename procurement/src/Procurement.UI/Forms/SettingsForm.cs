@@ -357,7 +357,7 @@ namespace Procurement.UI.Forms
             }
             catch (Exception ex)
             {
-                // e.g. SharedSecrets unreachable or UNIPRO_SECRET_KEY not set while saving the token.
+                // e.g. SharedSecrets unreachable or no write rights while saving the token.
                 MessageBox.Show(this, $"De autorisatie is gelukt, maar het refresh-token kon niet worden opgeslagen:\n\n{ex.Message}",
                     "Fout", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }

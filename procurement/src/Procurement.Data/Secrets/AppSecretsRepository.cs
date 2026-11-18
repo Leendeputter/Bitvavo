@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Data.SqlClient;
 using System.Linq;
 using Dapper;
-using Procurement.Core.Security;
 using Procurement.Core.Session;
 
 namespace Procurement.Data.Secrets
@@ -15,14 +14,16 @@ namespace Procurement.Data.Secrets
     /// "secret keys op dezelfde manier opslaan als we dat voor UniPro hebben opgezet"), so that the
     /// planned merge of Procurement into UniPro can drop this class in favor of UniPro's own.
     ///
-    /// Values never enter or leave the database unencrypted (SecretProtector does that here), so
-    /// callers (SecretSettings, AppSecretsForm) only ever deal in plain text.
+    /// Since 18 nov 2026 (same change as UniPro: SecretProtector and UNIPRO_SECRET_KEY removed) values
+    /// are stored as plain text in the [Value] column; protection comes from SQL rights on the
+    /// SharedSecrets database plus the per-secret SecretAccess check below. The old ValueEncrypted
+    /// column is no longer read or written.
     ///
     /// <see cref="ApplicationName"/> = "Procurement" keeps these rows apart from UniPro's own
     /// ("UniPro") — UniPro's App Secrets screen only ever lists its own ApplicationName, so the two
     /// apps can share the database without seeing (or tripping over) each other's rows. After the
     /// merge, a single UPDATE of ApplicationName (plus adding these names to UniPro's
-    /// SecretDefinitions) moves them over; no re-encryption, since both apps use UNIPRO_SECRET_KEY.
+    /// SecretDefinitions) moves them over.
     /// </summary>
     public class AppSecretsRepository
     {
@@ -33,7 +34,7 @@ namespace Procurement.Data.Secrets
             using (var cn = new SqlConnection(ProcurementSession.SharedSecretsConnectionString))
             {
                 return cn.Query<string>(
-                    "SELECT [Name] FROM dbo.AppSecrets WHERE ApplicationName = @ApplicationName AND ValueEncrypted IS NOT NULL ORDER BY [Name]",
+                    "SELECT [Name] FROM dbo.AppSecrets WHERE ApplicationName = @ApplicationName AND [Value] IS NOT NULL AND [Value] <> '' ORDER BY [Name]",
                     new { ApplicationName }
                 ).ToList();
             }
@@ -46,7 +47,7 @@ namespace Procurement.Data.Secrets
         /// UnauthorizedAccessException otherwise — same rule as UniPro, so a missing grant shows up
         /// as "no permission" instead of as a confusing "API key missing" further down.
         /// </summary>
-        public string GetDecryptedValue(string name)
+        public string GetValue(string name)
         {
             using (var cn = new SqlConnection(ProcurementSession.SharedSecretsConnectionString))
             {
@@ -62,11 +63,11 @@ namespace Procurement.Data.Secrets
                         "gebruiken. Vraag een beheerder om dit via Beheer > App Secrets toe te kennen.");
                 }
 
-                string encrypted = cn.Query<string>(
-                    "SELECT ValueEncrypted FROM dbo.AppSecrets WHERE ApplicationName = @ApplicationName AND [Name] = @Name",
+                string value = cn.Query<string>(
+                    "SELECT [Value] FROM dbo.AppSecrets WHERE ApplicationName = @ApplicationName AND [Name] = @Name",
                     new { ApplicationName, Name = name }).FirstOrDefault();
 
-                return SecretProtector.Decrypt(encrypted);
+                return string.IsNullOrEmpty(value) ? null : value;
             }
         }
 
@@ -76,20 +77,18 @@ namespace Procurement.Data.Secrets
         /// governs who may *use* an existing value. Also used for DigiKey's automatic refresh-token
         /// rotation, which is a write the app makes on its own, not a user reading a secret.
         /// </summary>
-        public void Set(string name, string plaintextValue)
+        public void Set(string name, string value)
         {
-            string encrypted = SecretProtector.Encrypt(plaintextValue);
-
             const string sql = @"
             IF EXISTS (SELECT 1 FROM dbo.AppSecrets WHERE ApplicationName = @ApplicationName AND [Name] = @Name)
                 UPDATE dbo.AppSecrets
-                SET ValueEncrypted = @ValueEncrypted,
+                SET [Value] = @Value,
                     ModifiedBy = @ModifiedBy,
                     ModificationDate = GETDATE()
                 WHERE ApplicationName = @ApplicationName AND [Name] = @Name
             ELSE
-                INSERT INTO dbo.AppSecrets (ApplicationName, [Name], ValueEncrypted, ModifiedBy, ModificationDate)
-                VALUES (@ApplicationName, @Name, @ValueEncrypted, @ModifiedBy, GETDATE())";
+                INSERT INTO dbo.AppSecrets (ApplicationName, [Name], [Value], ModifiedBy, ModificationDate)
+                VALUES (@ApplicationName, @Name, @Value, @ModifiedBy, GETDATE())";
 
             using (var cn = new SqlConnection(ProcurementSession.SharedSecretsConnectionString))
             {
@@ -97,7 +96,7 @@ namespace Procurement.Data.Secrets
                 {
                     ApplicationName,
                     Name = name,
-                    ValueEncrypted = encrypted,
+                    Value = string.IsNullOrEmpty(value) ? null : value,
                     ModifiedBy = ProcurementSession.UserName
                 });
             }

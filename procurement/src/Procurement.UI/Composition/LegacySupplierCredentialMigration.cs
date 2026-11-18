@@ -12,13 +12,13 @@ namespace Procurement.UI.Composition
 {
     /// <summary>
     /// One-time move of supplier credentials from the old Procurement_Supplier.*Encrypted columns
-    /// (encrypted with PROCUREMENT_SECRET_KEY) into SharedSecrets.dbo.AppSecrets (encrypted with
-    /// UNIPRO_SECRET_KEY, ApplicationName "Procurement") — 13 nov 2026, when Procurement switched to
+    /// (encrypted with PROCUREMENT_SECRET_KEY) into SharedSecrets.dbo.AppSecrets (ApplicationName
+    /// "Procurement"; plain-text [Value] since 18 nov 2026) — 13 nov 2026, when Procurement switched to
     /// UniPro's way of storing secrets.
     ///
     /// Runs at every startup but only does something for a secret that has a legacy value AND isn't
     /// in SharedSecrets yet, so once everything is moved it's a no-op (one cheap query). It needs
-    /// both keys on the machine that runs it once; without PROCUREMENT_SECRET_KEY it skips and says
+    /// PROCUREMENT_SECRET_KEY on the machine that runs it once; without PROCUREMENT_SECRET_KEY it skips and says
     /// so, and the values can simply be typed in again via Beheer > App Secrets instead.
     ///
     /// The user running the move gets a SecretAccess grant for each moved secret: they could already

@@ -34,8 +34,7 @@ namespace Procurement.Tools.DigiKeyOrderTester
                 Console.WriteLine("  Procurement.Tools.DigiKeyOrderTester.exe <DigiKeyPartNumber> [quantity] [unitPrice]");
                 Console.WriteLine("  Procurement.Tools.DigiKeyOrderTester.exe status <SalesOrderId>");
                 Console.WriteLine();
-                Console.WriteLine("Vereiste omgevingsvariabelen:");
-                Console.WriteLine("  UNIPRO_SECRET_KEY                 - dezelfde sleutel als UniPro en de hoofdapplicatie gebruiken.");
+                Console.WriteLine("Vereiste omgevingsvariabele:");
                 Console.WriteLine("  PROCUREMENT_TEST_CONNECTION_STRING - connection string naar de echte 'Unitron'-database.");
                 return 1;
             }

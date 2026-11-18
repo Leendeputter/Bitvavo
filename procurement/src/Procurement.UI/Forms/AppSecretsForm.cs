@@ -150,7 +150,7 @@ namespace Procurement.UI.Forms
 
             RefreshStatuses();
             MessageBox.Show(this,
-                "Saved. Filled-in fields were encrypted and written; empty fields were left unchanged.\n\n"
+                "Saved. Filled-in fields were written; empty fields were left unchanged.\n\n"
                 + "Restart the application for changed supplier credentials to take effect.",
                 "App Secrets", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
@@ -277,7 +277,7 @@ namespace Procurement.UI.Forms
             MessageBox.Show(this, "Rights saved.", "App Secrets", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
-        /// <summary>SharedSecrets errors (missing UNIPRO_SECRET_KEY, no DB rights, ...) shown as a message instead of the generic crash dialog.</summary>
+        /// <summary>SharedSecrets errors (unreachable database, no DB rights, ...) shown as a message instead of the generic crash dialog.</summary>
         private void RunGuarded(Action action)
         {
             try

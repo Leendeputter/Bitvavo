@@ -32,7 +32,7 @@ namespace Procurement.Data.Configurations
             Property(s => s.CountryCode).HasMaxLength(2);
 
             // Base64(IV + AES-256 ciphertext) is comfortably longer than the plaintext it replaces —
-            // 500 leaves headroom for any credential length SecretProtector produces.
+            // 500 leaves headroom (legacy columns, only read once by LegacySupplierCredentialMigration).
             Property(s => s.ClientIdEncrypted).HasMaxLength(500);
             Property(s => s.ClientSecretEncrypted).HasMaxLength(500);
             Property(s => s.ApiKeyEncrypted).HasMaxLength(500);
