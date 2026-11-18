@@ -1673,3 +1673,7 @@ raken dat mock-modus zelf nooit aanraakt:
   over (om dubbele goedkeuringsverzoeken te voorkomen); dat is nu niet meer nodig, want opnieuw sourcen
   vervangt offers en openstaande verzoeken. Een regel met een keuze blijft wel buiten een bundel: eerst
   uitvinken, dan opnieuw sourcen.
+- **18 nov 2026 — Geen ReReel/CutTape boven een volle reel** ("Wat is het nut van offer 4?" ... "DigiKey
+  heeft geen reels waar er 23495 oppassen, dus dit kan helemaal niet"). Is de behoefte minstens een volle
+  reel van die leverancier, dan komen ReReel en CutTape niet meer als los offer; ze blijven wel de rest
+  van een combinatie-offer.

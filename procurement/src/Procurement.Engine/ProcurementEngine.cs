@@ -664,8 +664,24 @@ namespace Procurement.Engine
             var originalReelRequired = line.ReelRequirement &&
                 (policy?.OriginalReelRequired ?? line.PackagingRequirement == PackagingRequirement.OriginalReel);
 
+            // A Digi-Reel/re-reel or cut tape is never longer than a full reel (user, 18 nov 2026:
+            // "DigiKey heeft geen reels waar er 23495 oppassen, dus dit kan helemaal niet"). From a full
+            // reel's worth upward, those variants only make sense as the rest of a combination offer.
+            var fullReelSize = variants
+                .Where(v => v != null && v.PackagingType == PackagingType.OriginalReel && v.PackagingQuantity > 0)
+                .Select(v => v.PackagingQuantity)
+                .DefaultIfEmpty(0)
+                .Max();
+
             foreach (var variant in variants)
             {
+                if (fullReelSize > 0 && neededQuantity >= fullReelSize && variant != null &&
+                    (variant.PackagingType == PackagingType.ReReel || variant.PackagingType == PackagingType.CutTape))
+                {
+                    // Still used as the rest of a combination offer (CombinationOfferBuilder), just not on its own.
+                    continue;
+                }
+
                 var offer = BuildVariantOffer(adapter.SupplierCode, line, supplierPartNumber, confidence, policy,
                     requestedQuantity, attritionQuantity, maxUnitCost, pricing, availability, variant);
                 offers.Add(offer);
