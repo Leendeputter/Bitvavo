@@ -80,8 +80,29 @@ namespace Procurement.Suppliers.DigiKey.Http
 
     internal class DigiKeyValueDto
     {
+        // V4 sends e.g. Manufacturer as { "Id": ..., "Name": "..." }; "Value" kept as fallback.
+        [JsonProperty("Name")]
+        public string Name { get; set; }
+
         [JsonProperty("Value")]
         public string Value { get; set; }
+
+        public string Text => !string.IsNullOrWhiteSpace(Name) ? Name : Value;
+    }
+
+    internal class DigiKeyPackageTypeDto
+    {
+        [JsonProperty("Id")]
+        public int Id { get; set; }
+
+        [JsonProperty("Name")]
+        public string Name { get; set; }
+
+        // Older/other shapes used "Value"; read as fallback.
+        [JsonProperty("Value")]
+        public string Value { get; set; }
+
+        public string Text => !string.IsNullOrWhiteSpace(Name) ? Name : Value;
     }
 
     internal class DigiKeyPriceBreakDto
@@ -101,8 +122,10 @@ namespace Procurement.Suppliers.DigiKey.Http
         [JsonProperty("DigiKeyProductNumber")]
         public string DigiKeyProductNumber { get; set; }
 
+        // V4 sends PackageType as { "Id": ..., "Name": "Cut Tape (CT)" } — "Name", not "Value"
+        // (18 nov 2026: the first live search showed every variation as packaging "Any").
         [JsonProperty("PackageType")]
-        public DigiKeyValueDto PackageType { get; set; }
+        public DigiKeyPackageTypeDto PackageType { get; set; }
 
         [JsonProperty("StandardPackage")]
         public int StandardPackage { get; set; }
@@ -116,8 +139,7 @@ namespace Procurement.Suppliers.DigiKey.Http
         [JsonProperty("StandardPricing")]
         public List<DigiKeyPriceBreakDto> StandardPricing { get; set; }
 
-        // Digi-Reel reeling fee. Field name per DigiKey's V4 ProductVariation schema as far as known
-        // (17 nov 2026), not yet confirmed against a real response: 0 when absent.
+        // Digi-Reel reeling fee (confirmed live 18 nov 2026: €5,50 on the …-6-ND variation).
         [JsonProperty("DigiReelFee")]
         public decimal DigiReelFee { get; set; }
     }

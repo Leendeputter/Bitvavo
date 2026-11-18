@@ -1635,3 +1635,7 @@ raken dat mock-modus zelf nooit aanraakt:
   `SecretProtector.Encrypt/Decrypt` en `UNIPRO_SECRET_KEY` zijn weg, alleen `DecryptLegacy` blijft voor
   de oude verhuizing. Vereist UniPro's migratie die `[Value]` toevoegt; Procurement-waarden komen daar
   via UniPro's decrypt-script of door ze opnieuw in te vullen in Beheer → App Secrets.
+- **18 nov 2026 — DigiKey-verpakking werd "Any"** ("Ook de Packaging en reel zijn niet ingevuld bij de
+  offers. Is dat logisch?"). DigiKey V4 stuurt `PackageType` (en `Manufacturer`) als `{ Id, Name }`; de
+  DTO las `Value`, dus elke variant werd `Any` en viel onder SMT af als "verpakking onbekend". DTO leest
+  nu `Name` met `Value` als terugval. `DigiReelFee` is daarmee ook bevestigd (€5,50 op de …-6-ND).

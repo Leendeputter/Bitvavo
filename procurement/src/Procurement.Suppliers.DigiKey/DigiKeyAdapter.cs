@@ -208,7 +208,7 @@ namespace Procurement.Suppliers.DigiKey
             return new SupplierProduct
             {
                 SupplierPartNumber = dto.DigiKeyPartNumber,
-                Manufacturer = dto.Manufacturer?.Value,
+                Manufacturer = dto.Manufacturer?.Text,
                 ManufacturerPartNumber = dto.ManufacturerPartNumber,
                 Description = !string.IsNullOrWhiteSpace(dto.DetailedDescription) ? dto.DetailedDescription : dto.ProductDescription,
                 MatchConfidence = confidence,
@@ -279,9 +279,9 @@ namespace Procurement.Suppliers.DigiKey
             return variations.Select(v => new SupplierPackagingOption
             {
                 SupplierPartNumber = !string.IsNullOrWhiteSpace(v.DigiKeyProductNumber) ? v.DigiKeyProductNumber : dto.DigiKeyPartNumber,
-                PackagingType = MapPackagingType(v.PackageType?.Value),
+                PackagingType = MapPackagingType(v.PackageType?.Text),
                 PackagingQuantity = v.StandardPackage > 0 ? v.StandardPackage : v.MinimumOrderQuantity,
-                ReelType = MapReelType(v.PackageType?.Value),
+                ReelType = MapReelType(v.PackageType?.Text),
                 ReelingFee = v.DigiReelFee,
                 AvailableQuantity = v.QuantityAvailableForPackageType,
                 MinimumOrderQuantity = v.MinimumOrderQuantity,
@@ -292,7 +292,7 @@ namespace Procurement.Suppliers.DigiKey
             }).ToList();
         }
 
-        // DigiKey's PackageType.Value is free text (e.g. "Cut Tape (CT)", "Tape & Reel (TR)",
+        // DigiKey's PackageType.Name is free text (e.g. "Cut Tape (CT)", "Tape & Reel (TR)",
         // "Digi-Reel®") — mapped on best-effort substring matching, unconfirmed against the
         // full set of real values DigiKey returns.
         private static PackagingType MapPackagingType(string packageTypeValue)
