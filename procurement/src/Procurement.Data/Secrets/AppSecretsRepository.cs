@@ -67,7 +67,8 @@ namespace Procurement.Data.Secrets
                     "SELECT [Value] FROM dbo.AppSecrets WHERE ApplicationName = @ApplicationName AND [Name] = @Name",
                     new { ApplicationName, Name = name }).FirstOrDefault();
 
-                return string.IsNullOrEmpty(value) ? null : value;
+                // Trim: a copy-pasted key with a trailing space/newline otherwise fails as "invalid clientId".
+                return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
             }
         }
 
@@ -96,7 +97,7 @@ namespace Procurement.Data.Secrets
                 {
                     ApplicationName,
                     Name = name,
-                    Value = string.IsNullOrEmpty(value) ? null : value,
+                    Value = string.IsNullOrWhiteSpace(value) ? null : value.Trim(),
                     ModifiedBy = ProcurementSession.UserName
                 });
             }
