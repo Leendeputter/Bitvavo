@@ -77,8 +77,8 @@ namespace Procurement.UI.Forms
             this.lbl_instructions.Name = "lbl_instructions";
             this.lbl_instructions.Size = new System.Drawing.Size(566, 40);
             this.lbl_instructions.TabIndex = 0;
-            this.lbl_instructions.Text = "Leave a field empty to keep the current value unchanged. Filled-in values are e" +
-    "ncrypted and saved (SharedSecrets database, shared with UniPro), and will never be shown on this screen again.";
+            this.lbl_instructions.Text = "Leave a field empty to keep the current value unchanged. Filled-in values are s" +
+    "aved with \"Save secrets\" (SharedSecrets database, shared with UniPro), and will never be shown on this screen again.";
             //
             // pnl_secrets
             //
@@ -96,11 +96,11 @@ namespace Procurement.UI.Forms
             // bt_save
             //
             this.bt_save.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Right)));
-            this.bt_save.Location = new System.Drawing.Point(392, 521);
+            this.bt_save.Location = new System.Drawing.Point(372, 521);
             this.bt_save.Name = "bt_save";
-            this.bt_save.Size = new System.Drawing.Size(90, 27);
+            this.bt_save.Size = new System.Drawing.Size(110, 27);
             this.bt_save.TabIndex = 2;
-            this.bt_save.Text = "Save";
+            this.bt_save.Text = "Save secrets";
             this.bt_save.UseVisualStyleBackColor = true;
             this.bt_save.Click += new System.EventHandler(this.bt_save_Click);
             //
