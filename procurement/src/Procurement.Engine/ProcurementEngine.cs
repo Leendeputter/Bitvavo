@@ -256,6 +256,12 @@ namespace Procurement.Engine
                 return LineOutcome.Selected;
             }
 
+            // Sourcing again replaces the previous offers instead of adding to them (18 nov 2026).
+            var removedOffers = await _offerRepository.DeleteForResourcingAsync(line.Id);
+            if (removedOffers > 0)
+                await _auditLogger.LogAsync("PurchaseRequestLine", line.Id.ToString(), "OLD_OFFERS_REMOVED", "Success",
+                    responsePayload: $"Removed={removedOffers}");
+
             // Packaging policy + attrition per component type/category (user request, 17 nov 2026).
             var maxUnitCost = ApprovalEvaluator.GetReferenceUnitPrice(await _erp.GetPartCostAsync(line.ErpArticleId));
             var classification = await GetComponentClassificationAsync(line);
@@ -480,10 +486,24 @@ namespace Procurement.Engine
                 ? packagingOptions.ToList()
                 : new List<SupplierPackagingOption> { null };
 
-            return variants
-                .Select(variant => BuildVariantOffer(adapter.SupplierCode, line, supplierPartNumber, confidence, policy,
-                    attritionQuantity, maxUnitCost, pricing, availability, variant))
-                .ToList();
+            var offers = new List<SupplierOffer>();
+            var originalReelRequired = line.ReelRequirement &&
+                (policy?.OriginalReelRequired ?? line.PackagingRequirement == PackagingRequirement.OriginalReel);
+
+            foreach (var variant in variants)
+            {
+                var offer = BuildVariantOffer(adapter.SupplierCode, line, supplierPartNumber, confidence, policy,
+                    attritionQuantity, maxUnitCost, pricing, availability, variant);
+                offers.Add(offer);
+
+                // Full reels + rest from another variant of this supplier (18 nov 2026).
+                var combination = CombinationOfferBuilder.TryBuild(offer, variant, packagingOptions, neededQuantity,
+                    policy, originalReelRequired, maxUnitCost);
+                if (combination != null)
+                    offers.Add(combination);
+            }
+
+            return offers;
         }
 
         private static SupplierOffer BuildVariantOffer(
@@ -549,14 +569,8 @@ namespace Procurement.Engine
             };
         }
 
-        /// <summary>Unit price of the highest price break at or below the quantity (the first break below the lowest). Null without breaks.</summary>
-        private static decimal? PriceAt(IReadOnlyCollection<PriceBreak> priceBreaks, int quantity)
-        {
-            if (priceBreaks == null || priceBreaks.Count == 0) return null;
-            var ordered = priceBreaks.Where(pb => pb.UnitPrice > 0m).OrderBy(pb => pb.BreakQuantity).ToList();
-            if (ordered.Count == 0) return null;
-            return (ordered.LastOrDefault(pb => pb.BreakQuantity <= quantity) ?? ordered[0]).UnitPrice;
-        }
+        private static decimal? PriceAt(IReadOnlyCollection<PriceBreak> priceBreaks, int quantity) =>
+            CombinationOfferBuilder.PriceAt(priceBreaks, quantity);
 
         private async Task RecomputeRequestStatusIfFullySelectedAsync(int purchaseRequestId)
         {
@@ -702,7 +716,7 @@ namespace Procurement.Engine
                         SupplierPartNumber = g.Key,
                         Quantity = g.Sum(l => l.Quantity),
                         UnitPrice = g.First().UnitPrice,
-                        PackagingType = items.First(i => i.Offer.SupplierPartNumber == g.Key).Offer.PackagingType
+                        PackagingType = PackagingTypeFor(items, g.Key)
                     }).ToList()
             };
 
@@ -739,11 +753,41 @@ namespace Procurement.Engine
         /// single line is a bundle of one, which gives the same quantity as its offer. Unit price: the
         /// price of the bundle's offer with the largest quantity (closest price break to the total).
         /// </summary>
+        private static PackagingType PackagingTypeFor(List<(PurchaseRequestLine Line, SupplierOffer Offer)> items, string supplierPartNumber)
+        {
+            var main = items.FirstOrDefault(i => i.Offer.SupplierPartNumber == supplierPartNumber);
+            if (main.Offer != null) return main.Offer.PackagingType;
+            var rest = items.FirstOrDefault(i => i.Offer.RemainderSupplierPartNumber == supplierPartNumber);
+            return rest.Offer?.RemainderPackagingType ?? PackagingType.Any;
+        }
+
         private static List<PurchaseOrderDraftLine> BuildBundledDraftLines(List<(PurchaseRequestLine Line, SupplierOffer Offer)> items)
         {
             var result = new List<PurchaseOrderDraftLine>();
 
-            foreach (var bundle in items.GroupBy(i => i.Offer.SupplierPartNumber))
+            // A combination offer (full reels + rest, 18 nov 2026) is already exact for its own line:
+            // two draft lines (reels, rest), not bundled with other lines.
+            foreach (var item in items.Where(i => i.Offer.IsCombination))
+            {
+                result.Add(new PurchaseOrderDraftLine
+                {
+                    PurchaseRequestLineId = item.Line.Id,
+                    SupplierPartNumber = item.Offer.SupplierPartNumber,
+                    Quantity = item.Offer.MainQuantity,
+                    UnitPrice = item.Offer.MainUnitPrice,
+                    LineTotal = item.Offer.MainQuantity * item.Offer.MainUnitPrice
+                });
+                result.Add(new PurchaseOrderDraftLine
+                {
+                    PurchaseRequestLineId = item.Line.Id,
+                    SupplierPartNumber = item.Offer.RemainderSupplierPartNumber,
+                    Quantity = item.Offer.RemainderQuantity,
+                    UnitPrice = item.Offer.RemainderUnitPrice,
+                    LineTotal = item.Offer.RemainderQuantity * item.Offer.RemainderUnitPrice
+                });
+            }
+
+            foreach (var bundle in items.Where(i => !i.Offer.IsCombination).GroupBy(i => i.Offer.SupplierPartNumber))
             {
                 var members = bundle
                     .OrderBy(i => i.Line.RequiredDate ?? DateTime.MaxValue)

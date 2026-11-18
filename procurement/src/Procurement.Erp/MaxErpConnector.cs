@@ -387,7 +387,8 @@ namespace Procurement.Erp
                 OrderTotal = draft.Lines.Sum(l => l.LineTotal),
                 Lines = draft.Lines.Select(l =>
                 {
-                    var lineResult = result.Lines.FirstOrDefault(r => r.PurchaseRequestLineId == l.PurchaseRequestLineId);
+                    var lineResult = result.Lines.FirstOrDefault(r => r.PurchaseRequestLineId == l.PurchaseRequestLineId && r.SupplierPartNumber == l.SupplierPartNumber)
+                        ?? result.Lines.FirstOrDefault(r => r.PurchaseRequestLineId == l.PurchaseRequestLineId);
                     return new PurchaseOrderLine
                     {
                         PurchaseRequestLineId = l.PurchaseRequestLineId,

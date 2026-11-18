@@ -51,6 +51,32 @@ namespace Procurement.Core.Entities
         /// </summary>
         public decimal ComparisonCost { get; set; }
 
+        /// <summary>
+        /// Combination offer (user request, 18 nov 2026: "2 OriginalReels te kopen van 600 stuks en 1
+        /// reReel van 60 stuks"): SupplierPartNumber/PackagingQuantity are the full reels, these four
+        /// the rest from another variant of the same supplier (e.g. Digi-Reel). OfferedQuantity,
+        /// TotalPrice and LandedCost cover both parts; UnitPrice is the weighted average. Null/0 on a
+        /// normal offer.
+        /// </summary>
+        public string RemainderSupplierPartNumber { get; set; }
+        public int RemainderQuantity { get; set; }
+        public decimal RemainderUnitPrice { get; set; }
+        public PackagingType? RemainderPackagingType { get; set; }
+
+        /// <summary>Not mapped. True for a full-reels-plus-rest combination.</summary>
+        public bool IsCombination => !string.IsNullOrEmpty(RemainderSupplierPartNumber) && RemainderQuantity > 0;
+
+        /// <summary>Not mapped. Full-reel part of a combination (OfferedQuantity otherwise).</summary>
+        public int MainQuantity => IsCombination ? OfferedQuantity - RemainderQuantity : OfferedQuantity;
+
+        /// <summary>Unit price of the full-reel part of a combination (0 on a normal offer).</summary>
+        public decimal MainUnitPrice { get; set; }
+
+        /// <summary>Not mapped. Shown in the offers grid, e.g. "2× 600 OriginalReel + 60 ReReel".</summary>
+        public string Composition => IsCombination
+            ? $"{(PackagingQuantity > 0 ? MainQuantity / PackagingQuantity : 0)}× {PackagingQuantity} {PackagingType} + {RemainderQuantity} {RemainderPackagingType}"
+            : string.Empty;
+
         public MatchConfidence MatchConfidence { get; set; }
         public DateTime OfferTimestamp { get; set; }
         public DateTime ExpiresAt { get; set; }

@@ -15,6 +15,10 @@ namespace Procurement.Data.Configurations
             Property(o => o.Manufacturer).HasMaxLength(100);
             Property(o => o.ManufacturerPartNumber).HasMaxLength(100);
             Property(o => o.Currency).HasMaxLength(3);
+            Property(o => o.RemainderSupplierPartNumber).HasMaxLength(100);
+            Ignore(o => o.IsCombination);
+            Ignore(o => o.MainQuantity);
+            Ignore(o => o.Composition);
 
             HasRequired(o => o.PurchaseRequestLine)
                 .WithMany()

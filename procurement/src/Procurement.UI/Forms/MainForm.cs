@@ -586,14 +586,15 @@ namespace Procurement.UI.Forms
                 Id = o.Id,
                 Select = selection != null && selection.SelectedOfferId == o.Id,
                 SupplierCode = o.SupplierCode,
-                SupplierPartNumber = o.SupplierPartNumber,
+                // Combination offer (full reels + rest, 18 nov 2026): both part numbers and the split.
+                SupplierPartNumber = o.IsCombination ? $"{o.SupplierPartNumber} + {o.RemainderSupplierPartNumber}" : o.SupplierPartNumber,
                 MatchConfidence = o.MatchConfidence.ToString(),
                 OfferedQuantity = o.OfferedQuantity,
                 AttritionQuantity = o.AttritionQuantity,
                 SurplusQuantity = o.SurplusQuantity,
                 UnitPrice = o.UnitPrice,
                 Currency = o.Currency,
-                Packaging = o.PackagingType.ToString(),
+                Packaging = o.IsCombination ? o.Composition : o.PackagingType.ToString(),
                 Reel = o.ReelType?.ToString() ?? "-",
                 ReelingFee = o.ReelingFee,
                 LandedCost = o.LandedCost,
@@ -628,14 +629,14 @@ namespace Procurement.UI.Forms
             // is"); no Fill at all since 16 nov 2026.
             SetCharacterBasedColumnWidth(dgv_offers, "Select", 8);
             SetCharacterBasedColumnWidth(dgv_offers, "SupplierCode", 10);
-            SetCharacterBasedColumnWidth(dgv_offers, "SupplierPartNumber", 22);
+            SetCharacterBasedColumnWidth(dgv_offers, "SupplierPartNumber", 32);
             SetCharacterBasedColumnWidth(dgv_offers, "MatchConfidence", 10);
             SetCharacterBasedColumnWidth(dgv_offers, "OfferedQuantity", 10);
             SetCharacterBasedColumnWidth(dgv_offers, "AttritionQuantity", 12);
             SetCharacterBasedColumnWidth(dgv_offers, "SurplusQuantity", 10);
             SetCharacterBasedColumnWidth(dgv_offers, "UnitPrice", 12);
             SetCharacterBasedColumnWidth(dgv_offers, "Currency", 8);
-            SetCharacterBasedColumnWidth(dgv_offers, "Packaging", 14);
+            SetCharacterBasedColumnWidth(dgv_offers, "Packaging", 30);
             SetCharacterBasedColumnWidth(dgv_offers, "Reel", 10);
             SetCharacterBasedColumnWidth(dgv_offers, "ReelingFee", 12);
             SetCharacterBasedColumnWidth(dgv_offers, "LandedCost", 12);

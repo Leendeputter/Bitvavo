@@ -1639,3 +1639,18 @@ raken dat mock-modus zelf nooit aanraakt:
   offers. Is dat logisch?"). DigiKey V4 stuurt `PackageType` (en `Manufacturer`) als `{ Id, Name }`; de
   DTO las `Value`, dus elke variant werd `Any` en viel onder SMT af als "verpakking onbekend". DTO leest
   nu `Name` met `Value` als terugval. `DigiReelFee` is daarmee ook bevestigd (€5,50 op de …-6-ND).
+- **18 nov 2026 — Combinatie-offer: hele reels + rest** ("In dit geval zou het het voordeligst zijn om
+  2 OriginalReels te kopen van 600 stuks en 1 reReel van 60 stuks"). `CombinationOfferBuilder` maakt
+  per leverancier naast de gewone offers één extra offer: zoveel mogelijk hele OriginalReels plus de rest
+  uit de goedkoopste andere variant die de policy bij deze prijs toestaat (goedkope SMT: alleen ReReel),
+  met de reeling fee van die variant. Alleen binnen één leverancier; niet als de policy een originele
+  reel eist. Het offer doet gewoon mee op Vergelijkingskosten. In het offers-grid: beide part numbers en
+  "2× 600 OriginalReel + 60 ReReel". Bij bestellen worden het twee PO-regels (in MAX en bij de
+  leverancier) voor dezelfde aanvraagregel; de MAX-PR wordt maar één keer gecontroleerd en verwijderd.
+  Nieuwe kolommen op `Procurement_SupplierOffer` (`RemainderSupplierPartNumber`, `RemainderQuantity`,
+  `RemainderUnitPrice`, `RemainderPackagingType`, `MainUnitPrice`): de app genereert bij het starten weer
+  het additieve upgrade-script op het bureaublad.
+- **18 nov 2026 — Opnieuw sourcen vervangt de oude offers** ("Ik heb nu 6 offers staan in plaats van 3
+  omdat de vorige ook blijven staan"). Voor een regel zonder selectie worden bij opnieuw sourcen eerst
+  de openstaande goedkeuringsverzoeken en alle offers waar geen selectie of besliste goedkeuring naar
+  verwijst verwijderd (`SupplierOfferRepository.DeleteForResourcingAsync`, auditregel `OLD_OFFERS_REMOVED`).

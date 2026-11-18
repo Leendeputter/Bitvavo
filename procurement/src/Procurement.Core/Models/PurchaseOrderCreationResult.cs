@@ -20,6 +20,10 @@ namespace Procurement.Core.Models
     public class PurchaseOrderCreationResultLine
     {
         public int PurchaseRequestLineId { get; set; }
+
+        /// <summary>Which MAX PO line, when one request line has two (combination offer: reels + rest).</summary>
+        public string SupplierPartNumber { get; set; }
+
         public string MaxLineNumber { get; set; }
         public string MaxDeliveryNumber { get; set; }
     }

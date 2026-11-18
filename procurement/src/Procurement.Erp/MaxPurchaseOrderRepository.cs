@@ -170,6 +170,9 @@ namespace Procurement.Erp
                     // PO line with the total quantity, on the first draft line of the bundle — the
                     // engine orders a bundle earliest required date first — and every bundled PR is
                     // deleted from MAX afterwards.
+                    // A combination offer (full reels + rest, 18 nov 2026) puts one request line in two
+                    // bundles (two part numbers): check and remove its MAX PR only once.
+                    var handledRequestLineIds = new HashSet<int>();
                     foreach (var bundle in draft.Lines.GroupBy(l => l.SupplierPartNumber))
                     {
                         var bundleLines = bundle.ToList();
@@ -184,7 +187,8 @@ namespace Procurement.Erp
                             // MaxErpConnector.ReconcileAgainstMaxAsync only runs on a Query click, so
                             // the PR could have been deleted in MAX in the meantime ("MAX is altijd
                             // leidend"). Checked for every bundled PR before anything is written.
-                            await EnsurePurchaseRequisitionStillExistsAsync(admin, bundledRequestLine);
+                            if (!handledRequestLineIds.Contains(bundledRequestLine.Id))
+                                await EnsurePurchaseRequisitionStillExistsAsync(admin, bundledRequestLine);
                             requestLines.Add(bundledRequestLine);
                         }
 
@@ -234,11 +238,13 @@ namespace Procurement.Erp
                             result.Lines.Add(new PurchaseOrderCreationResultLine
                             {
                                 PurchaseRequestLineId = bundledRequestLine.Id,
+                                SupplierPartNumber = bundle.Key,
                                 MaxLineNumber = poLine.LINNUM_10,
                                 MaxDeliveryNumber = poLine.DELNUM_10
                             });
 
-                            RemoveOriginalOrder(maxOrderModule, log, bundledRequestLine);
+                            if (handledRequestLineIds.Add(bundledRequestLine.Id))
+                                RemoveOriginalOrder(maxOrderModule, log, bundledRequestLine);
                         }
                     }
 
