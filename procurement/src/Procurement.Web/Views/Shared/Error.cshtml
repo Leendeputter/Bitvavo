@@ -1,0 +1,12 @@
+@model System.Web.Mvc.HandleErrorInfo
+@{
+    ViewBag.Title = "Fout";
+}
+<fieldset class="group">
+    <legend>Er ging iets mis</legend>
+    <p>De fout is gelogd. Probeer het opnieuw, of ga terug naar <a href="@Url.Action("Index", "PurchaseRequests")">Purchase Requests</a>.</p>
+    @if (Model != null && Request.IsLocal)
+    {
+        <pre class="error-detail">@Model.Exception</pre>
+    }
+</fieldset>

@@ -134,6 +134,7 @@ src/
   Procurement.Erp                 IErpConnector + MockErpConnector
   Procurement.Engine              ProcurementEngine: orkestreert sourcing/selectie/order
   Procurement.Services            Gedeelde laag voor desktop en web: ProcurementServices bouwt alles voor één login
+  Procurement.Web                 Web-variant (ASP.NET MVC 5, .NET 4.8) naast de desktop, zelfde databases
   Procurement.UI                  WinForms-app (startproject) — login, MAX-koppeling, security-stub
 tests/
   Procurement.Tests               xUnit-tests, inclusief de rekenvoorbeeld-casus uit spec §7
@@ -824,6 +825,48 @@ raken dat mock-modus zelf nooit aanraakt:
   verwijst nu ook rechtstreeks naar `MAXCore.dll`/`MaxOrderNET.dll` (zelfde vaste pad als
   `Procurement.Erp.csproj`) — `dotnet test` werkt dus alleen op een machine met de MAX50 SDK
   geïnstalleerd, wat op elke machine waar deze app draait sowieso het geval is.
+
+## Web-variant (Procurement.Web)
+
+Sinds 18 nov 2026 (plan van aanpak webapplicatie) is er naast de desktop een web-variant. Beide werken
+op dezelfde databases en dezelfde gedeelde code (`Procurement.Services` en lager), dus wat je in de ene
+doet, zie je in de andere. Klaar: inloggen, menu in UniPro-stijl, Purchase Requests (Query, filters,
+sourcen, offer kiezen, aantal aanpassen). Nog niet: Place Order, Orders, Approvals, Settings, App
+Secrets, Audit Log (fase 3). Bestellen staat net als op de desktop uit (`Ordering.Enabled` in `Web.config`).
+
+**Draaien op je eigen pc (Visual Studio):**
+
+1. Het project gebruikt de projectvorm `MSBuild.SDK.SystemWeb` (staat bovenaan `Procurement.Web.csproj`).
+   Visual Studio 2019 of 2022 haalt die bij de eerste build zelf op via NuGet; er hoeft niets
+   geïnstalleerd te worden. Lukt dat niet, controleer dan of nuget.org bereikbaar is.
+2. Zet `Procurement.Web` als startproject en druk F5. IIS Express start met Windows-authenticatie
+   (zie `Properties/launchSettings.json`) op https://localhost:44380/.
+3. Je ziet het keuzescherm voor administratie en testmodus; je naam komt van Windows, zoals bij de desktop.
+   De laatste keuze wordt onthouden.
+4. Kolombreedtes (slepen in de kop) en sortering worden per browser onthouden.
+
+**Op de server (IIS), zelfde inrichting als MAX Anywhere:**
+
+1. Publiceer `Procurement.Web` naar een map (rechtsklik > Publish > Folder) en kopieer die naar de server.
+2. Maak in IIS een site of applicatie met een eigen AppPool: .NET CLR v4.0, Integrated. Zet
+   "Enable 32-Bit Applications" hetzelfde als bij de AppPool van MAX Anywhere.
+3. Laat de AppPool draaien onder een domein-serviceaccount met:
+   leesrecht op `\\192.168.0.12\Exact Max\RMServer\LIC` (en ExactRM.lic), SQL-rechten op Unitron,
+   Unitron_test, SharedSecrets en de MAX-bedrijfsdatabases, en schrijfrecht op de logmap (`Logging.Path`).
+4. Authentication in IIS: Windows Authentication aan, Anonymous Authentication uit.
+5. Koppel een HTTPS-certificaat en een interne naam (bijvoorbeeld procurement.<intern domein>).
+6. De MAX-DLL's (MAXCore, MaxOrderNET, MaxTransNET) staan na publiceren in `bin\`. Na een MAX-update
+   moeten ze daar mee, net als bij MAX Anywhere.
+
+**Logging:** `Procurement.Web.<datum>.log` in `Logging.Path` (fouten, inloggen, sourcen); MAX' eigen log
+in hetzelfde pad onder `Logging.FileName`.
+
+**Hoe desktop en web samenwerken:**
+- Iedere webgebruiker krijgt zijn eigen sessie (`UserSessionContext`) en eigen `ProcurementServices`,
+  dus administratie en testmodus lopen nooit door elkaar.
+- Order plaatsen en het vernieuwen van het DigiKey-token gebeuren onder een SQL-slot
+  (`SqlAppLock`), zodat desktop en web elkaar niet in de weg zitten.
+- Na lang stilstaan (2 uur) verloopt de websessie; je komt dan terug op het keuzescherm.
 
 ## Belangrijkste ontwerpkeuzes
 
@@ -1719,3 +1762,13 @@ raken dat mock-modus zelf nooit aanraakt:
     SharedSecrets staat. Zo houdt de ene app nooit een token vast dat de andere al heeft ingeruild.
   Bewust nog geen versieveld (rowversion) per aanvraag: dat vraagt een schemawijziging en is pas nodig als
   er echt tegelijk in hetzelfde scherm gewerkt wordt. Komt in fase 3 als het nodig blijkt.
+- **18 nov 2026 — Web-variant, fase 2: webskelet en eerste scherm** (plan van aanpak webapplicatie).
+  Nieuw project `Procurement.Web` (ASP.NET MVC 5 op .NET 4.8, projectvorm `MSBuild.SDK.SystemWeb`).
+  Inloggen met je Windows-account plus keuze van administratie en testmodus (`MaxLogin` in
+  `Procurement.Services/Login`, dezelfde stappen als de desktop), menu en kleuren uit `ClassicStyle`
+  (`Content/unipro.css`), logging naar `Logging.Path`, en het scherm Purchase Requests met dezelfde
+  kolommen, filters en knoppen als de desktop. Een eigen kleine grid (`Scripts/procurement.js`, geen
+  externe bibliotheken) onthoudt kolombreedtes en sortering. Beveiligd tegen het ongemerkt laten
+  uitvoeren van acties door een andere website (anti-forgery token). `ProcurementConnectionStringHelper`
+  en `AccessRights` verhuisd van `Procurement.UI` naar `Procurement.Services/Login`; `SecurityHelper`
+  roept nu `MaxRights` aan. Zie "Web-variant (Procurement.Web)" hierboven voor draaien en installeren.

@@ -1,0 +1,38 @@
+@using Procurement.Web.Infrastructure
+@model LoginViewModel
+@{
+    ViewBag.Title = "Inloggen";
+}
+<form method="post" action="@Url.Action("Login", "Account")" class="login">
+    @ValidateAjaxAntiForgeryAttribute.HiddenField(Context)
+    <input type="hidden" name="ReturnUrl" value="@Model.ReturnUrl" />
+    <fieldset class="group">
+        <legend>Inloggen</legend>
+        <div class="form-row">
+            <label>Gebruiker</label>
+            <span class="value">@(string.IsNullOrEmpty(Model.UserName) ? "(onbekend)" : Model.UserName)</span>
+        </div>
+        <div class="form-row">
+            <label for="CompanyId">Administratie</label>
+            <select id="CompanyId" name="CompanyId">
+                @foreach (var company in Model.Companies)
+                {
+                    <option value="@company.CompanyID" @(Model.CompanyId == company.CompanyID ? "selected" : "")>@company.CompanyName</option>
+                }
+            </select>
+        </div>
+        <div class="form-row">
+            <label></label>
+            <label class="check"><input type="checkbox" name="TestMode" value="true" @(Model.TestMode ? "checked" : "") /> Testmodus (database Unitron_test)</label>
+            <input type="hidden" name="TestMode" value="false" />
+        </div>
+        <div class="form-row">
+            <label></label>
+            <button type="submit" @(Model.Companies.Count == 0 ? "disabled" : "")>Log In</button>
+        </div>
+        @if (!string.IsNullOrEmpty(Model.Error))
+        {
+            <p class="error">@Model.Error</p>
+        }
+    </fieldset>
+</form>

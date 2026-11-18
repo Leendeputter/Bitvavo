@@ -1,0 +1,63 @@
+@using Procurement.Web.Infrastructure
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="request-verification-token" content="@ValidateAjaxAntiForgeryAttribute.TokenHeaderValue(Context)" />
+    <meta name="app-root" content="@Url.Content("~/")" />
+    <title>@ViewBag.Title - Component Procurement</title>
+    <link rel="stylesheet" href="@Url.Content("~/Content/unipro.css")" />
+</head>
+<body>
+    <header class="shell">
+        <div class="shell-title">
+            Component Procurement
+            @if (ViewBag.CompanyName != null)
+            {
+                <span class="shell-context">@ViewBag.CompanyName &middot; @ViewBag.UserName</span>
+            }
+            @if (ViewBag.TestMode == true)
+            {
+                <span class="test-mode">TEST MODE</span>
+            }
+        </div>
+        @if (ViewBag.CompanyName != null)
+        {
+            <nav class="menu">
+                <div class="menu-item">
+                    <span>Activity</span>
+                    <div class="menu-drop">
+                        <a href="@Url.Action("Index", "PurchaseRequests")">Purchase Requests</a>
+                        <span class="disabled" title="Volgt in fase 3">Purchase Orders...</span>
+                        <span class="disabled" title="Volgt in fase 3">Approvals...</span>
+                    </div>
+                </div>
+                <div class="menu-item">
+                    <span>Options</span>
+                    <div class="menu-drop">
+                        <span class="disabled" title="Volgt in fase 3">Supplier Mapping...</span>
+                        <span class="disabled" title="Volgt in fase 3">Settings...</span>
+                        <span class="disabled" title="Volgt in fase 3">Audit Log...</span>
+                    </div>
+                </div>
+                <div class="menu-item">
+                    <span>Beheer</span>
+                    <div class="menu-drop">
+                        <span class="disabled" title="Volgt in fase 3">App Secrets</span>
+                    </div>
+                </div>
+                <form class="menu-logout" method="post" action="@Url.Action("Logout", "Account")">
+                    @ValidateAjaxAntiForgeryAttribute.HiddenField(Context)
+                    <button type="submit" class="link-button">Andere administratie</button>
+                </form>
+            </nav>
+        }
+    </header>
+    <main class="screen">
+        @RenderBody()
+    </main>
+    <script src="@Url.Content("~/Scripts/procurement.js")"></script>
+    @RenderSection("scripts", required: false)
+</body>
+</html>

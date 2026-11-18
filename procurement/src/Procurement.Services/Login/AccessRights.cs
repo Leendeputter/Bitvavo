@@ -1,7 +1,7 @@
-namespace Procurement.UI.Security
+namespace Procurement.Services.Login
 {
     /// <summary>
-    /// MAX access-right strings checked through <see cref="SecurityHelper"/>. Same convention (and,
+    /// MAX access-right strings checked through <see cref="MaxRights"/> (desktop: SecurityHelper). Same convention (and,
     /// where the same screen exists in both apps, the same values) as UniPro2026's
     /// Security/AccessRights.cs, so these merge one-to-one later.
     /// </summary>

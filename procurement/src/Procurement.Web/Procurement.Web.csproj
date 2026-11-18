@@ -1,0 +1,61 @@
+<!--
+  Procurement as a web app (plan of 18 nov 2026): ASP.NET MVC 5 on .NET Framework 4.8, next to the
+  WinForms desktop app and on the same shared code (Procurement.Services and below). SDK-style
+  project via MSBuild.SDK.SystemWeb, so it stays as small as the other projects; Visual Studio
+  2019/2022 opens, builds, runs (IIS Express) and publishes it like a classic web application.
+-->
+<Project Sdk="MSBuild.SDK.SystemWeb/4.0.104">
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>7.3</LangVersion>
+    <RootNamespace>Procurement.Web</RootNamespace>
+    <AssemblyName>Procurement.Web</AssemblyName>
+    <Nullable>disable</Nullable>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <!-- No Roslyn-at-runtime packages: the views are written for the compiler built into .NET 4.8. -->
+    <ExcludeSDKDefaultPackages>true</ExcludeSDKDefaultPackages>
+    <!-- Keep Web.config's binding redirects in sync with the referenced packages on every build. -->
+    <GeneratedBindingRedirectsAction>Overwrite</GeneratedBindingRedirectsAction>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNet.Mvc" Version="5.3.0" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="EntityFramework" Version="6.4.4" />
+    <PackageReference Include="NLog" Version="4.7.15" />
+    <PackageReference Include="Dapper" Version="1.40.0" />
+    <PackageReference Include="DapperExtensions" Version="1.4.3" />
+  </ItemGroup>
+
+  <!-- Same MAX50 references as the desktop. They must end up in bin\, next to Procurement.Web.dll,
+       just like in MAX Anywhere's own website. -->
+  <ItemGroup>
+    <Reference Include="MAXCore">
+      <HintPath>F:\Software\MAX\MAX Update\MAXUpdateNet VB.NET Sample Code\bin\MAXCore.dll</HintPath>
+    </Reference>
+    <Reference Include="MaxOrderNET">
+      <HintPath>F:\Software\MAX\MAX Update\MAXUpdateNet VB.NET Sample Code\bin\MaxOrderNET.dll</HintPath>
+    </Reference>
+    <Reference Include="MaxTransNET">
+      <HintPath>F:\Software\MAX\MAX Update\MAXUpdateNet VB.NET Sample Code\bin\MaxTransNET.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Procurement.Services\Procurement.Services.csproj" />
+    <ProjectReference Include="..\Procurement.Core\Procurement.Core.csproj" />
+    <ProjectReference Include="..\Procurement.Data\Procurement.Data.csproj" />
+    <ProjectReference Include="..\Procurement.Erp\Procurement.Erp.csproj" />
+    <ProjectReference Include="..\Procurement.Engine\Procurement.Engine.csproj" />
+  </ItemGroup>
+
+  <!-- Pages, styles and scripts are published with the site. -->
+  <ItemGroup>
+    <Content Include="Views\**\*.cshtml" />
+    <Content Include="Views\Web.config" />
+    <Content Include="Content\**\*" />
+    <Content Include="Scripts\**\*" />
+  </ItemGroup>
+
+</Project>

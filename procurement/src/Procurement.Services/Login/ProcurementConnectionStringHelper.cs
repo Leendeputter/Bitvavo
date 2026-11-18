@@ -1,6 +1,6 @@
 using System.Data.SqlClient;
 
-namespace Procurement.UI.Composition
+namespace Procurement.Services.Login
 {
     /// <summary>
     /// Builds this app's own connection string from the MAX admin connection resolved at login

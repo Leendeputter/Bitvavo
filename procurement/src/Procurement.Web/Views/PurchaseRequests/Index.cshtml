@@ -1,0 +1,54 @@
+@{
+    ViewBag.Title = "Purchase Requests";
+}
+<div class="toolbar">
+    <button type="button" id="bt_startSourcing">Start Sourcing (Selection)</button>
+    <button type="button" id="bt_sourceAll">Source All</button>
+    <button type="button" id="bt_placeOrders" disabled title="Volgt in fase 3; bestellen staat nu ook uit">Place Order (off)</button>
+</div>
+
+<form id="filters" class="filters" autocomplete="off">
+    <fieldset class="group">
+        <legend>Fetch Orders from MAX</legend>
+        <label class="check"><input type="checkbox" name="IncludePlanned" /> 1 - Planned</label>
+        <label class="check"><input type="checkbox" name="IncludeApproved" checked /> 2 - Approved</label>
+        <button type="button" id="bt_query">Query</button>
+    </fieldset>
+    <fieldset class="group">
+        <legend>Due Date Range</legend>
+        <label class="check"><input type="checkbox" name="DueDateEnabled" id="chk_dueDateEnable" /> Enable</label>
+        <label>Start Date <input type="date" name="DueDateStart" disabled /></label>
+        <label>End Date <input type="date" name="DueDateEnd" disabled /></label>
+    </fieldset>
+    <fieldset class="group">
+        <legend>Filter</legend>
+        <label>Select By
+            <select name="RangeField">
+                <option value="OrderNumber">Order Number</option>
+                <option value="Customer">Customer</option>
+                <option value="Part">Part</option>
+            </select>
+        </label>
+        <label>Start <input type="text" name="RangeStart" size="10" /></label>
+        <label>End <input type="text" name="RangeEnd" size="10" /></label>
+    </fieldset>
+    <fieldset class="group display">
+        <legend>Display</legend>
+        <label class="check"><input type="checkbox" name="Statuses" value="Pending" checked /> Pending</label>
+        <label class="check"><input type="checkbox" name="Statuses" value="Sourcing" checked /> Sourcing</label>
+        <label class="check"><input type="checkbox" name="Statuses" value="WaitingApproval" checked /> WaitingApproval</label>
+        <label class="check"><input type="checkbox" name="Statuses" value="ReadyToOrder" checked /> ReadyToOrder</label>
+        <label class="check"><input type="checkbox" name="Statuses" value="Exception" checked /> Exception</label>
+        <label class="check"><input type="checkbox" name="ShowTestRequests" /> Show Test Requests</label>
+    </fieldset>
+</form>
+
+<div id="grid_requests" class="grid grid-requests"></div>
+<div class="grid-caption">Offers for the selected request (tick "Select" to select/deselect an offer, double-click Quantity to change it):</div>
+<div id="grid_offers" class="grid grid-offers"></div>
+
+<div id="status" class="status-line">Ready. Click "Query" to fetch orders from MAX.</div>
+
+@section scripts {
+    <script src="@Url.Content("~/Scripts/purchase-requests.js")"></script>
+}
