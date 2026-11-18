@@ -156,29 +156,6 @@ namespace Procurement.Engine
                 await RecomputeRequestStatusIfFullySelectedAsync(line.PurchaseRequestId);
         }
 
-        /// <summary>
-        /// Requested delivery date for a line and, when bundled, for every line of its bundle (user,
-        /// 18 nov 2026). Null clears it. Goes to the MAX PO line's due date when ordering.
-        /// </summary>
-        public async Task SetRequestedDeliveryDateAsync(int purchaseRequestLineId, DateTime? date, string user)
-        {
-            if (await _purchaseOrderRepository.HasOrderForLineAsync(purchaseRequestLineId))
-                throw new InvalidOperationException("Deze regel is al besteld; de leverdatum kan hier niet meer aangepast worden.");
-
-            var lineIds = new HashSet<int> { purchaseRequestLineId };
-            foreach (var bundleKey in (await _offerRepository.GetByLineIdAsync(purchaseRequestLineId))
-                         .Select(o => o.BundleKey).Where(k => !string.IsNullOrEmpty(k)).Distinct())
-            {
-                foreach (var sibling in await _offerRepository.GetByBundleKeyAsync(bundleKey))
-                    lineIds.Add(sibling.PurchaseRequestLineId);
-            }
-
-            await _offerRepository.SetRequestedDeliveryDateAsync(lineIds.ToList(), date?.Date);
-            foreach (var lineId in lineIds)
-                await _auditLogger.LogAsync("PurchaseRequestLine", lineId.ToString(), "REQUESTED_DELIVERY_DATE_SET", "Success",
-                    responsePayload: date.HasValue ? date.Value.ToString("yyyy-MM-dd") : "-", userOrSystem: user);
-        }
-
         public async Task SelectOfferManuallyAsync(int purchaseRequestLineId, int selectedOfferId, string reason, string user)
         {
             var offer = await _offerRepository.GetByIdAsync(selectedOfferId);
@@ -1077,8 +1054,7 @@ namespace Procurement.Engine
                             SupplierPartNumber = pools[p].PartNumber,
                             Quantity = allocation[n][p],
                             UnitPrice = pools[p].UnitPrice,
-                            LineTotal = allocation[n][p] * pools[p].UnitPrice,
-                            RequestedDeliveryDate = members[n].Offer.RequestedDeliveryDate
+                            LineTotal = allocation[n][p] * pools[p].UnitPrice
                         });
                     }
                 }
@@ -1113,8 +1089,7 @@ namespace Procurement.Engine
                         SupplierPartNumber = bundle.Key,
                         Quantity = quantities[n],
                         UnitPrice = priceOffer.UnitPrice,
-                        LineTotal = quantities[n] * priceOffer.UnitPrice,
-                        RequestedDeliveryDate = members[n].Offer.RequestedDeliveryDate
+                        LineTotal = quantities[n] * priceOffer.UnitPrice
                     });
                 }
             }

@@ -166,7 +166,7 @@ namespace Procurement.UI
                     File.WriteAllText(scriptPath, PackagingUpgradeSql);
 
                     MessageBox.Show(
-                        "De database mist kolommen of tabellen voor het verpakkingsbeleid, de extra voor uitval, de combinatie-offers (hele reels + rest) het sourcen per artikel of de gewenste leverdatum.\n\n"
+                        "De database mist kolommen of tabellen voor het verpakkingsbeleid, de extra voor uitval, de combinatie-offers (hele reels + rest) of het sourcen per artikel.\n\n"
                         + $"Er is een upgrade-script gegenereerd op je bureaublad:\n{scriptPath}\n\n"
                         + "Dit script voegt alleen kolommen en een tabel toe (en verwijdert de oude kolom MinimumQuantity); "
                         + "bestaande gegevens blijven staan. Voer het uit in SQL Server Management Studio en start de app daarna opnieuw.",
@@ -237,8 +237,7 @@ namespace Procurement.UI
             + " UNION ALL SELECT COUNT(*) FROM sys.tables WHERE name = 'Procurement_AttritionRule' AND schema_id = SCHEMA_ID('dbo')"
             + " UNION ALL SELECT CASE WHEN COL_LENGTH('dbo.Procurement_PackagingPolicy', 'MinimumQuantity') IS NULL THEN 1 ELSE 0 END"
             + " UNION ALL SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Procurement_SupplierOffer') AND name = 'RemainderSupplierPartNumber'"
-            + " UNION ALL SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Procurement_SupplierOffer') AND name = 'BundleKey'"
-            + " UNION ALL SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Procurement_SupplierOffer') AND name = 'RequestedDeliveryDate'";
+            + " UNION ALL SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Procurement_SupplierOffer') AND name = 'BundleKey'";
 
         // Additive upgrade for the packaging policy per component type (17 nov 2026). Every
         // statement is guarded, so running it twice is harmless. Column types match what EF's
@@ -291,11 +290,6 @@ IF COL_LENGTH('dbo.Procurement_SupplierOffer', 'BundleLineCount') IS NULL
 IF COL_LENGTH('dbo.Procurement_SupplierOffer', 'BundleNeededQuantity') IS NULL
     ALTER TABLE dbo.Procurement_SupplierOffer ADD BundleNeededQuantity INT NOT NULL
         CONSTRAINT DF_Procurement_SupplierOffer_BundleNeededQuantity DEFAULT 0;
-GO
-
--- Requested delivery date per offer/bundle (18 nov 2026).
-IF COL_LENGTH('dbo.Procurement_SupplierOffer', 'RequestedDeliveryDate') IS NULL
-    ALTER TABLE dbo.Procurement_SupplierOffer ADD RequestedDeliveryDate DATETIME NULL;
 GO
 
 IF OBJECT_ID('dbo.Procurement_AttritionRule', 'U') IS NULL

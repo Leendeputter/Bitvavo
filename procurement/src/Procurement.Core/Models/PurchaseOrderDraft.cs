@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 
 namespace Procurement.Core.Models
@@ -27,8 +26,5 @@ namespace Procurement.Core.Models
         public int Quantity { get; set; }
         public decimal UnitPrice { get; set; }
         public decimal LineTotal { get; set; }
-
-        /// <summary>The user's requested delivery date (SupplierOffer.RequestedDeliveryDate); null = derive from the required date as before.</summary>
-        public DateTime? RequestedDeliveryDate { get; set; }
     }
 }

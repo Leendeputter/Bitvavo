@@ -608,8 +608,7 @@ namespace Procurement.UI.Forms
                 ComparisonCost = SupplierSelectionEngine.EffectiveComparisonCost(o),
                 LeadTimeDays = o.LeadTimeDays,
                 AvailableQuantity = o.AvailableQuantity,
-                DueDate = o.EstimatedDeliveryDate,
-                RequestedDelivery = o.RequestedDeliveryDate
+                DueDate = o.EstimatedDeliveryDate
             }));
 
             if (dgv_offers.Columns["Id"] != null)
@@ -630,10 +629,9 @@ namespace Procurement.UI.Forms
             SetHeaderText(dgv_offers, "LeadTimeDays", "Lead Time (Working Days)");
             SetHeaderText(dgv_offers, "AvailableQuantity", "Available Qty");
             SetHeaderText(dgv_offers, "DueDate", "Due Date");
-            SetHeaderText(dgv_offers, "RequestedDelivery", "Gewenste leverdatum");
             ApplyQuantityColumns(dgv_offers, "OfferedQuantity", "AttritionQuantity", "SurplusQuantity", "AvailableQuantity");
             ApplyCurrencyColumns(dgv_offers, "UnitPrice", "ReelingFee", "LandedCost", "ComparisonCost");
-            ApplyDateColumns(dgv_offers, "DueDate", "RequestedDelivery");
+            ApplyDateColumns(dgv_offers, "DueDate");
             // Every column gets an explicit width (user request, 20 okt 2026: "ik heb liever dat we
             // rechts wat ruimte over houden dan dat alles zo breed wordt dat het ook niet meer leesbaar
             // is"); no Fill at all since 16 nov 2026.
@@ -655,11 +653,10 @@ namespace Procurement.UI.Forms
             SetCharacterBasedColumnWidth(dgv_offers, "LeadTimeDays", 22);
             SetCharacterBasedColumnWidth(dgv_offers, "AvailableQuantity", 12);
             SetCharacterBasedColumnWidth(dgv_offers, "DueDate", 12);
-            SetCharacterBasedColumnWidth(dgv_offers, "RequestedDelivery", 20);
 
             // Enkel "Select" en het aantal (18 nov 2026) mogen bewerkt worden — zie de ReadOnly=false op de grid zelf.
             foreach (DataGridViewColumn column in dgv_offers.Columns)
-                column.ReadOnly = column.Name != "Select" && column.Name != "OfferedQuantity" && column.Name != "RequestedDelivery";
+                column.ReadOnly = column.Name != "Select" && column.Name != "OfferedQuantity";
         }
 
         /// <summary>
@@ -693,7 +690,6 @@ namespace Procurement.UI.Forms
             public int LeadTimeDays { get; set; }
             public int AvailableQuantity { get; set; }
             public DateTime DueDate { get; set; }
-            public DateTime? RequestedDelivery { get; set; }
         }
 
         /// <summary>
@@ -704,23 +700,6 @@ namespace Procurement.UI.Forms
         /// </summary>
         private void OffersGrid_CellParsing(object sender, DataGridViewCellParsingEventArgs e)
         {
-            if (dgv_offers.Columns[e.ColumnIndex].Name == "RequestedDelivery")
-            {
-                var text = e.Value?.ToString();
-                if (string.IsNullOrWhiteSpace(text))
-                {
-                    e.Value = null;
-                    e.ParsingApplied = true;
-                }
-                else if (DateTime.TryParse(text, System.Globalization.CultureInfo.CurrentCulture,
-                             System.Globalization.DateTimeStyles.None, out var date))
-                {
-                    e.Value = date.Date;
-                    e.ParsingApplied = true;
-                }
-                return;
-            }
-
             if (dgv_offers.Columns[e.ColumnIndex].Name != "OfferedQuantity" || e.Value == null) return;
             if (decimal.TryParse(e.Value.ToString(), System.Globalization.NumberStyles.Number,
                     System.Globalization.CultureInfo.CurrentCulture, out var parsed) && parsed > 0 && parsed <= int.MaxValue)
@@ -769,42 +748,12 @@ namespace Procurement.UI.Forms
             }
         }
 
-        /// <summary>Gewenste leverdatum (18 nov 2026): one date for the line and its whole bundle; leeg = geen voorkeur.</summary>
-        private async System.Threading.Tasks.Task OffersGrid_RequestedDeliveryChangedAsync(DataGridViewCellEventArgs e)
-        {
-            if (_currentLineId == null) return;
-            var date = dgv_offers.Rows[e.RowIndex].Cells["RequestedDelivery"].Value as DateTime?;
-
-            try
-            {
-                SetBusy(true);
-                await _composition.Engine.SetRequestedDeliveryDateAsync(_currentLineId.Value, date, _composition.Session.UserName);
-                SetStatus(date.HasValue
-                    ? $"Gewenste leverdatum {date.Value:d} ingesteld (ook voor de andere regels in de bundel)."
-                    : "Gewenste leverdatum gewist.");
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(this, ex.Message, "Fout bij aanpassen van de leverdatum", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-            finally
-            {
-                await LoadLocalRequestsAsync();
-                SetBusy(false);
-            }
-        }
-
         private async System.Threading.Tasks.Task OffersGrid_CellValueChangedAsync(DataGridViewCellEventArgs e)
         {
             if (e.RowIndex < 0) return;
             if (dgv_offers.Columns[e.ColumnIndex].Name == "OfferedQuantity")
             {
                 await OffersGrid_QuantityChangedAsync(e);
-                return;
-            }
-            if (dgv_offers.Columns[e.ColumnIndex].Name == "RequestedDelivery")
-            {
-                await OffersGrid_RequestedDeliveryChangedAsync(e);
                 return;
             }
             if (dgv_offers.Columns[e.ColumnIndex].Name != "Select") return;

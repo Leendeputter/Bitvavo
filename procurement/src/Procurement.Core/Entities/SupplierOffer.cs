@@ -91,14 +91,6 @@ namespace Procurement.Core.Entities
         /// <summary>Total need of the bundle: sum of requested + attrition over its lines (0 when not bundled).</summary>
         public int BundleNeededQuantity { get; set; }
 
-        /// <summary>
-        /// Delivery date the user wants (user, 18 nov 2026: "Als een item op voorraad is bij de supplier
-        /// wil ik het niet altijd direct binnen krijgen"). Set on every offer of the line/bundle at
-        /// once; becomes the MAX PO line's due date instead of the one MAX derives from the required
-        /// date. Null = no preference.
-        /// </summary>
-        public DateTime? RequestedDeliveryDate { get; set; }
-
         /// <summary>Not mapped. Identifies "the same offer" across the copies of one bundle.</summary>
         public string VariantKey => $"{SupplierCode}|{SupplierPartNumber}|{RemainderSupplierPartNumber}|{PackagingType}";
 
