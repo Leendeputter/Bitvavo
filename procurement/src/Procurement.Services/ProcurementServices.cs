@@ -4,6 +4,7 @@ using System.Linq;
 using Procurement.Core.Entities;
 using Procurement.Core.Interfaces;
 using Procurement.Data;
+using Procurement.Data.Locking;
 using Procurement.Data.Repositories;
 using Procurement.Data.Secrets;
 using Procurement.Engine;
@@ -212,6 +213,11 @@ namespace Procurement.Services
                     // See comment above.
                 }
             };
+            // Desktop and web side by side (18 nov 2026): refresh one at a time across processes, and
+            // always start from the token as stored now, so neither app keeps a rotated-away token.
+            var secretsLock = new SqlAppLock(Session.SharedSecretsConnectionString);
+            digiKeyHttpClientWrapper.AcquireRefreshLock = () => secretsLock.AcquireAsync("Procurement.DigiKeyRefreshToken", TimeSpan.FromSeconds(60));
+            digiKeyHttpClientWrapper.ReadLatestRefreshToken = () => Secrets.DigiKeyRefreshToken;
             var digiKeyAdapter = new DigiKeyAdapter(digiKeyOptions, digiKeyHttpClientWrapper);
             var farnellAdapter = new FarnellAdapter(farnellOptions, new FarnellHttpClientWrapper(farnellOptions));
             var mouserAdapter = new MouserAdapter(mouserOptions, new MouserHttpClientWrapper(mouserOptions));
@@ -275,7 +281,9 @@ namespace Procurement.Services
                 PurchaseOrderRepository,
                 PolicyRepository)
             {
-                OrderingEnabled = OrderingEnabled
+                OrderingEnabled = OrderingEnabled,
+                // Desktop and web side by side: one "Place Order" at a time (18 nov 2026).
+                OrderLock = new SqlAppLock(Session.SharedConnectionString)
             };
         }
 

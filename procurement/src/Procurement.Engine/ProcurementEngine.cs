@@ -834,6 +834,17 @@ namespace Procurement.Engine
         public bool OrderingEnabled { get; set; } = true;
 
         /// <summary>
+        /// Cross-process lock around placing orders (web app plan, 18 nov 2026): with the desktop and
+        /// the web app side by side, two people could press "Place Order" for the same bundle at once.
+        /// Inside the lock the candidates are gathered fresh from the database, so the second one sees
+        /// the first one's PO lines and orders nothing twice. Null (tests) = no lock.
+        /// </summary>
+        public IAppLock OrderLock { get; set; }
+
+        private const string PlaceOrdersLockName = "Procurement.PlaceOrders";
+        private static readonly TimeSpan PlaceOrdersLockTimeout = TimeSpan.FromSeconds(30);
+
+        /// <summary>
         /// Spec correction, aug 2026: placing orders is decoupled from sourcing/approval, and no
         /// longer one PO per line — it's grouped by supplier (never by project/customer, that's not
         /// how this business buys), one PO per supplier, exactly matching MAX's own PurchaseOrder
@@ -847,6 +858,19 @@ namespace Procurement.Engine
                 throw new InvalidOperationException(
                     "Bestellen staat uit (App.config: Ordering.Enabled = false). Er is geen order geplaatst.");
 
+            var orderLock = OrderLock == null ? null : await OrderLock.AcquireAsync(PlaceOrdersLockName, PlaceOrdersLockTimeout);
+            try
+            {
+                await PlaceOrdersCoreAsync(purchaseRequestIds, user);
+            }
+            finally
+            {
+                orderLock?.Dispose();
+            }
+        }
+
+        private async Task PlaceOrdersCoreAsync(IReadOnlyList<int> purchaseRequestIds, string user)
+        {
             var candidates = await GatherOrderCandidatesAsync(purchaseRequestIds);
 
             if (candidates.Count == 0)

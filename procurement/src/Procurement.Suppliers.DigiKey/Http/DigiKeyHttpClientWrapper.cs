@@ -46,6 +46,17 @@ namespace Procurement.Suppliers.DigiKey.Http
         /// </summary>
         public Action<string> OnRefreshTokenRotated { get; set; }
 
+        /// <summary>
+        /// Optional cross-process lock around refreshing the Ordering token (web app plan, 18 nov 2026).
+        /// DigiKey hands out a new refresh token on every use and the old one stops working, so when
+        /// the desktop and the web app both refresh, one would otherwise keep a dead token. With this
+        /// set, the refresh happens one at a time, starting from <see cref="ReadLatestRefreshToken"/>.
+        /// </summary>
+        public Func<Task<IDisposable>> AcquireRefreshLock { get; set; }
+
+        /// <summary>Reads the refresh token as stored now (another process may have rotated it). Null/empty = keep the one in memory.</summary>
+        public Func<string> ReadLatestRefreshToken { get; set; }
+
         public DigiKeyHttpClientWrapper(DigiKeyOptions options)
         {
             _options = options ?? throw new ArgumentNullException(nameof(options));
@@ -236,39 +247,65 @@ namespace Procurement.Suppliers.DigiKey.Http
                 if (_orderingAccessToken != null && DateTime.UtcNow < _orderingAccessTokenExpiresAtUtc)
                     return _orderingAccessToken;
 
-                if (string.IsNullOrEmpty(_options.RefreshToken))
+                var refreshLock = AcquireRefreshLock == null ? null : await AcquireRefreshLock().ConfigureAwait(false);
+                try
                 {
-                    // Reached for a plain product search too when UseThreeLeggedForProductInformation
-                    // is on, not only for ordering — the message says "Ordering autoriseren" either
-                    // way since that's the one action that produces this RefreshToken.
-                    throw new SupplierException(DigiKeyAdapter.Code, SupplierErrorCode.AuthenticationError,
-                        "DigiKey Ordering is nog niet geautoriseerd — gebruik \"Ordering autoriseren...\" in Instellingen (nodig voor orders plaatsen, en nu ook voor product search/pricing).");
+                    return await RefreshOrderingAccessTokenAsync().ConfigureAwait(false);
                 }
-
-                var form = new FormUrlEncodedContent(new[]
+                finally
                 {
-                    new KeyValuePair<string, string>("client_id", _options.ClientId),
-                    new KeyValuePair<string, string>("client_secret", _options.ClientSecret),
-                    new KeyValuePair<string, string>("grant_type", "refresh_token"),
-                    new KeyValuePair<string, string>("refresh_token", _options.RefreshToken)
-                });
-
-                var token = await RequestTokenAsync(form).ConfigureAwait(false);
-                _orderingAccessToken = token.AccessToken;
-                _orderingAccessTokenExpiresAtUtc = DateTime.UtcNow.AddSeconds(Math.Max(0, token.ExpiresInSeconds - 60));
-
-                if (!string.IsNullOrEmpty(token.RefreshToken) && token.RefreshToken != _options.RefreshToken)
-                {
-                    _options.RefreshToken = token.RefreshToken;
-                    OnRefreshTokenRotated?.Invoke(token.RefreshToken);
+                    refreshLock?.Dispose();
                 }
-
-                return _orderingAccessToken;
             }
             finally
             {
                 _orderingTokenLock.Release();
             }
+        }
+
+        private async Task<string> RefreshOrderingAccessTokenAsync()
+        {
+            if (ReadLatestRefreshToken != null)
+            {
+                try
+                {
+                    var latest = ReadLatestRefreshToken();
+                    if (!string.IsNullOrEmpty(latest)) _options.RefreshToken = latest;
+                }
+                catch
+                {
+                    // Can't read the stored one (rights, network): try the one in memory.
+                }
+            }
+
+            if (string.IsNullOrEmpty(_options.RefreshToken))
+            {
+                // Reached for a plain product search too when UseThreeLeggedForProductInformation
+                // is on, not only for ordering — the message says "Ordering autoriseren" either
+                // way since that's the one action that produces this RefreshToken.
+                throw new SupplierException(DigiKeyAdapter.Code, SupplierErrorCode.AuthenticationError,
+                    "DigiKey Ordering is nog niet geautoriseerd — gebruik \"Ordering autoriseren...\" in Instellingen (nodig voor orders plaatsen, en nu ook voor product search/pricing).");
+            }
+
+            var form = new FormUrlEncodedContent(new[]
+            {
+                new KeyValuePair<string, string>("client_id", _options.ClientId),
+                new KeyValuePair<string, string>("client_secret", _options.ClientSecret),
+                new KeyValuePair<string, string>("grant_type", "refresh_token"),
+                new KeyValuePair<string, string>("refresh_token", _options.RefreshToken)
+            });
+
+            var token = await RequestTokenAsync(form).ConfigureAwait(false);
+            _orderingAccessToken = token.AccessToken;
+            _orderingAccessTokenExpiresAtUtc = DateTime.UtcNow.AddSeconds(Math.Max(0, token.ExpiresInSeconds - 60));
+
+            if (!string.IsNullOrEmpty(token.RefreshToken) && token.RefreshToken != _options.RefreshToken)
+            {
+                _options.RefreshToken = token.RefreshToken;
+                OnRefreshTokenRotated?.Invoke(token.RefreshToken);
+            }
+
+            return _orderingAccessToken;
         }
 
         private async Task<DigiKeyTokenResponse> RequestTokenAsync(FormUrlEncodedContent form)

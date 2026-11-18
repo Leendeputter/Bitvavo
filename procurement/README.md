@@ -1707,3 +1707,15 @@ raken dat mock-modus zelf nooit aanraakt:
   `RequestRow`, `OfferRow`). `MainForm` vraagt alleen nog bevestiging, toont fouten en koppelt de rijen
   aan de grids; kolommen, volgorde en teksten zijn ongewijzigd. De web-app gebruikt straks dezelfde
   service. Nieuwe tests: `tests/Procurement.Tests/Services/RequestListFilterTests.cs`.
+- **18 nov 2026 — Web-variant, fase 1c: niets dubbel als desktop en web tegelijk werken** (plan van
+  aanpak webapplicatie). Twee sloten via SQL Server `sp_getapplock` (`Procurement.Data/Locking/SqlAppLock`),
+  zonder tabel- of schemawijziging:
+  - **Order plaatsen**: `ProcurementEngine.PlaceOrdersAsync` draait onder het slot
+    `Procurement.PlaceOrders` (database Unitron/Unitron_test). Binnen het slot worden de kandidaten vers
+    uit de database gehaald, dus wie als tweede op Place Order drukt, ziet de PO-regels van de eerste en
+    bestelt niets dubbel. Wie langer dan 30 seconden moet wachten, krijgt een melding.
+  - **DigiKey-token vernieuwen**: `DigiKeyHttpClientWrapper` vernieuwt onder het slot
+    `Procurement.DigiKeyRefreshToken` (database SharedSecrets) en leest eerst het token zoals het nu in
+    SharedSecrets staat. Zo houdt de ene app nooit een token vast dat de andere al heeft ingeruild.
+  Bewust nog geen versieveld (rowversion) per aanvraag: dat vraagt een schemawijziging en is pas nodig als
+  er echt tegelijk in hetzelfde scherm gewerkt wordt. Komt in fase 3 als het nodig blijkt.
