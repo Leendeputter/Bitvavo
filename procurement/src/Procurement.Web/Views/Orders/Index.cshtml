@@ -1,0 +1,16 @@
+@{
+    ViewBag.Title = "Purchase Orders";
+}
+<div class="toolbar">
+    <button type="button" id="bt_refresh">Refresh</button>
+    <label class="check"><input type="checkbox" id="chk_includeDeleted" /> Deleted in MAX</label>
+    <label class="check"><input type="checkbox" id="chk_includeCompleted" /> Status 4 Orders (Completed)</label>
+</div>
+<div id="grid_orders" class="grid grid-requests"></div>
+<div class="grid-caption">Lines of the selected order (orange = deviates from the supplier's confirmation):</div>
+<div id="grid_lines" class="grid grid-offers"></div>
+<div id="status" class="status-line"></div>
+
+@section scripts {
+    <script src="@Url.Content("~/Scripts/orders.js")"></script>
+}

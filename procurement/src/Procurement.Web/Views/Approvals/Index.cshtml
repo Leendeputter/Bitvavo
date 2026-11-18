@@ -1,0 +1,15 @@
+@{
+    ViewBag.Title = "Approvals";
+}
+<div id="grid_approvals" class="grid grid-single"></div>
+<div class="comment-row">
+    <label for="txt_comment">Comment:</label>
+    <input type="text" id="txt_comment" maxlength="500" />
+    <button type="button" id="bt_approve">Approve</button>
+    <button type="button" id="bt_reject">Reject</button>
+</div>
+<div id="status" class="status-line"></div>
+
+@section scripts {
+    <script src="@Url.Content("~/Scripts/approvals.js")"></script>
+}

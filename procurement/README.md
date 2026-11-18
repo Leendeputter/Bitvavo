@@ -831,8 +831,8 @@ raken dat mock-modus zelf nooit aanraakt:
 Sinds 18 nov 2026 (plan van aanpak webapplicatie) is er naast de desktop een web-variant. Beide werken
 op dezelfde databases en dezelfde gedeelde code (`Procurement.Services` en lager), dus wat je in de ene
 doet, zie je in de andere. Klaar: inloggen, menu in UniPro-stijl, Purchase Requests (Query, filters,
-sourcen, offer kiezen, aantal aanpassen). Nog niet: Place Order, Orders, Approvals, Settings, App
-Secrets, Audit Log (fase 3). Bestellen staat net als op de desktop uit (`Ordering.Enabled` in `Web.config`).
+sourcen, offer kiezen, aantal aanpassen), Purchase Orders (bekijken) en Approvals (goedkeuren/afwijzen).
+Nog niet: Place Order, Orderbevestigingen verwerken, Settings, Supplier Mapping, App Secrets, Audit Log (fase 3). Bestellen staat net als op de desktop uit (`Ordering.Enabled` in `Web.config`).
 
 **Draaien op je eigen pc (Visual Studio):**
 
@@ -1775,3 +1775,9 @@ in hetzelfde pad onder `Logging.FileName`.
   uitvoeren van acties door een andere website (anti-forgery token). `ProcurementConnectionStringHelper`
   en `AccessRights` verhuisd van `Procurement.UI` naar `Procurement.Services/Login`; `SecurityHelper`
   roept nu `MaxRights` aan. Zie "Web-variant (Procurement.Web)" hierboven voor draaien en installeren.
+- **18 nov 2026 — Web-variant, fase 3 (deel 1): Purchase Orders en Approvals op het web.** Zelfde kolommen,
+  filters ("Deleted in MAX", "Status 4 Orders (Completed)") en oranje markering van afwijkende regels als
+  `OrdersForm`; goedkeuren/afwijzen met commentaar als `ApprovalForm`, vastgelegd op de ingelogde gebruiker.
+  Logica in `Procurement.Services/Orders/OrdersScreenService` en `Procurement.Services/Approvals/ApprovalScreenService`.
+  De desktopschermen zijn (nog) niet omgezet naar deze services, zodat er aan de desktop vanavond niets
+  ongetest verandert; dat volgt zodra de web-variant gebouwd en getest is.

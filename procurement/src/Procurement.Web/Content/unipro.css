@@ -94,6 +94,7 @@ label.check { cursor: pointer; }
 .grid .frozen { position: sticky; z-index: 1; background: inherit; }
 .grid tbody tr { background: #fff; }
 .grid tbody tr:hover { background: #eef5fc; }
+.grid tbody tr.deviates { background: rgb(255, 235, 205); }
 .grid tbody tr.selected { background: var(--selected-row); color: #fff; }
 .grid td.num { text-align: right; }
 .grid td.center { text-align: center; }
@@ -115,3 +116,9 @@ label.check { cursor: pointer; }
 .form-row select { min-width: 260px; }
 .error { color: var(--error); }
 .error-detail { white-space: pre-wrap; font-size: 11px; }
+
+/* Approvals / Orders */
+.comment-row { display: flex; gap: 8px; align-items: center; margin: 6px 0; }
+.comment-row input[type=text] { flex: 1; max-width: 600px; }
+.grid-single { height: 60vh; min-height: 200px; }
+.grid tbody tr.deviates.selected { background: rgb(214, 130, 40); color: #fff; }

@@ -46,6 +46,12 @@
 
     var format = {
         // d-MM-yyyy, as in the desktop.
+        dateTime: function (value) {
+            if (!value) return '';
+            var d = new Date(value);
+            if (isNaN(d.getTime())) return value;
+            return format.date(value) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+        },
         date: function (value) {
             if (!value) return '';
             var d = new Date(value);
@@ -75,6 +81,7 @@
         this.onCheck = options.onCheck || function () { };
         this.onEdit = options.onEdit || function () { };
         this.emptyText = options.emptyText || '';
+        this.rowClass = options.rowClass || function () { return ''; };
         this.rows = [];
         this.selected = {};
         this.current = null;
@@ -139,6 +146,7 @@
     Grid.prototype.cellText = function (column, value) {
         switch (column.type) {
             case 'date': return format.date(value);
+            case 'dateTime': return format.dateTime(value);
             case 'quantity': return format.quantity(value);
             case 'integer': return format.integer(value);
             case 'money': return format.money(value);
@@ -202,7 +210,9 @@
         this.rows.forEach(function (row, index) {
             var tr = document.createElement('tr');
             var id = row[key];
-            if (self.selected[id]) tr.className = 'selected';
+            var extra = self.rowClass(row);
+            if (extra) tr.classList.add(extra);
+            if (self.selected[id]) tr.classList.add('selected');
             var num = document.createElement('td');
             num.className = 'rownum';
             num.textContent = index + 1;
@@ -215,6 +225,8 @@
                     var box = document.createElement('input');
                     box.type = 'checkbox';
                     box.checked = !!value;
+                    // Nullable yes/no (e.g. "Late?" before a confirmation): blank, not "no", as on the desktop.
+                    if (value === null || value === undefined) box.indeterminate = c.type === 'bool' && c.nullable === true;
                     box.disabled = c.type === 'bool';
                     if (c.type === 'check') {
                         box.addEventListener('click', function (e) { e.stopPropagation(); });
