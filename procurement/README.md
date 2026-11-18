@@ -1685,3 +1685,7 @@ raken dat mock-modus zelf nooit aanraakt:
   gepland, niet als overschot. Bij bestellen wordt nooit minder besteld dan het offer aangeeft; het
   verschil komt op de vroegste regel. Kolom "Bundel" toont nu "8 regels, totaal 25.000". De hernoeming
   naar "Extra uitval (deze regel)" is teruggedraaid ("de benaming Extra uitval volstaat").
+- **18 nov 2026 — Handmatig extra aantal in Overschot** ("Is het niet logischer om het wel bij overschot
+  op te tellen om de velden logisch te houden?"). Het extra aantal van een aangepaste Quantity staat nu
+  in Overschot (Quantity = behoefte + extra uitval + overschot), maar telt niet mee als nadeel in de
+  vergelijkingskosten: het is een bewuste keuze.

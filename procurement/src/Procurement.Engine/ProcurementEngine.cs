@@ -439,6 +439,14 @@ namespace Procurement.Engine
                 return LineOutcome.Exception;
             }
 
+            // A quantity raised by the user shows up as surplus too (user, 18 nov 2026: "om de velden
+            // logisch te houden": Quantity = need + attrition + surplus), but was already left out of
+            // ComparisonCost above: it's a deliberate choice, not a packaging disadvantage.
+            var plannedExtra = neededTotal - (totalRequested + totalAttrition);
+            if (plannedExtra > 0)
+                foreach (var template in templates)
+                    template.SurplusQuantity += plannedExtra;
+
             // The choice is made once, on the group totals; the earliest line is the reference for
             // the required date (the strictest one).
             var referenceLine = group[0];
