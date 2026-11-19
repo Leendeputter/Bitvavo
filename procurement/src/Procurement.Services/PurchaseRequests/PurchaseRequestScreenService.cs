@@ -58,6 +58,7 @@ namespace Procurement.Services.PurchaseRequests
     public class PurchaseRequestScreenService
     {
         private static readonly Logger QueryLog = LogManager.GetLogger("Procurement.Query");
+        private static readonly Logger SourcingLog = LogManager.GetLogger("Procurement.Sourcing");
         private readonly ProcurementServices _services;
 
         public PurchaseRequestScreenService(ProcurementServices services)
@@ -177,8 +178,10 @@ namespace Procurement.Services.PurchaseRequests
                         else if (updated.Status == PurchaseRequestStatus.WaitingApproval) summary.WaitingApproval++;
                         else if (updated.Status == PurchaseRequestStatus.Exception) summary.Exception++;
                     }
-                    catch (Exception)
+                    catch (Exception ex)
                     {
+                        // Logged with the reason (19 nov 2026): "mislukt" in the status line alone gave nothing to go on.
+                        SourcingLog.Error(ex, "Sourcing van aanvraag {0} mislukt", requestIds[i]);
                         summary.Failed++;
                     }
                 }
