@@ -55,7 +55,7 @@ WHERE PRTNUM_07 IN ({string.Join(",", paramNames)})";
             using (var cmd = new SqlCommand(sql, conn))
             {
                 for (var i = 0; i < partList.Count; i++)
-                    cmd.Parameters.AddWithValue(paramNames[i], partList[i]);
+                    SqlParams.AddVarChar(cmd, paramNames[i], partList[i]);
 
                 await conn.OpenAsync();
 

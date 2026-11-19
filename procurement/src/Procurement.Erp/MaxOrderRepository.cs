@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Data.SqlClient;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Procurement.Core.Interfaces;
 using Procurement.Core.Models;
@@ -177,7 +179,7 @@ WHERE dbo.Order_Master.ORDNUM_10 IN ({string.Join(",", paramNames)})";
             using (var cmd = new SqlCommand(sql, conn))
             {
                 for (var i = 0; i < batch.Count; i++)
-                    cmd.Parameters.AddWithValue(paramNames[i], batch[i]);
+                    SqlParams.AddVarChar(cmd, paramNames[i], batch[i]);
 
                 await conn.OpenAsync();
                 using (var reader = await cmd.ExecuteReaderAsync())
@@ -313,7 +315,7 @@ WHERE PRTNUM_01 IN ({string.Join(",", paramNames)})";
             using (var cmd = new SqlCommand(sql, conn))
             {
                 for (var i = 0; i < batch.Count; i++)
-                    cmd.Parameters.AddWithValue(paramNames[i], batch[i]);
+                    SqlParams.AddVarChar(cmd, paramNames[i], batch[i]);
 
                 await conn.OpenAsync();
                 using (var reader = await cmd.ExecuteReaderAsync())
@@ -523,7 +525,7 @@ WHERE dbo.Part_Master.PRTNUM_01 = @partId";
         // distinct (date, article) pair, crossed that line. 900 rows (1800 parameters) leaves
         // comfortable headroom under the limit while still keeping this to a handful of round-trips
         // even for a large grid.
-        private const int CalculatePoDueDatesBatchSize = 900;
+        private const int CalculatePoDueDatesBatchSize = 150;
 
         /// <summary>
         /// Batched form of CalculatePoDueDateAsync, for displaying many lines at once (MainForm's
@@ -540,15 +542,64 @@ WHERE dbo.Part_Master.PRTNUM_01 = @partId";
             var result = new Dictionary<(DateTime, string), DateTime>();
             if (items == null || items.Count == 0) return result;
 
-            var distinct = items.Distinct().ToList();
-            for (var offset = 0; offset < distinct.Count; offset += CalculatePoDueDatesBatchSize)
+            // 19 nov 2026: 1716 rows took 13.5 s in one go, because MAX's SQLCLR function runs once
+            // per row and SQL Server never runs it in parallel. So: (1) results are cached for a short
+            // while per company database, so a second Query within that time is instant, and
+            // (2) the rest is split into small batches that run side by side on separate connections.
+            var now = DateTime.UtcNow;
+            var missing = new List<(DateTime MrpDate, string PartNumber)>();
+            foreach (var item in items.Distinct())
             {
-                var batch = distinct.Skip(offset).Take(CalculatePoDueDatesBatchSize).ToList();
-                await CalculatePoDueDatesBatchAsync(batch, result);
+                if (PoDueDateCache.TryGetValue(CacheKey(item), out var cached) && now - cached.At < PoDueDateCacheLifetime)
+                    result[item] = cached.PoDueDate;
+                else
+                    missing.Add(item);
+            }
+
+            var batches = new List<List<(DateTime MrpDate, string PartNumber)>>();
+            for (var offset = 0; offset < missing.Count; offset += CalculatePoDueDatesBatchSize)
+                batches.Add(missing.Skip(offset).Take(CalculatePoDueDatesBatchSize).ToList());
+
+            using (var gate = new SemaphoreSlim(CalculatePoDueDatesParallelism))
+            {
+                var tasks = batches.Select(async batch =>
+                {
+                    await gate.WaitAsync().ConfigureAwait(false);
+                    try
+                    {
+                        var partial = new Dictionary<(DateTime, string), DateTime>();
+                        await CalculatePoDueDatesBatchAsync(batch, partial).ConfigureAwait(false);
+                        return partial;
+                    }
+                    finally
+                    {
+                        gate.Release();
+                    }
+                }).ToList();
+
+                foreach (var partial in await Task.WhenAll(tasks).ConfigureAwait(false))
+                {
+                    foreach (var kv in partial)
+                    {
+                        result[kv.Key] = kv.Value;
+                        PoDueDateCache[CacheKey(kv.Key)] = (kv.Value, now);
+                    }
+                }
             }
 
             return result;
         }
+
+        // How long a calculated PO DueDate is reused. It only changes when lead times or the MAX
+        // calendar change, so a few minutes is safe and covers the usual "Query, look, Query again".
+        private static readonly TimeSpan PoDueDateCacheLifetime = TimeSpan.FromMinutes(10);
+        private const int CalculatePoDueDatesParallelism = 6;
+
+        private static readonly ConcurrentDictionary<string, (DateTime PoDueDate, DateTime At)> PoDueDateCache =
+            new ConcurrentDictionary<string, (DateTime PoDueDate, DateTime At)>(StringComparer.OrdinalIgnoreCase);
+
+        private string CacheKey((DateTime MrpDate, string PartNumber) item) =>
+            _session.AdminConnectionString + "|" + item.MrpDate.ToString("yyyyMMddHHmmss") + "|" + item.PartNumber?.Trim();
 
         private async Task CalculatePoDueDatesBatchAsync(
             IReadOnlyList<(DateTime MrpDate, string PartNumber)> batch,
@@ -565,7 +616,7 @@ FROM (VALUES {string.Join(", ", valueRows)}) AS v(MrpDate, PartNum)";
                 for (var i = 0; i < batch.Count; i++)
                 {
                     cmd.Parameters.AddWithValue($"@d{i}", batch[i].MrpDate);
-                    cmd.Parameters.AddWithValue($"@p{i}", batch[i].PartNumber);
+                    SqlParams.AddVarChar(cmd, $"@p{i}", batch[i].PartNumber);
                 }
 
                 await conn.OpenAsync();

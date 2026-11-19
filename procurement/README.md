@@ -1792,3 +1792,8 @@ in hetzelfde pad onder `Logging.FileName`.
   opgezocht (één query met 1716 parameters), terwijl de Query die orders net al had opgehaald. Nu worden alleen
   aanvragen die buiten het huidige filter vallen nog opgezocht. Het opbouwen van de rijen en het afstemmen
   schrijven per deelstap de tijd in het log (regels "Afstemmen:" en "Rijen:").
+- **19 nov 2026 — Query: rijen opbouwen sneller.** Volgens het nieuwe log kostten de PO DueDates 13,5 s, de
+  voorkeursleveranciers 3,2 s en de Part_Vendor-mapping 4,2 s (1716 orders). PO DueDates worden nu in kleine
+  porties naast elkaar berekend (6 verbindingen tegelijk) en 10 minuten per bedrijfsdatabase onthouden, zodat
+  een tweede Query vrijwel direct is. Part- en ordernummers gaan nu als varchar naar MAX in plaats van
+  nvarchar, zodat SQL Server de index op PRTNUM/ORDNUM weer kan gebruiken (`Procurement.Erp/SqlParams`).
