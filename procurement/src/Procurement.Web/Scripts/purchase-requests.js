@@ -153,6 +153,113 @@
     document.getElementById('bt_startSourcing').addEventListener('click', function () { source(requestsGrid.selectedIds()); });
     document.getElementById('bt_sourceAll').addEventListener('click', function () { source(requestsGrid.allIds()); });
 
+    /* ---------- Place Order (as MainForm.PlaceOrdersAsync) ---------- */
+
+    // Farnell's ship-to picker, as FarnellShipToAddressPickerForm. Resolves the chosen id, or null on Cancel.
+    function pickShipToAddress(addresses) {
+        var content = document.createElement('div');
+        var text = document.createElement('p');
+        text.textContent = 'Deze orders gaan (deels) naar Farnell. Kies het afleveradres:';
+        var list = document.createElement('select');
+        list.className = 'dialog-list';
+        list.size = Math.min(Math.max(addresses.length, 4), 12);
+        addresses.forEach(function (a, i) {
+            var option = document.createElement('option');
+            option.value = a.AddressId;
+            option.textContent = a.Text;
+            if (i === 0) option.selected = true;
+            list.appendChild(option);
+        });
+        content.appendChild(text);
+        content.appendChild(list);
+        return P.dialog({
+            title: 'Farnell ship-to address',
+            content: content,
+            canOk: function () { return list.selectedIndex >= 0; },
+            onShown: function (dlg, ok) { list.focus(); list.addEventListener('dblclick', ok); }
+        }).then(function (confirmed) { return confirmed ? list.value : null; });
+    }
+
+    function placeOrders() {
+        var ids = requestsGrid.selectedIds();
+        if (!ids.length) { status.set('Selecteer eerst een of meer aanvragen.', 'error'); return; }
+        if (!window.confirm('Order(s) plaatsen voor ' + ids.length + ' aanvraag/aanvragen? Regels worden per leverancier gebundeld tot één PO per leverancier.')) return;
+
+        status.run('Orders voorbereiden...', function () {
+            return P.request('POST', url('ShipToChoices'), { requestIds: ids }).then(function (result) {
+                if (!result.addresses.length) return '';
+                return pickShipToAddress(result.addresses);
+            }).then(function (shipToAddressId) {
+                if (shipToAddressId === null) { status.set('Geannuleerd — geen orders geplaatst.'); return; }
+                status.set('Orders plaatsen...', 'busy');
+                // Refreshed whether it worked or not: a partial batch (some suppliers placed before
+                // one failed) should still show what did go through, as on the desktop.
+                return P.request('POST', url('PlaceOrders'), { requestIds: ids, shipToAddressId: shipToAddressId || null }).then(
+                    function (placed) { return loadLocal().then(function () { status.set(placed.status); }); },
+                    function (error) { return loadLocal().then(function () { throw error; }, function () { throw error; }); });
+            });
+        });
+    }
+
+    /* ---------- Process Order Confirmations (as MainForm.ProcessOrderConfirmationsAsync) ---------- */
+
+    // Deviations window, as OrderConfirmationExceptionsForm.
+    function showConfirmationExceptions(rows) {
+        var content = document.createElement('div');
+        var text = document.createElement('p');
+        text.textContent = 'Deze bevestigde regels wijken af van de bestelling en vragen om een beoordeling:';
+        var holder = document.createElement('div');
+        holder.className = 'grid';
+        content.appendChild(text);
+        content.appendChild(holder);
+        return P.dialog({
+            title: 'Order Confirmation Exceptions',
+            content: content,
+            okText: 'Close',
+            cancelText: null,
+            wide: true,
+            onShown: function () {
+                var grid = new P.Grid(holder, {
+                    id: 'confirmationExceptions',
+                    keyField: 'Key',
+                    columns: [
+                        { key: 'Key', hidden: true },
+                        { key: 'ErpPoNumber', header: 'PO', width: 90 },
+                        { key: 'SupplierCode', header: 'Supplier', width: 85 },
+                        { key: 'SupplierPartNumber', header: 'Supplier Part Number', width: 150 },
+                        { key: 'OrderedQuantity', header: 'Ordered Qty', width: 85, type: 'quantity' },
+                        { key: 'ConfirmedQuantity', header: 'Confirmed Qty', width: 95, type: 'quantity' },
+                        { key: 'OrderedUnitPrice', header: 'Ordered Price', width: 95, type: 'money' },
+                        { key: 'ConfirmedUnitPrice', header: 'Confirmed Price', width: 105, type: 'money' },
+                        { key: 'RequiredDate', header: 'Required Date', width: 90, type: 'date' },
+                        { key: 'ConfirmedShipDate', header: 'Confirmed Ship Date', width: 120, type: 'date' },
+                        { key: 'Reason', header: 'Reason', width: 230 }
+                    ]
+                });
+                grid.setRows(rows.map(function (r, i) { r.Key = i + 1; return r; }));
+            }
+        });
+    }
+
+    function processConfirmations() {
+        var result = null;
+        status.run('Orderbevestigingen verwerken...', function () {
+            return P.request('POST', url('ProcessConfirmations'), {}).then(function (r) {
+                result = r;
+                return loadLocal().then(function () { status.set(r.status); });
+            });
+        }).then(function () {
+            // Shown after the busy state ends, as on the desktop (a dialog over a wait cursor looked stuck).
+            if (!result) return;
+            if (result.exceptions.length) return showConfirmationExceptions(result.exceptions);
+            if (result.message) window.alert(result.message);
+        });
+    }
+
+    document.getElementById('bt_processConfirmations').addEventListener('click', processConfirmations);
+    var placeButton = document.getElementById('bt_placeOrders');
+    if (!placeButton.disabled) placeButton.addEventListener('click', placeOrders);
+
     document.getElementById('chk_dueDateEnable').addEventListener('change', function () {
         form.DueDateStart.disabled = form.DueDateEnd.disabled = !this.checked;
     });

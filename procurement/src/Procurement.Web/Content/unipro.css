@@ -128,3 +128,14 @@ label.check { cursor: pointer; }
 .grid tbody tr.spacer td { border: none; padding: 0; height: auto; }
 /* Frozen header cells keep the header colour (19 nov 2026: they showed differently from the rest) */
 .grid thead th.frozen { background: var(--header); }
+
+/* Modal dialogs (Farnell ship-to picker, confirmation deviations), like the desktop's dialog windows */
+dialog.dialog { padding: 0; border: 1px solid var(--border); background: var(--screen); min-width: 380px; max-width: 90vw; }
+dialog.dialog.wide { width: 1000px; }
+dialog.dialog::backdrop { background: rgba(0, 0, 0, 0.25); }
+.dialog-title { padding: 6px 10px; font-weight: 600; background: linear-gradient(var(--menu-from), var(--menu-to)); border-bottom: 1px solid var(--border); }
+.dialog-body { padding: 10px; }
+.dialog-body p { margin: 0 0 8px; }
+.dialog-buttons { display: flex; justify-content: flex-end; gap: 6px; padding: 0 10px 10px; }
+.dialog-list { width: 100%; min-height: 160px; font: inherit; }
+.dialog .grid { height: 320px; }

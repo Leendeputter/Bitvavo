@@ -432,5 +432,51 @@
             });
     };
 
-    window.Procurement = { appRoot: appRoot, request: request, format: format, Grid: Grid, Status: Status };
+    /* ---------- Modal dialog (as the desktop's ShowDialog) ---------- */
+
+    // options: title, content (a DOM node), okText, cancelText (null hides Cancel), wide.
+    // Resolves true for OK, false for Cancel/Escape. "ok" can be refused by options.canOk().
+    function dialog(options) {
+        return new Promise(function (resolve) {
+            var dlg = document.createElement('dialog');
+            dlg.className = 'dialog' + (options.wide ? ' wide' : '');
+            var title = document.createElement('div');
+            title.className = 'dialog-title';
+            title.textContent = options.title || '';
+            var body = document.createElement('div');
+            body.className = 'dialog-body';
+            if (options.content) body.appendChild(options.content);
+            var buttons = document.createElement('div');
+            buttons.className = 'dialog-buttons';
+            var done = false;
+            function close(result) {
+                if (done) return;
+                done = true;
+                dlg.close();
+                dlg.parentNode.removeChild(dlg);
+                resolve(result);
+            }
+            var ok = document.createElement('button');
+            ok.type = 'button';
+            ok.textContent = options.okText || 'OK';
+            ok.addEventListener('click', function () { if (!options.canOk || options.canOk()) close(true); });
+            buttons.appendChild(ok);
+            if (options.cancelText !== null) {
+                var cancel = document.createElement('button');
+                cancel.type = 'button';
+                cancel.textContent = options.cancelText || 'Cancel';
+                cancel.addEventListener('click', function () { close(false); });
+                buttons.appendChild(cancel);
+            }
+            dlg.addEventListener('cancel', function (ev) { ev.preventDefault(); close(false); });
+            dlg.appendChild(title);
+            dlg.appendChild(body);
+            dlg.appendChild(buttons);
+            document.body.appendChild(dlg);
+            dlg.showModal();
+            if (options.onShown) options.onShown(dlg, function () { ok.click(); });
+        });
+    }
+
+    window.Procurement = { appRoot: appRoot, request: request, format: format, Grid: Grid, Status: Status, dialog: dialog };
 })(window, document);

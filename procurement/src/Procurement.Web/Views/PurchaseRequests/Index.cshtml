@@ -4,7 +4,15 @@
 <div class="toolbar">
     <button type="button" id="bt_startSourcing">Start Sourcing (Selection)</button>
     <button type="button" id="bt_sourceAll">Source All</button>
-    <button type="button" id="bt_placeOrders" disabled title="Volgt in fase 3; bestellen staat nu ook uit">Place Order (off)</button>
+    @if (ViewBag.OrderingEnabled == true)
+    {
+        <button type="button" id="bt_placeOrders">Place Order</button>
+    }
+    else
+    {
+        <button type="button" id="bt_placeOrders" disabled title="Bestellen staat uit (Ordering.Enabled = false in Web.config)">Place Order (off)</button>
+    }
+    <button type="button" id="bt_processConfirmations">Process Order Confirmations</button>
 </div>
 
 <form id="filters" class="filters" autocomplete="off">

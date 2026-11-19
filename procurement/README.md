@@ -1797,3 +1797,9 @@ in hetzelfde pad onder `Logging.FileName`.
   porties naast elkaar berekend (6 verbindingen tegelijk) en 10 minuten per bedrijfsdatabase onthouden, zodat
   een tweede Query vrijwel direct is. Part- en ordernummers gaan nu als varchar naar MAX in plaats van
   nvarchar, zodat SQL Server de index op PRTNUM/ORDNUM weer kan gebruiken (`Procurement.Erp/SqlParams`).
+- **19 nov 2026 — Web-variant, fase 3 (deel 2): Place Order en Process Order Confirmations op het web.**
+  Zelfde gedrag als `MainForm`: bevestigen, per leverancier één PO, Farnell-afleveradres elke keer opnieuw
+  kiezen als er meer dan één is, en daarna het afwijkingenvenster (zoals `OrderConfirmationExceptionsForm`) of
+  dezelfde melding als op de desktop. Op het web wordt het adres vóór het plaatsen gevraagd en bij het plaatsen
+  opnieuw tegen Farnells actuele lijst gecontroleerd. Logica in `Procurement.Services/Orders/OrderPlacementService`.
+  "Place Order" blijft uit zolang `Ordering.Enabled` in `Web.config` op false staat.
