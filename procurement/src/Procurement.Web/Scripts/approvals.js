@@ -8,6 +8,7 @@
 
     var grid = new P.Grid(document.getElementById('grid_approvals'), {
         id: 'approvals',
+        multiSelect: true, // Ctrl/Shift-click: decide several lines at once (19 nov 2026)
         emptyText: 'Er wacht niets op goedkeuring.',
         columns: [
             { key: 'Id', hidden: true },
@@ -30,11 +31,12 @@
     }
 
     function decide(approve) {
-        var row = grid.currentRow();
-        if (!row) { status.set('Selecteer eerst een regel.', 'error'); return; }
+        var ids = grid.selectedIds();
+        if (!ids.length) { status.set('Selecteer eerst een of meer regels.', 'error'); return; }
+        if (ids.length > 1 && !window.confirm(ids.length + ' regels ' + (approve ? 'goedkeuren' : 'afwijzen') + '?')) return;
         status.run(approve ? 'Goedkeuren...' : 'Afwijzen...', function () {
-            return P.request('POST', url('Decide'), { approvalId: row.Id, approve: approve, comment: comment.value })
-                .then(function () { comment.value = ''; return load(); });
+            return P.request('POST', url('Decide'), { approvalIds: ids, approve: approve, comment: comment.value })
+                .then(function (result) { comment.value = ''; return load().then(function () { status.set(result.status); }); });
         });
     }
 

@@ -53,5 +53,36 @@ namespace Procurement.Services.Approvals
         /// <summary>Recorded under the logged-in user (the desktop records the Windows user, which is the same account).</summary>
         public Task DecideAsync(int approvalId, bool approve, string comment) =>
             _services.Engine.ApproveAsync(approvalId, approve, comment, _services.Session.UserName);
+
+        /// <summary>
+        /// Several approvals at once (19 nov 2026, user: "meerdere regels selecteren in 1x te Approven").
+        /// Deciding one line of a bundle already decides its other lines, so an id that is no longer
+        /// pending by the time it's reached is counted as done, not as an error. One failure doesn't stop the rest.
+        /// </summary>
+        public async Task<string> DecideManyAsync(IReadOnlyList<int> approvalIds, bool approve, string comment)
+        {
+            int decided = 0, viaBundle = 0, failed = 0;
+            string firstError = null;
+            foreach (var id in approvalIds.Distinct())
+            {
+                var stillPending = (await _services.Engine.GetPendingApprovalsAsync()).Any(a => a.Id == id);
+                if (!stillPending) { viaBundle++; continue; }
+                try
+                {
+                    await DecideAsync(id, approve, comment);
+                    decided++;
+                }
+                catch (Exception ex)
+                {
+                    failed++;
+                    if (firstError == null) firstError = ex.Message;
+                }
+            }
+
+            var text = $"{decided} regel(s) {(approve ? "goedgekeurd" : "afgewezen")}";
+            if (viaBundle > 0) text += $", {viaBundle} al meegenomen via de bundel";
+            if (failed > 0) text += $", {failed} mislukt (eerste fout: {firstError})";
+            return text + ".";
+        }
     }
 }

@@ -1861,3 +1861,7 @@ in hetzelfde pad onder `Logging.FileName`.
   ..."), ook voor regels die via een andere regel van hetzelfde artikel zijn gesourced. Daarvoor zet de engine per
   regel een startmarkering `SOURCING_LINE_STARTED` (met `ViaRegel`); logica in
   `PurchaseRequestScreenService.GetLastSourcingProblemsAsync`.
+- **19 nov 2026 — Approvals (web): meerdere regels in één keer goedkeuren of afwijzen.** Leen: "Bij Approvals wil
+  ik ook de optie om meerdere regels te selecteren in 1x te Approven." Ctrl/Shift-klik selecteert meerdere regels;
+  Approve/Reject vraagt één keer bevestiging en geldt voor alle gekozen regels met hetzelfde commentaar.
+  Regels die al via hun bundel zijn beslist worden overgeslagen en apart geteld (`ApprovalScreenService.DecideManyAsync`).

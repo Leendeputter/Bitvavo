@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Web.Mvc;
 using Procurement.Services.Approvals;
@@ -20,12 +22,15 @@ namespace Procurement.Web.Controllers
             return new JsonNetResult(new { rows, status = $"{rows.Count} regel(s) wachten op goedkeuring." });
         }
 
+        /// <summary>Approve or reject one or more selected lines with the same comment.</summary>
         [HttpPost]
-        public async Task<ActionResult> Decide(int approvalId, bool approve, string comment)
+        public async Task<ActionResult> Decide(List<int> approvalIds, bool approve, string comment)
         {
-            await Screen.DecideAsync(approvalId, approve, comment);
-            Log.Info("{0} {1} goedkeuring {2}", CurrentSession.UserName, approve ? "keurde goed" : "wees af", approvalId);
-            return new JsonNetResult(new { ok = true });
+            var ids = (approvalIds ?? new List<int>()).Distinct().ToList();
+            if (ids.Count == 0) return new JsonNetResult(new { error = "Selecteer eerst een of meer regels." }, 400);
+            var status = await Screen.DecideManyAsync(ids, approve, comment);
+            Log.Info("{0} {1} goedkeuring(en) {2}: {3}", CurrentSession.UserName, approve ? "keurde goed" : "wees af", string.Join(",", ids), status);
+            return new JsonNetResult(new { status });
         }
     }
 }
