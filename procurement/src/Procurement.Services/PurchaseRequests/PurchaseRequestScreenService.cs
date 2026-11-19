@@ -40,12 +40,17 @@ namespace Procurement.Services.PurchaseRequests
         public int Failed { get; set; }
         public int SkippedOrdered { get; set; }
 
+        /// <summary>The first failure's message, shown in the summary so a failure is visible without the log (19 nov 2026).</summary>
+        public string FirstError { get; set; }
+
         public override string ToString()
         {
             var summary = $"Sourcing klaar: {ReadyToOrder} klaar om te bestellen, {WaitingApproval} wacht op goedkeuring, {Exception} met fout";
             if (Failed > 0) summary += $", {Failed} mislukt";
             if (SkippedOrdered > 0) summary += $", {SkippedOrdered} overgeslagen (al besteld)";
-            return summary + ".";
+            summary += ".";
+            if (!string.IsNullOrEmpty(FirstError)) summary += $" Eerste fout: {FirstError}";
+            return summary;
         }
     }
 
@@ -185,6 +190,14 @@ namespace Procurement.Services.PurchaseRequests
                         // Logged with the reason (19 nov 2026): "mislukt" in the status line alone gave nothing to go on.
                         SourcingLog.Error(ex, "Sourcing van aanvraag {0} mislukt", requestIds[i]);
                         summary.Failed++;
+                        if (summary.FirstError == null)
+                        {
+                            var inner = ex;
+                            while ((inner is AggregateException || inner is System.Reflection.TargetInvocationException) && inner.InnerException != null)
+                                inner = inner.InnerException;
+                            summary.FirstError = $"{inner.GetType().Name}: {inner.Message}";
+                            if (inner.InnerException != null) summary.FirstError += $" ({inner.InnerException.Message})";
+                        }
                     }
                 }
             }
