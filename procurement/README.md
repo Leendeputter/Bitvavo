@@ -1817,3 +1817,7 @@ in hetzelfde pad onder `Logging.FileName`.
   de eigen pc alleen via HTTPS geaccepteerd. Na opslaan van secrets of DigiKey-autorisatie bouwt de web-app de
   objecten van die gebruiker opnieuw op, dus geen herstart nodig; andere ingelogde gebruikers na opnieuw inloggen.
   DigiKey Authorize gebruikt dezelfde plak-de-adresbalk-stap als de desktop (redirect https://localhost).
+- **19 nov 2026 — Web-grid: bovenste regels bleven leeg na terugscrollen.** Leen: "Bij het terug naar boven
+  scrollen in grotere dgv valt het bovenste stuk van de records weg." De grid tekent alleen de regels in beeld;
+  de controle of opnieuw tekenen nodig was, rekende vlak bij het begin met een afgekapt regelnummer en sloeg het
+  tekenen dan over. Nu vergeleken met de werkelijke bovenste regel (`procurement.js`, `renderBody`).

@@ -276,10 +276,16 @@
         var self = this, key = this.keyField, visible = this.visible, frozenLeft = this.frozenLeft;
         var RowHeight = this.rowHeight || RowHeightGuess;
         var viewRows = Math.ceil((this.el.clientHeight || 600) / RowHeight);
-        var first = Math.max(0, Math.floor(this.el.scrollTop / RowHeight) - RowMargin);
-        // Redraw only when the drawn block no longer covers what's on screen.
-        if (!force && this.windowStart >= 0 && first >= this.windowStart - RowMargin / 2 &&
-            first + viewRows + 2 * RowMargin <= this.windowEnd + RowMargin / 2) return;
+        var top = Math.floor(this.el.scrollTop / RowHeight);
+        var first = Math.max(0, top - RowMargin);
+        // Redraw only when what's on screen comes within half a margin of the drawn block's edge.
+        // Compared on the unclamped top row (19 nov 2026): comparing the clamped "first" skipped the
+        // redraw when scrolling back up near the start, so the first rows stayed blank.
+        if (!force && this.windowStart >= 0) {
+            var nearTop = this.windowStart > 0 && top - this.windowStart < RowMargin / 2;
+            var nearBottom = this.windowEnd < this.rows.length && this.windowEnd - (top + viewRows) < RowMargin / 2;
+            if (!nearTop && !nearBottom) return;
+        }
         var start = first;
         var end = Math.min(this.rows.length, first + viewRows + 2 * RowMargin);
         this.windowStart = start;
