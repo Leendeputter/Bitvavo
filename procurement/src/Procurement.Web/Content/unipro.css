@@ -126,3 +126,5 @@ label.check { cursor: pointer; }
 .grid tbody tr { height: 23px; }
 .grid tbody tr.spacer, .grid tbody tr.spacer:hover { background: #fff; }
 .grid tbody tr.spacer td { border: none; padding: 0; height: auto; }
+/* Frozen header cells keep the header colour (19 nov 2026: they showed differently from the rest) */
+.grid thead th.frozen { background: var(--header); }
