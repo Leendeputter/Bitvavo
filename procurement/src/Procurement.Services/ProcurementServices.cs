@@ -283,7 +283,9 @@ namespace Procurement.Services
             {
                 OrderingEnabled = OrderingEnabled,
                 // Desktop and web side by side: one "Place Order" at a time (18 nov 2026).
-                OrderLock = new SqlAppLock(Session.SharedConnectionString)
+                OrderLock = new SqlAppLock(Session.SharedConnectionString),
+                // Sourcing steps in the log file (19 nov 2026), per user.
+                Trace = text => NLog.LogManager.GetLogger("Procurement.Sourcing").Info("{0}: {1}", Session.UserName, text)
             };
         }
 

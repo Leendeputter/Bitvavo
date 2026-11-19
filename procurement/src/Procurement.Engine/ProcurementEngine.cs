@@ -49,6 +49,14 @@ namespace Procurement.Engine
         /// </summary>
         private Func<PurchaseRequestLine, bool> _groupScope;
 
+        /// <summary>
+        /// Optional step log for sourcing (19 nov 2026): the host writes it to its log file, so a slow or
+        /// stuck sourcing run shows which line and which supplier it is on.
+        /// </summary>
+        public Action<string> Trace { get; set; }
+
+        private void Log(string text) { try { Trace?.Invoke(text); } catch { /* logging never breaks sourcing */ } }
+
         /// <summary>True between BeginSourcingRun and EndSourcingRun: grouped outcomes are kept across requests.</summary>
         private bool _runActive;
 
@@ -117,6 +125,7 @@ namespace Procurement.Engine
             if (request == null)
                 throw new InvalidOperationException($"Purchase request {purchaseRequestId} not found.");
 
+            Log($"Aanvraag {request.Id} ({request.ErpRequestNumber}): sourcing gestart");
             ValidateRequest(request);
 
             await _purchaseRequestRepository.UpdateStatusAsync(request.Id, PurchaseRequestStatus.Sourcing);
@@ -150,6 +159,7 @@ namespace Procurement.Engine
 
             await _purchaseRequestRepository.UpdateStatusAsync(request.Id, finalStatus);
             await _auditLogger.LogAsync("PurchaseRequest", request.Id.ToString(), "SOURCING_COMPLETED", finalStatus.ToString());
+            Log($"Aanvraag {request.Id} ({request.ErpRequestNumber}): klaar, {finalStatus}");
         }
 
         /// <summary>
@@ -424,6 +434,7 @@ namespace Procurement.Engine
             if (group.All(l => l.Id != line.Id))
                 group.Add(line);
             group = group.OrderBy(l => l.RequiredDate ?? DateTime.MaxValue).ThenBy(l => l.Id).ToList();
+            Log($"Regel {line.Id} ({line.ErpArticleId}): groep van {group.Count} regel(s)");
 
             // Sourcing again replaces the previous offers instead of adding to them (18 nov 2026).
             foreach (var member in group)
@@ -475,13 +486,17 @@ namespace Procurement.Engine
                     continue;
                 }
 
+                var clock = System.Diagnostics.Stopwatch.StartNew();
+                Log($"Regel {line.Id}: offers ophalen bij {adapter.SupplierCode} ({kvp.Value.SupplierPartNumber})");
                 try
                 {
                     templates.AddRange(await BuildOffersAsync(adapter, line, kvp.Value.SupplierPartNumber, kvp.Value.Confidence,
                         packagingPolicy, totalRequested, neededTotal - totalRequested, maxUnitCost));
+                    Log($"Regel {line.Id}: {adapter.SupplierCode} klaar ({clock.ElapsedMilliseconds} ms)");
                 }
                 catch (SupplierException ex)
                 {
+                    Log($"Regel {line.Id}: {adapter.SupplierCode} mislukt na {clock.ElapsedMilliseconds} ms: {ex.Message}");
                     await _auditLogger.LogAsync("PurchaseRequestLine", line.Id.ToString(), "OFFER_BUILD_FAILED", "Error",
                         adapter.SupplierCode, requestPayload: $"SupplierPartNumber={kvp.Value.SupplierPartNumber}", error: ex.Message);
                 }

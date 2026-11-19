@@ -569,6 +569,7 @@ namespace Procurement.UI.Forms
                 if (confirm != DialogResult.Yes) return;
             }
 
+            string completed = null;
             SetBusy(true);
             try
             {
@@ -576,11 +577,16 @@ namespace Procurement.UI.Forms
                 SetStatus(summary.ToString());
 
                 await LoadLocalRequestsAsync();
+                completed = summary.ToString();
             }
             finally
             {
                 SetBusy(false);
             }
+
+            // A clear "finished" (user, 19 nov 2026), shown after the wait cursor is gone.
+            if (completed != null)
+                MessageBox.Show(this, completed, "Sourcing completed", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
         /// <summary>

@@ -1834,3 +1834,9 @@ in hetzelfde pad onder `Logging.FileName`.
   Elke artikelgroep wordt bovendien één keer gesourced per selectie, in plaats van één keer per geselecteerde
   aanvraag (dat vroeg dezelfde prijzen tot 5 keer op). Een ander aantal intypen op een offer sourcet opnieuw
   met dezelfde regels als de bestaande bundel, niet met alle open regels van het artikel.
+- **19 nov 2026 — Sourcing: stappen in het log en een "Sourcing completed"-melding.** Leen: "Er gebeurt helemaal
+  niks in het log als ik op Sourcing klik ... Misschien ook goed om een melding in te bouwen van Sourcing completed."
+  Het weblog krijgt per stap een regel "Procurement.Sourcing" (start, groep per regel, per leverancier met de duur,
+  klaar per aanvraag, totaal), een mislukte aanvraag met de foutmelding. Desktop en web tonen aan het eind een
+  melding met de uitkomst. `executionTimeout` van de web-app op 900 s, zodat een grote selectie niet na 110 s
+  wordt afgebroken.

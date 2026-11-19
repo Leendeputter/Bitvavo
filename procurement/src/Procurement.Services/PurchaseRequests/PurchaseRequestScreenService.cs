@@ -154,6 +154,8 @@ namespace Procurement.Services.PurchaseRequests
         public async Task<SourcingSummary> SourceRequestsAsync(IReadOnlyList<int> requestIds, IProgress<string> progress = null)
         {
             var summary = new SourcingSummary();
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            SourcingLog.Info("{0}: sourcing van {1} aanvraag/aanvragen gestart", _services.Session.UserName, requestIds.Count);
             // Lines of the same article are only bundled within this selection (19 nov 2026).
             _services.Engine.BeginSourcingRun(requestIds);
             try
@@ -190,6 +192,7 @@ namespace Procurement.Services.PurchaseRequests
             {
                 _services.Engine.EndSourcingRun();
             }
+            SourcingLog.Info("{0}: {1} ({2} ms)", _services.Session.UserName, summary, clock.ElapsedMilliseconds);
             return summary;
         }
 

@@ -138,10 +138,19 @@
     function source(ids) {
         if (!ids.length) { status.set('Selecteer eerst een of meer aanvragen.', 'error'); return; }
         if (ids.length > 1 && !window.confirm('Sourcing starten voor ' + ids.length + ' aanvragen?')) return;
-        status.run('Sourcing van ' + ids.length + ' aanvraag/aanvragen...', function () {
+        var done = null;
+        status.run('Sourcing van ' + ids.length + ' aanvraag/aanvragen... (dit kan even duren; leveranciers worden live bevraagd)', function () {
             return P.request('POST', url('Source'), { requestIds: ids }).then(function (result) {
+                done = result.status;
                 return loadLocal().then(function () { status.set(result.status); });
             });
+        }).then(function () {
+            // A clear "finished" (19 nov 2026, Leen: "Misschien ook goed om een melding in te bouwen van
+            // Sourcing completed"), shown after the busy state ends.
+            if (!done) return;
+            var text = document.createElement('p');
+            text.textContent = done;
+            return P.dialog({ title: 'Sourcing completed', content: text, cancelText: null });
         });
     }
 
