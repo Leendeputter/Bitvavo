@@ -29,18 +29,52 @@ namespace Procurement.Web
             RouteConfig.RegisterRoutes(RouteTable.Routes);
         }
 
-        /// <summary>The web app's own log file, in the same folder as MAX's log (Logging.Path in Web.config).</summary>
+        private const string AppTargetName = "procurementWebFile";
+        private static NLog.Targets.FileTarget _appTarget;
+        private static bool _restoring;
+
+        /// <summary>
+        /// The web app's own log file, in the same folder as MAX's log (Logging.Path in Web.config).
+        /// MAX's library replaces NLog's global configuration with its own when it (re)creates its log
+        /// manager (19 nov 2026: after the MGR rights check was added, the web app's lines stopped
+        /// appearing). So our file target is added to whatever configuration is active, now and every
+        /// time it is swapped, instead of being set once and silently lost.
+        /// </summary>
         private static void ConfigureLogging()
         {
-            var config = new NLog.Config.LoggingConfiguration();
-            var file = new NLog.Targets.FileTarget("file")
+            _appTarget = new NLog.Targets.FileTarget(AppTargetName)
             {
                 FileName = System.IO.Path.Combine(WebAppSettings.LogPath, "Procurement.Web.${shortdate}.log"),
                 Layout = "${longdate}|${level:uppercase=true}|${logger}|${message}${onexception:|${exception:format=tostring}}",
                 MaxArchiveFiles = 30
             };
-            config.AddRule(WebAppSettings.DebugLogging ? LogLevel.Debug : LogLevel.Info, LogLevel.Fatal, file);
+
+            var config = LogManager.Configuration ?? new NLog.Config.LoggingConfiguration();
+            AddAppTarget(config);
             LogManager.Configuration = config;
+            LogManager.ConfigurationChanged += (sender, e) =>
+            {
+                if (_restoring || e.ActivatedConfiguration == null) return;
+                if (e.ActivatedConfiguration.FindTargetByName(AppTargetName) != null) return;
+                _restoring = true;
+                try
+                {
+                    AddAppTarget(e.ActivatedConfiguration);
+                    LogManager.ReconfigExistingLoggers();
+                    Log.Info("Logconfiguratie was vervangen (door MAX); Procurement-log opnieuw gekoppeld.");
+                }
+                finally
+                {
+                    _restoring = false;
+                }
+            };
+        }
+
+        private static void AddAppTarget(NLog.Config.LoggingConfiguration config)
+        {
+            config.AddTarget(_appTarget);
+            // Only our own loggers (Procurement.*), so MAX's own lines stay in MAX's log.
+            config.AddRule(WebAppSettings.DebugLogging ? LogLevel.Debug : LogLevel.Info, LogLevel.Fatal, _appTarget, "Procurement.*");
         }
 
         protected void Application_Error()

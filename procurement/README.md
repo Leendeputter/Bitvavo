@@ -1846,3 +1846,8 @@ in hetzelfde pad onder `Logging.FileName`.
   regel gesourced via de bekende koppelingen (Part_Vendor, Supplier Mapping); alleen het zoeken bij een leverancier
   zonder koppeling wordt overgeslagen (Audit Log: `PRODUCT_SEARCH_SKIPPED_NO_MPN`). Zonder enige koppeling eindigt de
   regel zoals voorheen op Exception (`SOURCING_NO_MATCH`).
+- **19 nov 2026 — Weblog bleef leeg.** Leen: "Nog wel bijzonder dat de log niet gevuld wordt." Waarschijnlijke
+  oorzaak: de MAX-bibliotheek zet bij het (opnieuw) aanmaken van zijn logmanager een eigen NLog-configuratie neer,
+  waardoor de regel naar `Procurement.Web.<datum>.log` verdween (sinds de MGR-rechtencontrole op elke pagina). De
+  web-app koppelt zijn logbestand nu aan elke actieve configuratie, ook als die later wordt vervangen, en schrijft
+  dan "Logconfiguratie was vervangen (door MAX)" in het log. MAX' eigen log blijft daardoor ook werken.
