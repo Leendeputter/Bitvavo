@@ -1,0 +1,43 @@
+@{
+    ViewBag.Title = "App Secrets";
+}
+@if (ViewBag.InsecureConnection == true)
+{
+    <div class="warning-bar">Deze pagina is niet via HTTPS geopend. Secrets opslaan kan alleen via HTTPS; rechten beheren kan wel.</div>
+}
+@if (ViewBag.TestMode == true)
+{
+    <div class="warning-bar test">TEST MODE: dit zijn de secrets en rechten van de testomgeving.</div>
+}
+<div class="secrets-layout">
+    <fieldset class="group">
+        <legend>Secrets</legend>
+        <div class="hint">Write-only: een opgeslagen waarde wordt nooit meer getoond. Een leeg veld laat de opgeslagen waarde ongewijzigd.</div>
+        <form id="frm_secrets" autocomplete="off">
+            <div id="secret_rows" class="secret-rows"></div>
+            <button type="submit" id="bt_save">Save</button>
+        </form>
+    </fieldset>
+    <fieldset class="group">
+        <legend>Rechten (SecretAccess)</legend>
+        <div class="hint">Welke Windows-gebruiker de app welke secret laat gebruiken. "Verwijderen" trekt het recht direct in.</div>
+        <div class="toolbar">
+            <button type="button" id="bt_addAccess">Regel toevoegen</button>
+            <button type="button" id="bt_deleteAccess">Verwijderen</button>
+            <button type="button" id="bt_saveAccess">Save rights</button>
+        </div>
+        <div class="edit-table-holder" id="tbl_access"></div>
+        <div class="copy-access">
+            <label>Copy rights from <input type="text" id="txt_copyFrom" list="copy_from_users" size="16" /></label>
+            <datalist id="copy_from_users"></datalist>
+            <label>to <input type="text" id="txt_copyTo" size="28" placeholder="gebruiker1; gebruiker2" /></label>
+            <button type="button" id="bt_copyAccess">Copy</button>
+        </div>
+    </fieldset>
+</div>
+<div id="status" class="status-line"></div>
+
+<script>window.secretNames = @Html.Raw(Newtonsoft.Json.JsonConvert.SerializeObject((object)ViewBag.SecretNames));</script>
+@section scripts {
+    <script src="@Url.Content("~/Scripts/app-secrets.js")"></script>
+}

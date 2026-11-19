@@ -48,6 +48,7 @@ namespace Procurement.Web.Infrastructure
 
         public static void DisposeServices(HttpSessionStateBase session)
         {
+            session?.Remove("HasBeheerAccess"); // rights are per company, so looked up again after a new login
             if (session?[ServicesKey] is IDisposable services)
             {
                 session.Remove(ServicesKey);

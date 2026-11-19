@@ -1,0 +1,78 @@
+@{
+    ViewBag.Title = "Settings";
+}
+<div class="tabs" id="tabs">
+    <button type="button" class="tab active" data-tab="suppliers">Suppliers</button>
+    <button type="button" class="tab" data-tab="preferences">Supplier preferences</button>
+    <button type="button" class="tab" data-tab="packaging">Packaging policy</button>
+    <button type="button" class="tab" data-tab="attrition">Extra voor uitval</button>
+    <button type="button" class="tab" data-tab="approval">Approval policy</button>
+    <button type="button" class="tab" data-tab="capabilities">Supplier capabilities</button>
+</div>
+
+<section class="tab-page" data-page="suppliers">
+    <div class="toolbar">
+        <button type="button" id="bt_saveSuppliers">Save</button>
+        <button type="button" id="bt_editShipping">Edit Shipping Details...</button>
+        <button type="button" id="bt_authorizeOrdering">Authorize Ordering...</button>
+    </div>
+    <div class="hint">VendorId: MAX Part_Vendor.VENID_07 for this supplier (e.g. Farnell = 0349, DigiKey = 10194) — used to translate the Part_Vendor cross-reference table into recognized supplier mappings.</div>
+    <div class="edit-table-holder" id="tbl_suppliers"></div>
+</section>
+
+<section class="tab-page" data-page="preferences" hidden>
+    <div class="toolbar">
+        <button type="button" id="bt_savePreferences">Save</button>
+        <button type="button" id="bt_addPreference">Regel toevoegen</button>
+    </div>
+    <div class="edit-table-holder" id="tbl_preferences"></div>
+</section>
+
+<section class="tab-page" data-page="packaging" hidden>
+    <div class="toolbar">
+        <button type="button" id="bt_savePackaging">Save</button>
+        <button type="button" id="bt_addPackaging">Regel toevoegen</button>
+    </div>
+    <div class="hint">Per Category (bv. Integrated Circuits SMT), soort (SMT/THT) of Default; de meest specifieke regel wint. Vink rechts de verpakkingen aan.</div>
+    <div class="packaging-layout">
+        <div class="edit-table-holder" id="tbl_packaging"></div>
+        <fieldset class="group" id="gb_packaging" disabled>
+            <legend id="lbl_packaging">Verpakkingen van geselecteerde regel</legend>
+            <div class="packaging-lists">
+                <div><div class="list-title">Altijd toegestaan:</div><div id="lst_allowedPackaging"></div></div>
+                <div><div class="list-title">Ook toegestaan vanaf de prijsdrempel:</div><div id="lst_exceptionPackaging"></div></div>
+            </div>
+        </fieldset>
+    </div>
+</section>
+
+<section class="tab-page" data-page="attrition" hidden>
+    <div class="toolbar">
+        <button type="button" id="bt_saveAttrition">Save</button>
+        <button type="button" id="bt_addAttrition">Regel toevoegen</button>
+        <button type="button" id="bt_deleteAttrition">Regel verwijderen</button>
+    </div>
+    <div class="hint">Extra = max(aantal x percentage, minimum). Category gaat voor soort (SMT/THT). Prijs = MAX-kostprijs, vanaf (incl.) tot (excl.), leeg = geen grens.</div>
+    <div class="edit-table-holder" id="tbl_attrition"></div>
+</section>
+
+<section class="tab-page" data-page="approval" hidden>
+    <form id="frm_approval" class="approval-form" autocomplete="off">
+        <label><span>Max order value for auto-approval:</span> <input type="number" step="any" min="0" name="MaxOrderValueForAutoApproval" /></label>
+        <label><span>Max price variance (%):</span> <input type="number" step="any" min="0" name="MaxPriceVariancePercentage" /></label>
+        <label class="check"><input type="checkbox" name="AllowExternalSupplier" /> External supplier allowed</label>
+        <label class="check"><input type="checkbox" name="AllowNonOriginalPackaging" /> Non-original packaging allowed</label>
+        <label class="check"><input type="checkbox" name="AllowAlternativePart" /> Alternative part allowed</label>
+        <div><button type="submit" id="bt_saveApproval">Save</button></div>
+    </form>
+</section>
+
+<section class="tab-page" data-page="capabilities" hidden>
+    <div class="edit-table-holder" id="tbl_capabilities"></div>
+</section>
+
+<div id="status" class="status-line"></div>
+
+@section scripts {
+    <script src="@Url.Content("~/Scripts/settings.js")"></script>
+}

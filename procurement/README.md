@@ -1807,3 +1807,13 @@ in hetzelfde pad onder `Logging.FileName`.
   Zelfde kolommen en filters als `SupplierMappingForm` en `AuditLogForm`; "Mark as Verified" zet de gekozen
   mapping op Verified; dubbelklik in het Audit Log toont de volledige tekst met "Copy to Clipboard".
   Logica in `Procurement.Services/Options`. Settings en App Secrets volgen samen met Leen.
+- **19 nov 2026 — Web-variant, fase 3 (deel 4): Settings, App Secrets en DigiKey Authorize op het web.**
+  Settings (menu Options) heeft dezelfde tabbladen als `SettingsForm`: Suppliers (VendorId, IsSandbox,
+  UseMockData, "Edit Shipping Details...", "Authorize Ordering..."), Supplier preferences, Packaging policy (met
+  de twee vinklijsten), Extra voor uitval, Approval policy en Supplier capabilities. Getallen worden met Json.NET
+  gelezen (`ProcurementControllerBase.FromBody`), zodat "0,5" nooit als 5 wordt opgeslagen. App Secrets (menu
+  Beheer, alleen zichtbaar én alleen bruikbaar met MGR User Security, op de server per verzoek gecontroleerd)
+  werkt als `AppSecretsForm`: write-only secrets, rechten per gebruiker, rechten kopiëren. Secrets worden buiten
+  de eigen pc alleen via HTTPS geaccepteerd. Na opslaan van secrets of DigiKey-autorisatie bouwt de web-app de
+  objecten van die gebruiker opnieuw op, dus geen herstart nodig; andere ingelogde gebruikers na opnieuw inloggen.
+  DigiKey Authorize gebruikt dezelfde plak-de-adresbalk-stap als de desktop (redirect https://localhost).

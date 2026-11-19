@@ -37,16 +37,19 @@
                     <span>Options</span>
                     <div class="menu-drop">
                         <a href="@Url.Action("Index", "SupplierMapping")">Supplier Mapping...</a>
-                        <span class="disabled" title="Volgt samen met Leen">Settings...</span>
+                        <a href="@Url.Action("Index", "Settings")">Settings...</a>
                         <a href="@Url.Action("Index", "AuditLog")">Audit Log...</a>
                     </div>
                 </div>
-                <div class="menu-item">
-                    <span>Beheer</span>
-                    <div class="menu-drop">
-                        <span class="disabled" title="Volgt samen met Leen">App Secrets</span>
+                @if (ViewBag.HasBeheerAccess == true)
+                {
+                    <div class="menu-item">
+                        <span>Beheer</span>
+                        <div class="menu-drop">
+                            <a href="@Url.Action("Index", "AppSecrets")">App Secrets</a>
+                        </div>
                     </div>
-                </div>
+                }
                 <form class="menu-logout" method="post" action="@Url.Action("Logout", "Account")">
                     @ValidateAjaxAntiForgeryAttribute.HiddenField(Context)
                     <button type="submit" class="link-button">Andere administratie</button>

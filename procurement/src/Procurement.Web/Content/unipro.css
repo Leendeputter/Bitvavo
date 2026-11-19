@@ -142,3 +142,45 @@ dialog.dialog::backdrop { background: rgba(0, 0, 0, 0.25); }
 .grid-full { height: calc(100vh - 170px); min-height: 240px; }
 .dialog-text { width: 100%; height: 60vh; font-family: Consolas, "Courier New", monospace; font-size: 12px; white-space: pre; }
 .toolbar label { margin-right: 6px; }
+
+/* Tabs (Settings), like the desktop's TabControl */
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
+.tabs .tab { border-radius: 4px 4px 0 0; border-bottom: none; margin-bottom: -1px; }
+.tabs .tab.active { background: #fff; border-bottom: 1px solid #fff; font-weight: 600; }
+.tab-page[hidden] { display: none; }
+.hint { color: var(--muted); margin: 4px 0 6px; max-width: 1000px; }
+
+/* Editable tables (Settings, App Secrets): small, so plain tables with an input per cell */
+.edit-table-holder { background: #fff; border: 1px solid #7a7a7a; overflow: auto; max-height: calc(100vh - 230px); display: inline-block; max-width: 100%; }
+.edit-table { border-collapse: separate; border-spacing: 0; table-layout: fixed; }
+.edit-table th { background: var(--header); border-right: 1px solid #a0b4cc; border-bottom: 1px solid #a0b4cc; padding: 3px 4px; text-align: left; font-weight: normal; position: sticky; top: 0; z-index: 1; }
+.edit-table td { border-right: 1px solid #e0e0e0; border-bottom: 1px solid #e0e0e0; padding: 1px 2px; height: 23px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.edit-table td.readonly { padding: 1px 4px; color: #333; }
+.edit-table td.center { text-align: center; }
+.edit-table td input[type=text], .edit-table td input[type=number], .edit-table td select { width: 100%; height: 20px; border: 1px solid transparent; font: inherit; background: transparent; }
+.edit-table td input:focus, .edit-table td select:focus { border-color: var(--border); background: #fff; outline: none; }
+.edit-table td.num input { text-align: right; }
+.edit-table td input.invalid, .edit-table td input:invalid { border-color: var(--error); background: #fdecee; }
+.edit-table .rownum { background: var(--header); text-align: right; color: #333; width: 30px; }
+.edit-table tr.selected td:not(.rownum) { background: var(--hover); }
+.packaging-layout { display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
+.packaging-lists { display: flex; gap: 18px; }
+.packaging-lists label.check { display: block; margin: 2px 0; }
+.list-title { font-weight: 600; margin-bottom: 4px; }
+.approval-form { display: grid; gap: 8px; max-width: 520px; padding: 8px 0; }
+.approval-form label > span { display: inline-block; width: 230px; }
+.approval-form input[type=number] { width: 120px; text-align: right; }
+.dialog-form label { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.dialog-form label span { width: 130px; }
+.dialog-form input { flex: 1; min-width: 260px; }
+.dialog-wide-input { width: 100%; min-width: 520px; }
+
+/* App Secrets */
+.secrets-layout { display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
+.secret-rows { margin-bottom: 8px; }
+.secret-row { display: grid; grid-template-columns: 190px 70px 260px; align-items: center; height: 28px; }
+.secret-state.set { color: darkgreen; }
+.secret-state.empty, .muted { color: gray; }
+.copy-access { margin-top: 8px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.warning-bar { background: #fff3cd; border: 1px solid #e0c060; padding: 6px 10px; margin-bottom: 6px; }
+.warning-bar.test { background: lightyellow; }
