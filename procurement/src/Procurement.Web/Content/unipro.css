@@ -185,3 +185,9 @@ dialog.dialog::backdrop { background: rgba(0, 0, 0, 0.25); }
 .warning-bar { background: #fff3cd; border: 1px solid #e0c060; padding: 6px 10px; margin-bottom: 6px; }
 .warning-bar.test { background: lightyellow; }
 .grid .rownum, .edit-table .rownum { user-select: none; } /* row headers select rows, never text */
+
+/* Like a desktop app: menus, buttons, tabs, labels and column headers don't select as text when clicked
+   (19 nov 2026). Grid cells, inputs and the status line stay selectable for copying. */
+.shell, .menu, .menu-drop, button, .tabs, legend, label, .grid thead, .edit-table thead,
+.dialog-title, .grid-caption, .hint, .list-title, .secret-row > span { user-select: none; -webkit-user-select: none; }
+input, textarea, select { user-select: text; -webkit-user-select: text; }

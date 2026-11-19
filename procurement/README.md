@@ -1851,3 +1851,6 @@ in hetzelfde pad onder `Logging.FileName`.
   waardoor de regel naar `Procurement.Web.<datum>.log` verdween (sinds de MGR-rechtencontrole op elke pagina). De
   web-app koppelt zijn logbestand nu aan elke actieve configuratie, ook als die later wordt vervangen, en schrijft
   dan "Logconfiguratie was vervangen (door MAX)" in het log. MAX' eigen log blijft daardoor ook werken.
+- **19 nov 2026 — Web: menu's en knoppen selecteren geen tekst meer.** Leen: "Als ik in een menubalk klik kan ik
+  de tekst allemaal selecteren, dat werkt niet handig." Menu, knoppen, tabbladen, labels en kolomkoppen zijn niet
+  meer als tekst te selecteren (zoals op de desktop); cellen, invoervelden en de statusregel wel, om te kopiëren.
