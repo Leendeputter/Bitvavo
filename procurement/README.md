@@ -1865,3 +1865,6 @@ in hetzelfde pad onder `Logging.FileName`.
   ik ook de optie om meerdere regels te selecteren in 1x te Approven." Ctrl/Shift-klik selecteert meerdere regels;
   Approve/Reject vraagt één keer bevestiging en geldt voor alle gekozen regels met hetzelfde commentaar.
   Regels die al via hun bundel zijn beslist worden overgeslagen en apart geteld (`ApprovalScreenService.DecideManyAsync`).
+- **19 nov 2026 — Web: aantal in een offer wordt ook bevestigd bij het verlaten van de cel.** Leen: "Als ik de cel
+  verlaat door op een andere cel te klikken dan wordt het aantal terug gewijzigd naar het oorspronkelijke aantal."
+  Klikken buiten de cel of Tab werkt nu als Enter (dus de vraag "Opnieuw sourcen voor ...?"); alleen Escape annuleert.

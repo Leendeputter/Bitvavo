@@ -416,7 +416,9 @@
             if (ev.key === 'Enter') finish(true);
             if (ev.key === 'Escape') finish(false);
         });
-        input.addEventListener('blur', function () { finish(false); });
+        // Leaving the cell (clicking elsewhere, Tab) counts as Enter, as in a DataGridView; only Escape
+        // cancels (19 nov 2026: a changed quantity silently went back when clicking another cell).
+        input.addEventListener('blur', function () { finish(true); });
     };
 
     /* ---------- Status line and busy state (as the desktop's SetStatus/SetBusy) ---------- */
