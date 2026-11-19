@@ -122,16 +122,37 @@
         return P.request('POST', url('Load'), { filter: filter() }).then(showRequests);
     }
 
+    // What went wrong in the selected line's last sourcing (19 nov 2026), from the Audit Log.
+    var problemsBox = document.getElementById('offer_problems');
+    function showProblems(problems) {
+        problemsBox.hidden = !problems.length;
+        problemsBox.innerHTML = '';
+        if (!problems.length) return;
+        var title = document.createElement('div');
+        title.className = 'problems-title';
+        title.textContent = 'Laatste sourcing van deze regel:';
+        problemsBox.appendChild(title);
+        var list = document.createElement('ul');
+        problems.forEach(function (p) {
+            var item = document.createElement('li');
+            item.textContent = p;
+            list.appendChild(item);
+        });
+        problemsBox.appendChild(list);
+    }
+
     function loadOffers() {
         var row = requestsGrid.currentRow();
         if (!row) {
             currentLineId = null;
             offersGrid.setRows([]);
+            showProblems([]);
             return Promise.resolve();
         }
         return P.request('GET', url('Offers') + '?requestId=' + encodeURIComponent(row.Id)).then(function (result) {
             currentLineId = result.lineId;
             offersGrid.setRows(result.rows);
+            showProblems(result.problems || []);
         }).catch(function (error) { status.set('Fout bij laden van offers: ' + error.message, 'error'); });
     }
 

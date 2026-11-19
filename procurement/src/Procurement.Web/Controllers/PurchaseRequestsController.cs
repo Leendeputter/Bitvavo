@@ -44,7 +44,7 @@ namespace Procurement.Web.Controllers
         public async Task<ActionResult> Offers(int requestId)
         {
             var result = await Screen.GetOffersAsync(requestId);
-            return new JsonNetResult(new { lineId = result.LineId, rows = result.Rows });
+            return new JsonNetResult(new { lineId = result.LineId, rows = result.Rows, problems = result.Problems });
         }
 
         [HttpPost]

@@ -40,5 +40,16 @@ namespace Procurement.Data.Repositories
             IReadOnlyList<ProcurementEvent> result = await query.OrderByDescending(e => e.Timestamp).Take(1000).ToListAsync();
             return result;
         });
+
+        /// <summary>The newest events of one entity (e.g. one PurchaseRequestLine), newest first.</summary>
+        public Task<IReadOnlyList<ProcurementEvent>> GetForEntityAsync(string entityType, string entityId, int take = 200) => _context.RunGuardedAsync(async () =>
+        {
+            IReadOnlyList<ProcurementEvent> result = await _context.ProcurementEvents.AsNoTracking()
+                .Where(e => e.EntityType == entityType && e.EntityId == entityId)
+                .OrderByDescending(e => e.Timestamp).ThenByDescending(e => e.Id)
+                .Take(take)
+                .ToListAsync();
+            return result;
+        });
     }
 }

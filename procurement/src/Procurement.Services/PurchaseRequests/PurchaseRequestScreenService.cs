@@ -29,6 +29,12 @@ namespace Procurement.Services.PurchaseRequests
         /// <summary>The line the offers belong to; null when the request has no line.</summary>
         public int? LineId { get; set; }
         public IReadOnlyList<OfferRow> Rows { get; set; } = new List<OfferRow>();
+
+        /// <summary>
+        /// What went wrong in the line's last sourcing, in words (19 nov 2026, user: "als er nu een
+        /// exception staat in de lijn, moet je naar het log om die exception op te zoeken"). Empty when nothing did.
+        /// </summary>
+        public IReadOnlyList<string> Problems { get; set; } = new List<string>();
     }
 
     /// <summary>Counts after sourcing one or more requests.</summary>
@@ -118,10 +124,12 @@ namespace Procurement.Services.PurchaseRequests
 
             var offers = await _services.Engine.GetOffersForLineAsync(line.Id);
             var selection = await _services.Engine.GetSelectionForLineAsync(line.Id);
+            var problems = await GetLastSourcingProblemsAsync(line.Id);
 
             return new OfferListResult
             {
                 LineId = line.Id,
+                Problems = problems,
                 Rows = offers.Select(o => new OfferRow
                 {
                     Id = o.Id,
@@ -148,6 +156,72 @@ namespace Procurement.Services.PurchaseRequests
                     DueDate = o.EstimatedDeliveryDate
                 }).ToList()
             };
+        }
+
+        /// <summary>
+        /// The errors and exceptions of the line's last sourcing, from the audit trail. The engine marks
+        /// the start of each sourcing per line (SOURCING_LINE_STARTED) with the line whose events
+        /// explain it ("ViaRegel": the line the article group was sourced through).
+        /// </summary>
+        public async Task<IReadOnlyList<string>> GetLastSourcingProblemsAsync(int lineId)
+        {
+            var events = await _services.ProcurementEventRepository.GetForEntityAsync("PurchaseRequestLine", lineId.ToString());
+            var start = events.FirstOrDefault(e => e.EventType == "SOURCING_LINE_STARTED");
+            if (start == null) return new List<string>();
+
+            var viaLineId = lineId.ToString();
+            const string marker = "ViaRegel=";
+            var payload = start.RequestPayload ?? string.Empty;
+            var at = payload.IndexOf(marker, StringComparison.Ordinal);
+            if (at >= 0)
+            {
+                var rest = payload.Substring(at + marker.Length);
+                var end = rest.IndexOf(';');
+                viaLineId = (end >= 0 ? rest.Substring(0, end) : rest).Trim();
+            }
+
+            // Own events after the start, plus those of the line the group was sourced through.
+            var relevant = events.Where(e => e.Id >= start.Id).ToList();
+            if (viaLineId != lineId.ToString())
+            {
+                // The via line's events from its own marker of the same run (logged in the same loop).
+                var viaEvents = await _services.ProcurementEventRepository.GetForEntityAsync("PurchaseRequestLine", viaLineId);
+                var viaStart = viaEvents.FirstOrDefault(e => e.EventType == "SOURCING_LINE_STARTED" && e.Id <= start.Id + 1000 && e.Timestamp >= start.Timestamp.AddMinutes(-1));
+                if (viaStart != null)
+                    relevant.AddRange(viaEvents.Where(e => e.Id >= viaStart.Id));
+            }
+
+            return relevant
+                .Where(e => e.Status == "Error" || e.Status == "Exception")
+                .OrderBy(e => e.Timestamp).ThenBy(e => e.Id)
+                .Select(DescribeProblem)
+                .Distinct()
+                .ToList();
+        }
+
+        public static string DescribeProblem(ProcurementEvent e)
+        {
+            var supplier = string.IsNullOrEmpty(e.SupplierCode) ? string.Empty : e.SupplierCode + ": ";
+            var detail = !string.IsNullOrWhiteSpace(e.Error) ? e.Error : e.ResponsePayload;
+            switch (e.EventType)
+            {
+                case "SOURCING_NO_MATCH":
+                    return "Geen enkele leverancier gekoppeld: geen Part_Vendor/Supplier Mapping, en zoeken op Manufacturing Part leverde niets op.";
+                case "SOURCING_NO_OFFERS":
+                    return "Wel gekoppeld, maar geen enkele leverancier gaf een prijs en voorraad.";
+                case "PRODUCT_NOT_FOUND":
+                    return supplier + "product niet gevonden bij zoeken op Manufacturing Part.";
+                case "PRODUCT_SEARCH_SKIPPED_NO_MPN":
+                    return supplier + "niet gezocht: geen Manufacturing Part in MAX en geen bekende koppeling.";
+                case "PRODUCT_SEARCH_FAILED":
+                    return supplier + "zoeken mislukt: " + detail;
+                case "OFFER_BUILD_FAILED":
+                    return supplier + "prijs/voorraad ophalen mislukt: " + detail;
+                case "SELECTION_FAILED":
+                    return "Geen geschikt offer gekozen: " + detail;
+                default:
+                    return supplier + e.EventType + (string.IsNullOrWhiteSpace(detail) ? string.Empty : ": " + detail);
+            }
         }
 
         /// <summary>

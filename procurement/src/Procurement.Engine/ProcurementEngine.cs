@@ -437,6 +437,11 @@ namespace Procurement.Engine
                 group.Add(line);
             group = group.OrderBy(l => l.RequiredDate ?? DateTime.MaxValue).ThenBy(l => l.Id).ToList();
             Log($"Regel {line.Id} ({line.ErpArticleId}): groep van {group.Count} regel(s)");
+            // Marks where this sourcing starts for every line in the group, and which line's audit events
+            // explain it (19 nov 2026: the reason for an Exception is shown with the selected request).
+            foreach (var member in group)
+                await _auditLogger.LogAsync("PurchaseRequestLine", member.Id.ToString(), "SOURCING_LINE_STARTED", "Success",
+                    requestPayload: $"ViaRegel={line.Id}; GroupLines={group.Count}");
 
             // Sourcing again replaces the previous offers instead of adding to them (18 nov 2026).
             foreach (var member in group)

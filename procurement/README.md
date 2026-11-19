@@ -1854,3 +1854,10 @@ in hetzelfde pad onder `Logging.FileName`.
 - **19 nov 2026 — Web: menu's en knoppen selecteren geen tekst meer.** Leen: "Als ik in een menubalk klik kan ik
   de tekst allemaal selecteren, dat werkt niet handig." Menu, knoppen, tabbladen, labels en kolomkoppen zijn niet
   meer als tekst te selecteren (zoals op de desktop); cellen, invoervelden en de statusregel wel, om te kopiëren.
+- **19 nov 2026 — Reden van een Exception zichtbaar bij de regel (web).** Leen: "Als er nu een exception staat in de
+  lijn, moet je naar het log om die exception op te zoeken. Is er een manier om die makkelijk zichtbaar te maken
+  voor de geselecteerde regel?" Boven de offers staat nu een geel vak "Laatste sourcing van deze regel" met de
+  fouten en uitzonderingen uit het Audit Log van de laatste sourcing (bv. "MOUSER: prijs/voorraad ophalen mislukt:
+  ..."), ook voor regels die via een andere regel van hetzelfde artikel zijn gesourced. Daarvoor zet de engine per
+  regel een startmarkering `SOURCING_LINE_STARTED` (met `ViaRegel`); logica in
+  `PurchaseRequestScreenService.GetLastSourcingProblemsAsync`.

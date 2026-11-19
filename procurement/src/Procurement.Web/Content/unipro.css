@@ -191,3 +191,6 @@ dialog.dialog::backdrop { background: rgba(0, 0, 0, 0.25); }
 .shell, .menu, .menu-drop, button, .tabs, legend, label, .grid thead, .edit-table thead,
 .dialog-title, .grid-caption, .hint, .list-title, .secret-row > span { user-select: none; -webkit-user-select: none; }
 input, textarea, select { user-select: text; -webkit-user-select: text; }
+.problems { background: #fff3cd; border: 1px solid #e0c060; padding: 4px 8px; margin: 0 0 4px; max-height: 90px; overflow: auto; }
+.problems-title { font-weight: 600; }
+.problems ul { margin: 2px 0 0; padding-left: 18px; }
