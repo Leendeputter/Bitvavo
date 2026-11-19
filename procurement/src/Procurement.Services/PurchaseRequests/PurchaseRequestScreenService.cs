@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Procurement.Core.BusinessLogic;
 using Procurement.Core.Entities;
 using Procurement.Core.Enums;
+using NLog;
 using Procurement.Erp;
 
 namespace Procurement.Services.PurchaseRequests
@@ -56,6 +57,7 @@ namespace Procurement.Services.PurchaseRequests
     /// </summary>
     public class PurchaseRequestScreenService
     {
+        private static readonly Logger QueryLog = LogManager.GetLogger("Procurement.Query");
         private readonly ProcurementServices _services;
 
         public PurchaseRequestScreenService(ProcurementServices services)
@@ -86,13 +88,17 @@ namespace Procurement.Services.PurchaseRequests
         {
             if (filter == null) throw new ArgumentNullException(nameof(filter));
             ApplyFiltersToErpConnector(filter);
+            var clock = System.Diagnostics.Stopwatch.StartNew();
             var requests = await _services.Engine.GetOpenPurchaseRequestsAsync();
+            QueryLog.Info("Query: {0} open aanvragen na synchronisatie ({1} ms)", requests.Count, clock.ElapsedMilliseconds);
             var filtered = requests.Where(r => filter.Statuses.Contains(r.Status))
                 .Where(r => filter.ShowTestRequests || !IsManualTestRequest(r.ErpRequestNumber))
                 .ToList();
+            var rows = await BuildRowsAsync(filtered);
+            QueryLog.Info("Query: {0} rijen opgebouwd ({1} ms)", rows.Count, clock.ElapsedMilliseconds);
             return new RequestListResult
             {
-                Rows = await BuildRowsAsync(filtered),
+                Rows = rows,
                 MaxOrderCount = _services.ErpConnector.LastMaxOrderCount
             };
         }

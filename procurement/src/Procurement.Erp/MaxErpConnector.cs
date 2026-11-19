@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using NLog;
 using Procurement.Core.Entities;
 using Procurement.Core.Enums;
 using Procurement.Core.Interfaces;
@@ -40,6 +41,9 @@ namespace Procurement.Erp
     /// </summary>
     public class MaxErpConnector : IErpConnector
     {
+        // Step timings of a Query (19 nov 2026: web Query seemed to hang); written by the web app's
+        // log (Procurement.Web.<date>.log), a no-op on the desktop where NLog isn't configured.
+        private static readonly Logger QueryLog = LogManager.GetLogger("Procurement.Query");
         private readonly PurchaseRequestRepository _purchaseRequestRepository;
         private readonly PurchaseOrderRepository _purchaseOrderRepository;
         private readonly MaxOrderRepository _maxOrderRepository;
@@ -118,8 +122,11 @@ namespace Procurement.Erp
                 RangeStart = RangeFilterStart,
                 RangeEnd = RangeFilterEnd
             };
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            QueryLog.Info("Query: MAX-orders ophalen...");
             var maxOrders = await _maxOrderRepository.GetOpenOrdersAsync(filter);
             LastMaxOrderCount = maxOrders.Count;
+            QueryLog.Info("Query: {0} MAX-orders opgehaald ({1} ms)", maxOrders.Count, clock.ElapsedMilliseconds);
 
             // One query for all existing requests and one save for all new ones (17 nov 2026), instead
             // of a lookup + a save per MAX order — the save per order also made EF re-scan every
@@ -183,8 +190,11 @@ namespace Procurement.Erp
 
             await _purchaseRequestRepository.SaveAsync();
             await _purchaseRequestRepository.AddRangeAsync(newRequests);
+            QueryLog.Info("Query: {0} nieuwe aanvragen opgeslagen ({1} ms)", newRequests.Count, clock.ElapsedMilliseconds);
             await SyncVendorPartMappingsAsync(maxOrders);
+            QueryLog.Info("Query: Part_Vendor-mapping gesynchroniseerd ({0} ms)", clock.ElapsedMilliseconds);
             await ReconcileAgainstMaxAsync();
+            QueryLog.Info("Query: afgestemd met MAX ({0} ms)", clock.ElapsedMilliseconds);
 
             // GetOpenAsync() returns *every* still-open local request regardless of this call's
             // filter (statuses/Due Date range/Select By) — a request synced by an earlier,
