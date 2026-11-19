@@ -1827,3 +1827,10 @@ in hetzelfde pad onder `Logging.FileName`.
 - **19 nov 2026 — Web-grid: Shift/Ctrl-klik selecteert geen tekst meer.** Leen: "De selectie van meerdere regels
   met Shift op de rowheader in Purchase Request gaat nog niet helemaal lekker. De afzonderlijke tekst in de cellen
   wordt dan ook geselecteerd." De browser begon bij Shift-klik ook een tekstselectie; die wordt nu tegengehouden.
+- **19 nov 2026 — Sourcen bundelt alleen binnen de selectie.** Leen: "Als ik 5 regels van artikel A selecteer om
+  te sourcen en er staan 10 regels voor artikel A in de Purchase Requests wordt er voor alle 10 de regels
+  gesourced. Dat lijkt me niet logisch?" Regels van hetzelfde artikel worden nu alleen samengevoegd met
+  andere geselecteerde regels (`ProcurementEngine.BeginSourcingRun`); "Source All" neemt alle getoonde regels.
+  Elke artikelgroep wordt bovendien één keer gesourced per selectie, in plaats van één keer per geselecteerde
+  aanvraag (dat vroeg dezelfde prijzen tot 5 keer op). Een ander aantal intypen op een offer sourcet opnieuw
+  met dezelfde regels als de bestaande bundel, niet met alle open regels van het artikel.

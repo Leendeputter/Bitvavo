@@ -41,6 +41,37 @@ namespace Procurement.Engine
         /// <summary>Lines sourced as part of an article group during the current SourcePurchaseRequestAsync call.</summary>
         private readonly Dictionary<int, LineOutcome> _groupedThisRun = new Dictionary<int, LineOutcome>();
 
+        /// <summary>
+        /// Which other open lines of the same article may join a line's group (19 nov 2026, user:
+        /// "Als ik 5 regels van artikel A selecteer om te sourcen en er staan 10 regels voor artikel A
+        /// ... wordt er voor alle 10 de regels gesourced. Dat lijkt me niet logisch"). Null = any open
+        /// line (the 18 nov behaviour, still used when no run is active).
+        /// </summary>
+        private Func<PurchaseRequestLine, bool> _groupScope;
+
+        /// <summary>True between BeginSourcingRun and EndSourcingRun: grouped outcomes are kept across requests.</summary>
+        private bool _runActive;
+
+        /// <summary>
+        /// Starts sourcing a selection of requests: lines of the same article are only combined with
+        /// lines of these same requests, and each article group is sourced once for the whole
+        /// selection instead of once per selected request. End with <see cref="EndSourcingRun"/>.
+        /// </summary>
+        public void BeginSourcingRun(IReadOnlyCollection<int> purchaseRequestIds)
+        {
+            var scope = new HashSet<int>(purchaseRequestIds ?? Array.Empty<int>());
+            _groupScope = l => scope.Contains(l.PurchaseRequestId);
+            _groupedThisRun.Clear();
+            _runActive = true;
+        }
+
+        public void EndSourcingRun()
+        {
+            _groupScope = null;
+            _groupedThisRun.Clear();
+            _runActive = false;
+        }
+
         public ProcurementEngine(
             IErpConnector erp,
             IEnumerable<ISupplierAdapter> adapters,
@@ -97,7 +128,7 @@ namespace Procurement.Engine
 
             var anyPendingApproval = false;
             var anyException = false;
-            _groupedThisRun.Clear();
+            if (!_runActive) _groupedThisRun.Clear();
 
             foreach (var line in request.Lines)
             {
@@ -149,8 +180,26 @@ namespace Procurement.Engine
             var approvalPolicy = await _policyRepository.GetApprovalPolicyAsync()
                 ?? new ApprovalPolicy { MaxOrderValueForAutoApproval = 0, MaxPriceVariancePercentage = 0 };
 
+            // Re-sourced with the same lines it was bundled with, not with every open line of the
+            // article (19 nov 2026): a line outside the bundle stays as it is.
+            var bundleLineIds = new HashSet<int> { line.Id };
+            var bundleKey = (await _offerRepository.GetByLineIdAsync(line.Id)).Select(o => o.BundleKey).FirstOrDefault(k => !string.IsNullOrEmpty(k));
+            if (bundleKey != null)
+                foreach (var sibling in await _offerRepository.GetByBundleKeyAsync(bundleKey))
+                    bundleLineIds.Add(sibling.PurchaseRequestLineId);
+
             _groupedThisRun.Clear();
-            var outcome = await SourceAndProcessLineAsync(line, activeAdapters, approvalPolicy, totalQuantity);
+            var previousScope = _groupScope;
+            _groupScope = l => bundleLineIds.Contains(l.Id);
+            LineOutcome outcome;
+            try
+            {
+                outcome = await SourceAndProcessLineAsync(line, activeAdapters, approvalPolicy, totalQuantity);
+            }
+            finally
+            {
+                _groupScope = previousScope;
+            }
 
             if (outcome == LineOutcome.PendingApproval)
                 await _purchaseRequestRepository.UpdateStatusAsync(line.PurchaseRequestId, PurchaseRequestStatus.WaitingApproval);
@@ -364,13 +413,14 @@ namespace Procurement.Engine
                 return LineOutcome.Selected;
             }
 
-            // Sourcing per article (user decision, 18 nov 2026): every open line of the same article
-            // is sourced together — offers and the packaging choice on the summed need, so a full reel
+            // Sourcing per article (user decision, 18 nov 2026): the open lines of the same article
+            // are sourced together, since 19 nov only those within the selection (_groupScope) — offers and the packaging choice on the summed need, so a full reel
             // is compared against the total demand instead of against one line. A line without an
             // article id (manual test request) is a group of one.
             var group = new List<PurchaseRequestLine>();
             if (!string.IsNullOrWhiteSpace(line.ErpArticleId))
-                group.AddRange(await _purchaseRequestRepository.GetOpenLinesForArticleAsync(line.ErpArticleId));
+                group.AddRange((await _purchaseRequestRepository.GetOpenLinesForArticleAsync(line.ErpArticleId))
+                    .Where(l => _groupScope == null || _groupScope(l)));
             if (group.All(l => l.Id != line.Id))
                 group.Add(line);
             group = group.OrderBy(l => l.RequiredDate ?? DateTime.MaxValue).ThenBy(l => l.Id).ToList();

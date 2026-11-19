@@ -153,30 +153,39 @@ namespace Procurement.Services.PurchaseRequests
         public async Task<SourcingSummary> SourceRequestsAsync(IReadOnlyList<int> requestIds, IProgress<string> progress = null)
         {
             var summary = new SourcingSummary();
-            for (var i = 0; i < requestIds.Count; i++)
+            // Lines of the same article are only bundled within this selection (19 nov 2026).
+            _services.Engine.BeginSourcingRun(requestIds);
+            try
             {
-                progress?.Report($"Sourcing {i + 1}/{requestIds.Count}...");
-                try
+                for (var i = 0; i < requestIds.Count; i++)
                 {
-                    var current = await _services.PurchaseRequestRepository.GetByIdAsync(requestIds[i]);
-                    if (current == null) continue;
-                    if (current.Status == PurchaseRequestStatus.Ordered)
+                    progress?.Report($"Sourcing {i + 1}/{requestIds.Count}...");
+                    try
                     {
-                        summary.SkippedOrdered++;
-                        continue;
-                    }
+                        var current = await _services.PurchaseRequestRepository.GetByIdAsync(requestIds[i]);
+                        if (current == null) continue;
+                        if (current.Status == PurchaseRequestStatus.Ordered)
+                        {
+                            summary.SkippedOrdered++;
+                            continue;
+                        }
 
-                    await _services.Engine.SourcePurchaseRequestAsync(requestIds[i]);
-                    var updated = await _services.PurchaseRequestRepository.GetByIdAsync(requestIds[i]);
-                    if (updated == null) continue;
-                    if (updated.Status == PurchaseRequestStatus.ReadyToOrder) summary.ReadyToOrder++;
-                    else if (updated.Status == PurchaseRequestStatus.WaitingApproval) summary.WaitingApproval++;
-                    else if (updated.Status == PurchaseRequestStatus.Exception) summary.Exception++;
+                        await _services.Engine.SourcePurchaseRequestAsync(requestIds[i]);
+                        var updated = await _services.PurchaseRequestRepository.GetByIdAsync(requestIds[i]);
+                        if (updated == null) continue;
+                        if (updated.Status == PurchaseRequestStatus.ReadyToOrder) summary.ReadyToOrder++;
+                        else if (updated.Status == PurchaseRequestStatus.WaitingApproval) summary.WaitingApproval++;
+                        else if (updated.Status == PurchaseRequestStatus.Exception) summary.Exception++;
+                    }
+                    catch (Exception)
+                    {
+                        summary.Failed++;
+                    }
                 }
-                catch (Exception)
-                {
-                    summary.Failed++;
-                }
+            }
+            finally
+            {
+                _services.Engine.EndSourcingRun();
             }
             return summary;
         }
