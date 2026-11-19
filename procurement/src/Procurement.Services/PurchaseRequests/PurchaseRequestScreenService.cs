@@ -296,6 +296,28 @@ namespace Procurement.Services.PurchaseRequests
         public Task ChangeQuantityAsync(int lineId, int newTotalQuantity) =>
             _services.Engine.ResourceLineWithQuantityAsync(lineId, newTotalQuantity, _services.Session.UserName);
 
+        /// <summary>
+        /// Re-sources for a typed total and says what came of it (19 nov 2026: the offer "went back to the
+        /// old quantity" when the typed number was below the need, which is never ordered less than, or
+        /// rounded up to the same full reels). Returns the status text and, when the typed total wasn't
+        /// used as such, a warning to show.
+        /// </summary>
+        public async Task<(string Status, string Warning)> ChangeQuantityWithFeedbackAsync(int lineId, int newTotalQuantity)
+        {
+            await ChangeQuantityAsync(lineId, newTotalQuantity);
+            var offers = await _services.Engine.GetOffersForLineAsync(lineId);
+            var need = offers.Select(o => o.BundleNeededQuantity).DefaultIfEmpty(0).Max();
+            if (need > newTotalQuantity)
+                return ($"Opnieuw gesourced voor {need:N0} stuks (de behoefte).",
+                    $"{newTotalQuantity:N0} is minder dan de behoefte van {need:N0} stuks (aanvragen samen, inclusief extra voor uitval). " +
+                    $"Er wordt nooit minder dan de behoefte besteld, dus de offers zijn voor {need:N0} stuks.");
+            var offered = offers.Select(o => o.OfferedQuantity).Distinct().OrderBy(q => q).ToList();
+            var rounded = offered.Count > 0 && offered.All(q => q > newTotalQuantity);
+            return ($"Opnieuw gesourced voor {newTotalQuantity:N0} stuks.",
+                rounded ? $"Geen leverancier levert precies {newTotalQuantity:N0}: de offers zijn afgerond op hun minimum of hele reels " +
+                          $"({string.Join(", ", offered.Select(q => q.ToString("N0")))})." : null);
+        }
+
         public async Task<IReadOnlyList<RequestRow>> BuildRowsAsync(IReadOnlyList<PurchaseRequest> requests)
         {
             // Every MAX order syncs to exactly one line, so the first line is the line.

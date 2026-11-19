@@ -80,9 +80,16 @@
                 'Alle offers van deze regel (en van de andere regels in de bundel) worden opnieuw opgehaald voor dat aantal; ' +
                 'een bestaande keuze of goedkeuring vervalt.');
             if (!ok) return;
+            var warning = null;
             status.run('Opnieuw sourcen voor ' + P.format.integer(value) + ' stuks...', function () {
                 return P.request('POST', url('Quantity'), { lineId: currentLineId, quantity: value })
-                    .then(function (result) { return loadLocal().then(function () { status.set(result.status); }); });
+                    .then(function (result) { warning = result.warning; return loadLocal().then(function () { status.set(result.status); }); });
+            }).then(function () {
+                // Why the offer doesn't show the typed number (below the need, or rounded to reels).
+                if (!warning) return;
+                var text = document.createElement('p');
+                text.textContent = warning;
+                return P.dialog({ title: 'Aantal aangepast', content: text, cancelText: null });
             });
         }
     });

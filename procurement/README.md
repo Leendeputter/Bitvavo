@@ -1868,3 +1868,8 @@ in hetzelfde pad onder `Logging.FileName`.
 - **19 nov 2026 — Web: aantal in een offer wordt ook bevestigd bij het verlaten van de cel.** Leen: "Als ik de cel
   verlaat door op een andere cel te klikken dan wordt het aantal terug gewijzigd naar het oorspronkelijke aantal."
   Klikken buiten de cel of Tab werkt nu als Enter (dus de vraag "Opnieuw sourcen voor ...?"); alleen Escape annuleert.
+- **19 nov 2026 — Aantal in een offer: uitleg als het getypte aantal niet wordt gebruikt.** Leen: "hij vraagt wel om
+  het aantal te sourcen voor het nieuwe aantal, maar vervolgens wordt het offer gewoon terug aangepast naar het oude
+  aantal". Een getypt aantal onder de behoefte (aanvragen samen + uitval) wordt nooit gebruikt; de offers blijven dan
+  op de behoefte. Nu meldt de web-app dat ("Aantal aangepast"), en ook wanneer alle offers op MOQ/hele reels zijn
+  afgerond (`PurchaseRequestScreenService.ChangeQuantityWithFeedbackAsync`).

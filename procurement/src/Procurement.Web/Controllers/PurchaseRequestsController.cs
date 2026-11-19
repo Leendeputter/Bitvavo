@@ -68,8 +68,8 @@ namespace Procurement.Web.Controllers
         public async Task<ActionResult> Quantity(int lineId, int quantity)
         {
             if (quantity <= 0) return new JsonNetResult(new { error = "Het aantal moet groter dan 0 zijn." }, 400);
-            await Screen.ChangeQuantityAsync(lineId, quantity);
-            return new JsonNetResult(new { status = $"Opnieuw gesourced voor {quantity:N0} stuks." });
+            var result = await Screen.ChangeQuantityWithFeedbackAsync(lineId, quantity);
+            return new JsonNetResult(new { status = result.Status, warning = result.Warning });
         }
 
         /// <summary>
