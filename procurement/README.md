@@ -1873,3 +1873,10 @@ in hetzelfde pad onder `Logging.FileName`.
   aantal". Een getypt aantal onder de behoefte (aanvragen samen + uitval) wordt nooit gebruikt; de offers blijven dan
   op de behoefte. Nu meldt de web-app dat ("Aantal aangepast"), en ook wanneer alle offers op MOQ/hele reels zijn
   afgerond (`PurchaseRequestScreenService.ChangeQuantityWithFeedbackAsync`).
+- **19 nov 2026 — Aantal wijzigen: geen dubbele offers meer.** Leen: "Ik typte juist een hoger aantal. Werkt niet
+  helemaal consequent. Er is nu zelfs een extra offer, voor het oude en het nieuwe aantal". Oorzaak: opnieuw sourcen
+  ruimde alleen offers op waar geen enkele approval naar wees; bij een goedgekeurde regel bleven de oude offers dus
+  staan naast de nieuwe. `SupplierOfferRepository.DeleteForResourcingAsync` verwijdert nu ook de afgehandelde
+  approvals van de regel (de beslissing staat in de Audit Log als APPROVAL_GRANTED/REJECTED) en daarmee de oude
+  offers. Gaat het nieuwe aantal boven de auto-approve-grens, dan meldt de web-app nu dat het nieuwe offer op
+  goedkeuring wacht; dan is er nog geen offer aangevinkt, wat eruitzag als "terug naar het oude aantal".

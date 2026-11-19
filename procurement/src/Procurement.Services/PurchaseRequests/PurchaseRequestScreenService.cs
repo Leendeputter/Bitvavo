@@ -313,7 +313,18 @@ namespace Procurement.Services.PurchaseRequests
                     $"Er wordt nooit minder dan de behoefte besteld, dus de offers zijn voor {need:N0} stuks.");
             var offered = offers.Select(o => o.OfferedQuantity).Distinct().OrderBy(q => q).ToList();
             var rounded = offered.Count > 0 && offered.All(q => q > newTotalQuantity);
-            return ($"Opnieuw gesourced voor {newTotalQuantity:N0} stuks.",
+            var status = $"Opnieuw gesourced voor {newTotalQuantity:N0} stuks.";
+
+            // A higher total can go over the auto-approve limit (19 nov 2026: "het offer wordt terug
+            // aangepast"): then nothing is ticked until it's approved, which looked like nothing changed.
+            var line = await _services.PurchaseRequestRepository.GetLineByIdAsync(lineId);
+            var request = line == null ? null : await _services.PurchaseRequestRepository.GetByIdAsync(line.PurchaseRequestId);
+            if (request?.Status == PurchaseRequestStatus.WaitingApproval)
+                status += " Het nieuwe offer wacht op goedkeuring (zie Approvals).";
+            else if (request?.Status == PurchaseRequestStatus.Exception)
+                status += " Er kon geen offer gekozen worden; zie de reden onder de offers.";
+
+            return (status,
                 rounded ? $"Geen leverancier levert precies {newTotalQuantity:N0}: de offers zijn afgerond op hun minimum of hele reels " +
                           $"({string.Join(", ", offered.Select(q => q.ToString("N0")))})." : null);
         }

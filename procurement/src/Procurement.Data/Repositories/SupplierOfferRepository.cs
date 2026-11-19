@@ -40,20 +40,24 @@ namespace Procurement.Data.Repositories
         /// </summary>
         public Task<int> DeleteForResourcingAsync(int purchaseRequestLineId) => _context.RunGuardedAsync(async () =>
         {
-            var pendingApprovals = await _context.ApprovalRequests
-                .Where(a => a.PurchaseRequestLineId == purchaseRequestLineId && a.Decision == ApprovalDecision.Pending)
+            // Decided approvals go too (19 nov 2026: after changing the quantity of an approved line the
+            // old offers stayed next to the new ones, because their approval still pointed at them).
+            // Nothing reads a decided approval; the decision itself stays in the Audit Log
+            // (APPROVAL_GRANTED / APPROVAL_REJECTED). Only offers still chosen on a line are kept.
+            var approvals = await _context.ApprovalRequests
+                .Where(a => a.PurchaseRequestLineId == purchaseRequestLineId
+                            || _context.SupplierOffers.Any(o => o.Id == a.ProposedOfferId && o.PurchaseRequestLineId == purchaseRequestLineId))
                 .ToListAsync();
-            if (pendingApprovals.Count > 0)
+            if (approvals.Count > 0)
             {
-                _context.ApprovalRequests.RemoveRange(pendingApprovals);
+                _context.ApprovalRequests.RemoveRange(approvals);
                 await _context.SaveChangesAsync();
             }
 
             var offers = await _context.SupplierOffers
                 .Include(o => o.PackagingOptions)
                 .Where(o => o.PurchaseRequestLineId == purchaseRequestLineId
-                            && !_context.SupplierSelections.Any(s => s.SelectedOfferId == o.Id)
-                            && !_context.ApprovalRequests.Any(a => a.ProposedOfferId == o.Id))
+                            && !_context.SupplierSelections.Any(s => s.SelectedOfferId == o.Id))
                 .ToListAsync();
             if (offers.Count == 0) return 0;
 
