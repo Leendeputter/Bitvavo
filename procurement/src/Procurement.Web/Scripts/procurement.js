@@ -44,6 +44,10 @@
 
     function pad(n) { return n < 10 ? '0' + n : '' + n; }
 
+    function escapeHtml(text) {
+        return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
     var format = {
         // d-MM-yyyy, as in the desktop.
         dateTime: function (value) {
@@ -157,6 +161,8 @@
     Grid.prototype.render = function () {
         var self = this, key = this.keyField;
         var visible = this.columns.filter(function (c) { return !c.hidden; });
+        this.colEls = {};
+        this.rowEls = {};
         var table = document.createElement('table');
         var colgroup = document.createElement('colgroup');
         var rowNumberWidth = 40;
@@ -166,6 +172,7 @@
         visible.forEach(function (c) {
             var col = document.createElement('col');
             col.style.width = (c.width || 100) + 'px';
+            self.colEls[c.key] = col;
             colgroup.appendChild(col);
         });
         table.appendChild(colgroup);
@@ -206,47 +213,35 @@
         thead.appendChild(headRow);
         table.appendChild(thead);
 
+        // Only the rows in view are in the page (plus a margin); the rest is an empty spacer of the
+        // same height, so the scroll bar is right. With thousands of rows a full table took seconds
+        // to draw and made every click slow (19 nov 2026). One listener per event type on the body.
         var tbody = document.createElement('tbody');
-        this.rows.forEach(function (row, index) {
-            var tr = document.createElement('tr');
-            var id = row[key];
-            var extra = self.rowClass(row);
-            if (extra) tr.classList.add(extra);
-            if (self.selected[id]) tr.classList.add('selected');
-            var num = document.createElement('td');
-            num.className = 'rownum';
-            num.textContent = index + 1;
-            tr.appendChild(num);
-            visible.forEach(function (c) {
-                var td = document.createElement('td');
-                var value = row[c.key];
-                if (c.type === 'check' || c.type === 'bool') {
-                    td.className = 'center';
-                    var box = document.createElement('input');
-                    box.type = 'checkbox';
-                    box.checked = !!value;
-                    // Nullable yes/no (e.g. "Late?" before a confirmation): blank, not "no", as on the desktop.
-                    if (value === null || value === undefined) box.indeterminate = c.type === 'bool' && c.nullable === true;
-                    box.disabled = c.type === 'bool';
-                    if (c.type === 'check') {
-                        box.addEventListener('click', function (e) { e.stopPropagation(); });
-                        box.addEventListener('change', function () { self.onCheck(row, box.checked); });
-                    }
-                    td.appendChild(box);
-                } else {
-                    td.textContent = self.cellText(c, value);
-                    td.title = td.textContent;
-                    if (['quantity', 'integer', 'money'].indexOf(c.type) >= 0) td.classList.add('num');
-                    if (c.editable) {
-                        td.classList.add('editable');
-                        td.addEventListener('dblclick', function (e) { e.stopPropagation(); self.startEdit(td, row, c); });
-                    }
-                }
-                if (c.frozen) { td.classList.add('frozen'); td.style.left = frozenLeft[c.key] + 'px'; }
-                tr.appendChild(td);
-            });
-            tr.addEventListener('click', function (e) { self.rowClicked(id, e); });
-            tbody.appendChild(tr);
+        this.tbody = tbody;
+        this.visible = visible;
+        this.frozenLeft = frozenLeft;
+        this.windowStart = -1;
+
+        function rowOf(element) {
+            var tr = element.closest('tr');
+            return tr && tr.dataset.index !== undefined ? self.rows[+tr.dataset.index] : null;
+        }
+        tbody.addEventListener('click', function (e) {
+            if (e.target.tagName === 'INPUT') return; // a checkbox or the quantity editor, not a row click
+            var row = rowOf(e.target);
+            if (row) self.rowClicked(row[key], e);
+        });
+        tbody.addEventListener('change', function (e) {
+            if (e.target.type !== 'checkbox' || !e.target.dataset.key) return;
+            var row = rowOf(e.target);
+            if (row) self.onCheck(row, e.target.checked);
+        });
+        tbody.addEventListener('dblclick', function (e) {
+            var td = e.target.closest('td[data-edit]');
+            var row = td && rowOf(td);
+            if (!row) return;
+            var column = visible.filter(function (c) { return c.key === td.dataset.edit; })[0];
+            self.startEdit(td, row, column);
         });
         table.appendChild(tbody);
 
@@ -261,6 +256,80 @@
         }
         this.el.scrollTop = scrollTop;
         this.el.scrollLeft = scrollLeft;
+        this.renderBody(true);
+
+        if (!this.scrollHooked) {
+            this.scrollHooked = true;
+            var pending = false;
+            this.el.addEventListener('scroll', function () {
+                if (pending) return;
+                pending = true;
+                window.requestAnimationFrame(function () { pending = false; self.renderBody(false); });
+            });
+        }
+    };
+
+    var RowHeightGuess = 23; // first guess; the real height is measured after the first draw
+    var RowMargin = 40;     // rows drawn above and below the visible part
+
+    Grid.prototype.renderBody = function (force) {
+        var self = this, key = this.keyField, visible = this.visible, frozenLeft = this.frozenLeft;
+        var RowHeight = this.rowHeight || RowHeightGuess;
+        var viewRows = Math.ceil((this.el.clientHeight || 600) / RowHeight);
+        var first = Math.max(0, Math.floor(this.el.scrollTop / RowHeight) - RowMargin);
+        // Redraw only when the drawn block no longer covers what's on screen.
+        if (!force && this.windowStart >= 0 && first >= this.windowStart - RowMargin / 2 &&
+            first + viewRows + 2 * RowMargin <= this.windowEnd + RowMargin / 2) return;
+        var start = first;
+        var end = Math.min(this.rows.length, first + viewRows + 2 * RowMargin);
+        this.windowStart = start;
+        this.windowEnd = end;
+        var columnCount = visible.length + 1;
+
+        var html = [];
+        if (start > 0) html.push('<tr class="spacer" style="height:', start * RowHeight, 'px"><td colspan="', columnCount, '"></td></tr>');
+        for (var index = start; index < end; index++) {
+            var row = this.rows[index];
+            var id = row[key];
+            var classes = [];
+            var extra = this.rowClass(row);
+            if (extra) classes.push(extra);
+            if (this.selected[id]) classes.push('selected');
+            html.push('<tr data-index="', index, '" class="', classes.join(' '), '"><td class="rownum">', index + 1, '</td>');
+            for (var ci = 0; ci < visible.length; ci++) {
+                var c = visible[ci];
+                var value = row[c.key];
+                var style = c.frozen ? ' style="left:' + frozenLeft[c.key] + 'px"' : '';
+                var frozen = c.frozen ? ' frozen' : '';
+                if (c.type === 'check' || c.type === 'bool') {
+                    // Nullable yes/no (e.g. "Late?" before a confirmation): blank, not "no", as on the desktop.
+                    var blank = (value === null || value === undefined) && c.type === 'bool' && c.nullable === true;
+                    html.push('<td class="center', frozen, '"', style, '><input type="checkbox" data-key="', c.key, '"',
+                        value ? ' checked' : '', c.type === 'bool' ? ' disabled' : '', blank ? ' data-blank="1"' : '', ' /></td>');
+                } else {
+                    var text = escapeHtml(this.cellText(c, value));
+                    var cls = (['quantity', 'integer', 'money'].indexOf(c.type) >= 0 ? 'num' : '') + (c.editable ? ' editable' : '') + frozen;
+                    html.push('<td class="', cls, '"', style, ' title="', text, '"', c.editable ? ' data-edit="' + c.key + '"' : '', '>', text, '</td>');
+                }
+            }
+            html.push('</tr>');
+        }
+        if (end < this.rows.length) html.push('<tr class="spacer" style="height:', (this.rows.length - end) * RowHeight, 'px"><td colspan="', columnCount, '"></td></tr>');
+
+        this.tbody.innerHTML = html.join('');
+        Array.prototype.forEach.call(this.tbody.querySelectorAll('input[data-blank]'), function (box) { box.indeterminate = true; });
+        this.rowEls = {};
+        Array.prototype.forEach.call(this.tbody.rows, function (tr) {
+            if (tr.dataset.index !== undefined) self.rowEls[self.rows[+tr.dataset.index][key]] = tr;
+        });
+
+        // Spacer heights must match the real row height (font and zoom differ per pc).
+        var sample = this.tbody.querySelector('tr[data-index]');
+        var measured = sample ? sample.getBoundingClientRect().height : 0;
+        if (measured > 0 && Math.abs(measured - RowHeight) > 0.1) {
+            this.rowHeight = measured;
+            this.renderBody(true);
+        }
     };
 
     Grid.prototype.rowClicked = function (id, e) {
@@ -279,7 +348,12 @@
         }
         var changed = this.current !== id;
         this.current = id;
-        this.render();
+        // Only the row colours change; redrawing the whole table made clicks slow with many rows.
+        var selected = this.selected;
+        Array.prototype.forEach.call(this.el.querySelectorAll('tbody tr.selected'), function (tr) { tr.classList.remove('selected'); });
+        Object.keys(selected).forEach(function (rowId) {
+            if (self.rowEls[rowId]) self.rowEls[rowId].classList.add('selected');
+        });
         if (changed) this.onCurrentChanged(this.currentRow());
     };
 
@@ -289,11 +363,13 @@
         var self = this, startX = e.clientX, startWidth = column.width || 100;
         function move(ev) {
             column.width = Math.max(30, startWidth + ev.clientX - startX);
-            self.render();
+            var col = self.colEls && self.colEls[column.key];
+            if (col) col.style.width = column.width + 'px';
         }
         function up() {
             document.removeEventListener('mousemove', move);
             document.removeEventListener('mouseup', up);
+            self.render(); // frozen column offsets follow the new width
             var widths = self.load('widths') || {};
             widths[column.key] = column.width;
             self.save('widths', widths);

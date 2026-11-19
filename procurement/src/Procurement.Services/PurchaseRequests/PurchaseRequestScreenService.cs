@@ -312,19 +312,9 @@ namespace Procurement.Services.PurchaseRequests
             erp.RangeFilterEnd = filter.TrimmedRangeEnd;
         }
 
-        /// <summary>One selection lookup per line, sequential (one shared DbContext).</summary>
-        private async Task<Dictionary<int, SupplierSelection>> GetSelectionsByLineIdAsync(IEnumerable<int?> lineIds)
-        {
-            var result = new Dictionary<int, SupplierSelection>();
-            foreach (var lineId in lineIds)
-            {
-                if (lineId == null || result.ContainsKey(lineId.Value)) continue;
-                var selection = await _services.Engine.GetSelectionForLineAsync(lineId.Value);
-                if (selection != null)
-                    result[lineId.Value] = selection;
-            }
-            return result;
-        }
+        /// <summary>All selections in one go (was one query per line until 19 nov 2026).</summary>
+        private Task<IReadOnlyDictionary<int, SupplierSelection>> GetSelectionsByLineIdAsync(IEnumerable<int?> lineIds) =>
+            _services.Engine.GetSelectionsForLinesAsync(lineIds.Where(id => id.HasValue).Select(id => id.Value).ToList());
 
         private static DateTime? GetPoDueDate(
             PurchaseRequestLine line,

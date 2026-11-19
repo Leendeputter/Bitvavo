@@ -1781,3 +1781,9 @@ in hetzelfde pad onder `Logging.FileName`.
   Logica in `Procurement.Services/Orders/OrdersScreenService` en `Procurement.Services/Approvals/ApprovalScreenService`.
   De desktopschermen zijn (nog) niet omgezet naar deze services, zodat er aan de desktop vanavond niets
   ongetest verandert; dat volgt zodra de web-variant gebouwd en getest is.
+- **19 nov 2026 — Web: Query sneller** ("duurt wel heel erg lang... dit is niet werkbaar"). Twee oorzaken
+  aangepakt: (1) de keuzes per regel voor de Selected-kolommen werden met één query per regel opgehaald,
+  nu in één keer (`SupplierSelectionRepository.GetLatestByLineIdsAsync`; de desktop profiteert mee);
+  (2) de web-grid tekende alle regels tegelijk (duizenden rijen = seconden), nu alleen de regels in beeld
+  (getest met 3000 regels: van ca. 1,9 s naar ca. 0,1 s, klikken direct). De Query schrijft per stap
+  de tijd in het weblog (regels "Query:") om een eventueel resterend traag deel te vinden.

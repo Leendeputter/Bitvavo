@@ -75,6 +75,10 @@ namespace Procurement.Engine
         public Task<SupplierSelection> GetSelectionForLineAsync(int purchaseRequestLineId) =>
             _selectionRepository.GetByLineIdAsync(purchaseRequestLineId);
 
+        /// <summary>Latest selection per line, in one round-trip per 1000 lines (for the requests grid).</summary>
+        public Task<IReadOnlyDictionary<int, SupplierSelection>> GetSelectionsForLinesAsync(IReadOnlyCollection<int> purchaseRequestLineIds) =>
+            _selectionRepository.GetLatestByLineIdsAsync(purchaseRequestLineIds);
+
         /// <summary>Spec §6 steps 1-11 for every line of one purchase request. Stops a line at the approval gate (step 8) when the policy requires a human.</summary>
         public async Task SourcePurchaseRequestAsync(int purchaseRequestId)
         {
