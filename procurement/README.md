@@ -1840,3 +1840,9 @@ in hetzelfde pad onder `Logging.FileName`.
   klaar per aanvraag, totaal), een mislukte aanvraag met de foutmelding. Desktop en web tonen aan het eind een
   melding met de uitkomst. `executionTimeout` van de web-app op 900 s, zodat een grote selectie niet na 110 s
   wordt afgebroken.
+- **19 nov 2026 — Sourcen zonder Manufacturing Part.** Leen: "Als er wel een DigiKey link bekend is hoeven wat mij
+  betreft de regels zonder Manufacturing Part niet geskipped te worden." Een aanvraag zonder Manufacturing Part (MAX
+  `Part_Master.VIEWER_01`) werd geweigerd vóór het sourcen (de "mislukt" zonder spoor in het log). Nu wordt zo'n
+  regel gesourced via de bekende koppelingen (Part_Vendor, Supplier Mapping); alleen het zoeken bij een leverancier
+  zonder koppeling wordt overgeslagen (Audit Log: `PRODUCT_SEARCH_SKIPPED_NO_MPN`). Zonder enige koppeling eindigt de
+  regel zoals voorheen op Exception (`SOURCING_NO_MATCH`).

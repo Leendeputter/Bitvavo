@@ -374,8 +374,10 @@ namespace Procurement.Engine
 
             foreach (var line in request.Lines)
             {
-                if (string.IsNullOrWhiteSpace(line.ManufacturerPartNumber))
-                    throw new InvalidOperationException($"Line {line.Id}: ManufacturerPartNumber is required.");
+                // No longer required (19 nov 2026, user: "Als er wel een DigiKey link bekend is hoeven
+                // wat mij betreft de regels zonder Manufacturing Part niet geskipped te worden"). A line
+                // without one is sourced through the known supplier mappings (Part_Vendor, Supplier
+                // Mapping); only the product search, which needs an MPN, is skipped for it.
                 if (line.RequestedQuantity <= 0)
                     throw new InvalidOperationException($"Line {line.Id}: RequestedQuantity must be positive.");
             }
@@ -676,6 +678,15 @@ namespace Procurement.Engine
 
             if (adapter.Capabilities.ProductSearch != CapabilityStatus.Supported)
                 return (adapter, null, MatchConfidence.Unknown);
+
+            // Searching needs a manufacturer part number (MAX Part_Master.VIEWER_01); without one only a
+            // known mapping can be used (19 nov 2026).
+            if (string.IsNullOrWhiteSpace(line.ManufacturerPartNumber))
+            {
+                await _auditLogger.LogAsync("PurchaseRequestLine", line.Id.ToString(), "PRODUCT_SEARCH_SKIPPED_NO_MPN", "Exception", adapter.SupplierCode,
+                    responsePayload: $"ErpArticleId={line.ErpArticleId}; geen Manufacturing Part in MAX en geen bekende koppeling");
+                return (adapter, null, MatchConfidence.Unknown);
+            }
 
             try
             {
