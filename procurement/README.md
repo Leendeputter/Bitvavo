@@ -1821,3 +1821,6 @@ in hetzelfde pad onder `Logging.FileName`.
   scrollen in grotere dgv valt het bovenste stuk van de records weg." De grid tekent alleen de regels in beeld;
   de controle of opnieuw tekenen nodig was, rekende vlak bij het begin met een afgekapt regelnummer en sloeg het
   tekenen dan over. Nu vergeleken met de werkelijke bovenste regel (`procurement.js`, `renderBody`).
+- **19 nov 2026 — App Secrets (web): meerdere rechten tegelijk intrekken.** Leen: "Bij Rechten in SecretAccess wil
+  ik graag meerdere records tegelijk kunnen selecteren en verwijderen." Ctrl-klik voegt een regel toe of haalt hem
+  weg, Shift-klik selecteert een reeks; "Verwijderen" vraagt één keer bevestiging en trekt alle gekozen rechten in.

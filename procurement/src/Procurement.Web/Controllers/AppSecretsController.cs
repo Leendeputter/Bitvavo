@@ -51,12 +51,19 @@ namespace Procurement.Web.Controllers
             return new JsonNetResult(new { status = "Rechten opgeslagen." });
         }
 
+        /// <summary>Revokes one or more grants at once (Ctrl/Shift-select on the page).</summary>
         [HttpPost]
-        public ActionResult DeleteAccess(string secretName, string userName)
+        public ActionResult DeleteAccess(List<SecretAccessEntry> entries)
         {
-            Screen.DeleteAccess(secretName, userName);
-            Log.Info("{0} trok het recht op {1} in voor {2}", CurrentSession.UserName, secretName, userName);
-            return new JsonNetResult(new { status = "Recht ingetrokken." });
+            var count = 0;
+            foreach (var entry in entries ?? new List<SecretAccessEntry>())
+            {
+                if (string.IsNullOrWhiteSpace(entry?.SecretName) || string.IsNullOrWhiteSpace(entry.UserName)) continue;
+                Screen.DeleteAccess(entry.SecretName, entry.UserName);
+                Log.Info("{0} trok het recht op {1} in voor {2}", CurrentSession.UserName, entry.SecretName, entry.UserName);
+                count++;
+            }
+            return new JsonNetResult(new { status = count == 1 ? "Recht ingetrokken." : count + " rechten ingetrokken." });
         }
 
         [HttpPost]

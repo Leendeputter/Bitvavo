@@ -12,7 +12,8 @@
     var rowsHolder = document.getElementById('secret_rows');
     var accessHolder = document.getElementById('tbl_access');
     var access = [];
-    var selectedAccess = -1;
+    var selectedAccess = -1;   // the current row (anchor for Shift-click)
+    var selectedSet = {};      // all selected rows by index (Ctrl/Shift-click, as in the other grids)
 
     function renderSecrets(secrets) {
         rowsHolder.innerHTML = '';
@@ -56,7 +57,7 @@
         var body = table.createTBody();
         access.forEach(function (entry, index) {
             var tr = body.insertRow();
-            if (index === selectedAccess) tr.className = 'selected';
+            if (selectedSet[index]) tr.className = 'selected';
             var num = tr.insertCell();
             num.className = 'rownum';
             num.textContent = index + 1;
@@ -92,16 +93,32 @@
 
             tr.insertCell().textContent = entry.GrantedBy || '';
             tr.insertCell().textContent = entry.GrantedDate ? P.format.dateTime(entry.GrantedDate) : '';
-            tr.addEventListener('mousedown', function () { select2(index); });
-            tr.addEventListener('focusin', function () { select2(index); });
+            tr.addEventListener('mousedown', function (e) { select2(index, e); });
+            tr.addEventListener('focusin', function () { if (!selectedSet[index]) select2(index); });
         });
         accessHolder.innerHTML = '';
         accessHolder.appendChild(table);
     }
 
-    function select2(index) {
-        selectedAccess = index;
-        Array.prototype.forEach.call(accessHolder.querySelectorAll('tbody tr'), function (tr, i) { tr.classList.toggle('selected', i === index); });
+    // Click selects one row, Ctrl-click adds or removes a row, Shift-click selects a range.
+    function select2(index, e) {
+        if (e && e.shiftKey && selectedAccess >= 0) {
+            selectedSet = {};
+            for (var i = Math.min(selectedAccess, index); i <= Math.max(selectedAccess, index); i++) selectedSet[i] = true;
+            if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT') e.preventDefault(); // no text selection
+        } else if (e && (e.ctrlKey || e.metaKey)) {
+            if (selectedSet[index]) delete selectedSet[index]; else selectedSet[index] = true;
+            selectedAccess = index;
+        } else {
+            selectedSet = {};
+            selectedSet[index] = true;
+            selectedAccess = index;
+        }
+        Array.prototype.forEach.call(accessHolder.querySelectorAll('tbody tr'), function (tr, i) { tr.classList.toggle('selected', !!selectedSet[i]); });
+    }
+
+    function selectedIndexes() {
+        return Object.keys(selectedSet).map(Number).filter(function (i) { return i < access.length; }).sort(function (a, b) { return a - b; });
     }
 
     function fillCopyFrom() {
@@ -123,6 +140,7 @@
             renderSecrets(result.secrets);
             access = result.access;
             selectedAccess = access.length ? 0 : -1;
+            selectedSet = access.length ? { 0: true } : {};
             renderAccess();
             fillCopyFrom();
         });
@@ -147,18 +165,36 @@
     document.getElementById('bt_addAccess').addEventListener('click', function () {
         access.push({ SecretName: window.secretNames[0], UserName: '', CanRead: true, isNew: true });
         selectedAccess = access.length - 1;
+        selectedSet = {};
+        selectedSet[selectedAccess] = true;
         renderAccess();
         var inputs = accessHolder.querySelectorAll('tbody tr:last-child input[type=text]');
         if (inputs.length) inputs[0].focus();
     });
 
     document.getElementById('bt_deleteAccess').addEventListener('click', function () {
-        if (selectedAccess < 0) { status.set('Selecteer eerst een regel.', 'error'); return; }
-        var entry = access[selectedAccess];
-        if (entry.isNew) { access.splice(selectedAccess, 1); selectedAccess = Math.min(selectedAccess, access.length - 1); renderAccess(); return; }
-        if (!window.confirm('Het recht van ' + entry.UserName + ' op ' + entry.SecretName + ' direct intrekken?')) return;
-        status.run('Recht intrekken...', function () {
-            return P.request('POST', url('DeleteAccess'), { secretName: entry.SecretName, userName: entry.UserName }).then(function (result) {
+        var indexes = selectedIndexes();
+        if (!indexes.length) { status.set('Selecteer eerst een of meer regels.', 'error'); return; }
+        var chosen = indexes.map(function (i) { return access[i]; });
+        var stored = chosen.filter(function (e) { return !e.isNew; });
+        // New, unsaved rows are only taken off the screen.
+        access = access.filter(function (e) { return chosen.indexOf(e) < 0 || !e.isNew; });
+        if (!stored.length) {
+            selectedAccess = Math.min(indexes[0], access.length - 1);
+            selectedSet = {};
+            if (selectedAccess >= 0) selectedSet[selectedAccess] = true;
+            renderAccess();
+            return;
+        }
+        var question = stored.length === 1
+            ? 'Het recht van ' + stored[0].UserName + ' op ' + stored[0].SecretName + ' direct intrekken?'
+            : stored.length + ' rechten direct intrekken?\n\n' + stored.slice(0, 15).map(function (e) { return e.UserName + ' — ' + e.SecretName; }).join('\n') +
+              (stored.length > 15 ? '\n... en nog ' + (stored.length - 15) : '');
+        if (!window.confirm(question)) { renderAccess(); return; }
+        status.run('Rechten intrekken...', function () {
+            return P.request('POST', url('DeleteAccess'), {
+                entries: stored.map(function (e) { return { SecretName: e.SecretName, UserName: e.UserName }; })
+            }).then(function (result) {
                 return load().then(function () { status.set(result.status); });
             });
         });
