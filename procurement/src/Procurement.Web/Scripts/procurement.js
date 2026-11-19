@@ -226,6 +226,15 @@
             var tr = element.closest('tr');
             return tr && tr.dataset.index !== undefined ? self.rows[+tr.dataset.index] : null;
         }
+        // Shift/Ctrl-click selects rows, not the text in the cells (as a DataGridView): the browser
+        // starts a text selection on mousedown, so that's where it's stopped.
+        tbody.addEventListener('mousedown', function (e) {
+            if ((e.shiftKey || e.ctrlKey || e.metaKey) && e.target.tagName !== 'INPUT') {
+                e.preventDefault();
+                var selection = window.getSelection && window.getSelection();
+                if (selection) selection.removeAllRanges();
+            }
+        });
         tbody.addEventListener('click', function (e) {
             if (e.target.tagName === 'INPUT') return; // a checkbox or the quantity editor, not a row click
             var row = rowOf(e.target);

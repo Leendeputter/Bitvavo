@@ -1824,3 +1824,6 @@ in hetzelfde pad onder `Logging.FileName`.
 - **19 nov 2026 — App Secrets (web): meerdere rechten tegelijk intrekken.** Leen: "Bij Rechten in SecretAccess wil
   ik graag meerdere records tegelijk kunnen selecteren en verwijderen." Ctrl-klik voegt een regel toe of haalt hem
   weg, Shift-klik selecteert een reeks; "Verwijderen" vraagt één keer bevestiging en trekt alle gekozen rechten in.
+- **19 nov 2026 — Web-grid: Shift/Ctrl-klik selecteert geen tekst meer.** Leen: "De selectie van meerdere regels
+  met Shift op de rowheader in Purchase Request gaat nog niet helemaal lekker. De afzonderlijke tekst in de cellen
+  wordt dan ook geselecteerd." De browser begon bij Shift-klik ook een tekstselectie; die wordt nu tegengehouden.

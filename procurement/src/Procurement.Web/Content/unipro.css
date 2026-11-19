@@ -184,3 +184,4 @@ dialog.dialog::backdrop { background: rgba(0, 0, 0, 0.25); }
 .copy-access { margin-top: 8px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .warning-bar { background: #fff3cd; border: 1px solid #e0c060; padding: 6px 10px; margin-bottom: 6px; }
 .warning-bar.test { background: lightyellow; }
+.grid .rownum, .edit-table .rownum { user-select: none; } /* row headers select rows, never text */
