@@ -1803,3 +1803,7 @@ in hetzelfde pad onder `Logging.FileName`.
   dezelfde melding als op de desktop. Op het web wordt het adres vóór het plaatsen gevraagd en bij het plaatsen
   opnieuw tegen Farnells actuele lijst gecontroleerd. Logica in `Procurement.Services/Orders/OrderPlacementService`.
   "Place Order" blijft uit zolang `Ordering.Enabled` in `Web.config` op false staat.
+- **19 nov 2026 — Web-variant, fase 3 (deel 3): Supplier Mapping en Audit Log op het web** (menu Options).
+  Zelfde kolommen en filters als `SupplierMappingForm` en `AuditLogForm`; "Mark as Verified" zet de gekozen
+  mapping op Verified; dubbelklik in het Audit Log toont de volledige tekst met "Copy to Clipboard".
+  Logica in `Procurement.Services/Options`. Settings en App Secrets volgen samen met Leen.

@@ -1,0 +1,20 @@
+@{
+    ViewBag.Title = "Supplier Mapping";
+}
+<div class="toolbar">
+    <label>Filter by match confidence:
+        <select id="cb_filter">
+            @foreach (var choice in (System.Collections.Generic.IEnumerable<string>)ViewBag.FilterChoices)
+            {
+                <option value="@choice">@choice</option>
+            }
+        </select>
+    </label>
+    <button type="button" id="bt_verify">Mark as Verified</button>
+</div>
+<div id="grid_mappings" class="grid grid-full"></div>
+<div id="status" class="status-line"></div>
+
+@section scripts {
+    <script src="@Url.Content("~/Scripts/supplier-mapping.js")"></script>
+}

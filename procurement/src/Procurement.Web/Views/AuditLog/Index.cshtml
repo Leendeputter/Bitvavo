@@ -1,0 +1,20 @@
+@{
+    ViewBag.Title = "Audit Log";
+}
+<form id="filters" class="toolbar" autocomplete="off">
+    <label>EntityType: <input type="text" name="entityType" size="14" /></label>
+    <label>EventType: <input type="text" name="eventType" size="22" /></label>
+    <label>Supplier: <input type="text" name="supplier" size="10" /></label>
+    <label class="check"><input type="checkbox" id="chk_from" /> From:</label>
+    <input type="date" name="from" disabled />
+    <label class="check"><input type="checkbox" id="chk_to" /> To:</label>
+    <input type="date" name="to" disabled />
+    <button type="submit" id="bt_search">Search</button>
+</form>
+<div class="grid-caption">Double-click a row for the full text.</div>
+<div id="grid_auditlog" class="grid grid-full"></div>
+<div id="status" class="status-line"></div>
+
+@section scripts {
+    <script src="@Url.Content("~/Scripts/auditlog.js")"></script>
+}
