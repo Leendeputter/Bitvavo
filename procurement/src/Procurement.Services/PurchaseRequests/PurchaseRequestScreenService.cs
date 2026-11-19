@@ -197,14 +197,19 @@ namespace Procurement.Services.PurchaseRequests
         public async Task<IReadOnlyList<RequestRow>> BuildRowsAsync(IReadOnlyList<PurchaseRequest> requests)
         {
             // Every MAX order syncs to exactly one line, so the first line is the line.
+            var clock = System.Diagnostics.Stopwatch.StartNew();
             var selectionsByLineId = await GetSelectionsByLineIdAsync(requests.Select(r => r.Lines.FirstOrDefault()?.Id));
+            QueryLog.Info("Rijen: keuzes opgehaald ({0} ms)", clock.ElapsedMilliseconds);
             var poDueDatesByKey = await _services.MaxOrderRepository.CalculatePoDueDatesAsync(
                 requests.Select(r => r.Lines.FirstOrDefault())
                     .Where(l => l != null && l.RequiredDate.HasValue && !string.IsNullOrEmpty(l.ErpArticleId))
                     .Select(l => (l.RequiredDate.Value, l.ErpArticleId))
                     .ToList());
+            QueryLog.Info("Rijen: PO DueDates berekend ({0} ms)", clock.ElapsedMilliseconds);
             var preferredVendorIdsByPartId = await _services.MaxOrderRepository.GetPreferredVendorIdsByPartIdsAsync(
                 requests.Select(r => r.Lines.FirstOrDefault()?.ErpArticleId).Where(p => !string.IsNullOrEmpty(p)).ToList());
+
+            QueryLog.Info("Rijen: voorkeursleveranciers opgehaald ({0} ms)", clock.ElapsedMilliseconds);
 
             return requests.Select(r =>
             {

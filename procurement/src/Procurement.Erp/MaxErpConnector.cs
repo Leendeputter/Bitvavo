@@ -193,7 +193,7 @@ namespace Procurement.Erp
             QueryLog.Info("Query: {0} nieuwe aanvragen opgeslagen ({1} ms)", newRequests.Count, clock.ElapsedMilliseconds);
             await SyncVendorPartMappingsAsync(maxOrders);
             QueryLog.Info("Query: Part_Vendor-mapping gesynchroniseerd ({0} ms)", clock.ElapsedMilliseconds);
-            await ReconcileAgainstMaxAsync();
+            await ReconcileAgainstMaxAsync(maxOrders);
             QueryLog.Info("Query: afgestemd met MAX ({0} ms)", clock.ElapsedMilliseconds);
 
             // GetOpenAsync() returns *every* still-open local request regardless of this call's
@@ -251,14 +251,30 @@ namespace Procurement.Erp
         /// independent of the current Query's own status/Due Date/Select By filter, so "missing" here
         /// already means "MAX genuinely no longer has this order," not "fell outside today's filter."
         /// </summary>
-        private async Task ReconcileAgainstMaxAsync()
+        private async Task ReconcileAgainstMaxAsync(IReadOnlyList<MaxOrder> alreadyFetched)
         {
+            var clock = System.Diagnostics.Stopwatch.StartNew();
             var openRequests = await _purchaseRequestRepository.GetOpenAsync();
             var candidates = openRequests.Where(r => !IsManualTestRequest(r.ErpRequestNumber)).ToList();
+            QueryLog.Info("Afstemmen: {0} open aanvragen geladen ({1} ms)", candidates.Count, clock.ElapsedMilliseconds);
             if (candidates.Count == 0) return;
 
-            var liveOrders = await _maxOrderRepository.GetByOrderNumbersAsync(
-                candidates.Select(r => r.ErpRequestNumber).ToList());
+            // Orders this Query just fetched from MAX are current already; only the open requests
+            // outside the current filter are looked up again (19 nov 2026: looking up all 1716 again
+            // with a 1716-value IN list was most of the 15 seconds this step took).
+            var liveOrders = new Dictionary<string, MaxOrder>(StringComparer.OrdinalIgnoreCase);
+            foreach (var order in alreadyFetched)
+            {
+                var number = Truncate(order.OrderNumber, 50);
+                if (!string.IsNullOrEmpty(number)) liveOrders[number] = order;
+            }
+            var toLookUp = candidates.Select(r => r.ErpRequestNumber).Where(n => !string.IsNullOrEmpty(n) && !liveOrders.ContainsKey(n)).ToList();
+            if (toLookUp.Count > 0)
+            {
+                foreach (var kv in await _maxOrderRepository.GetByOrderNumbersAsync(toLookUp))
+                    liveOrders[kv.Key] = kv.Value;
+            }
+            QueryLog.Info("Afstemmen: {0} aanvragen buiten het filter opgezocht in MAX ({1} ms)", toLookUp.Count, clock.ElapsedMilliseconds);
 
             foreach (var request in candidates)
             {
@@ -282,6 +298,7 @@ namespace Procurement.Erp
             }
 
             await _purchaseRequestRepository.SaveAsync();
+            QueryLog.Info("Afstemmen: opgeslagen ({0} ms)", clock.ElapsedMilliseconds);
         }
 
         private static void ApplyDisplayOnlyFields(PurchaseRequest existing, MaxOrder order)

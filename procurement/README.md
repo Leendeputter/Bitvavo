@@ -1787,3 +1787,8 @@ in hetzelfde pad onder `Logging.FileName`.
   (2) de web-grid tekende alle regels tegelijk (duizenden rijen = seconden), nu alleen de regels in beeld
   (getest met 3000 regels: van ca. 1,9 s naar ca. 0,1 s, klikken direct). De Query schrijft per stap
   de tijd in het weblog (regels "Query:") om een eventueel resterend traag deel te vinden.
+- **19 nov 2026 — Query: afstemmen met MAX sneller.** Leen: "Dat moet wel sneller, want dit is niet werkbaar."
+  Het log liet zien dat het afstemmen met MAX ca. 15 s kostte: alle 1716 open aanvragen werden opnieuw in MAX
+  opgezocht (één query met 1716 parameters), terwijl de Query die orders net al had opgehaald. Nu worden alleen
+  aanvragen die buiten het huidige filter vallen nog opgezocht. Het opbouwen van de rijen en het afstemmen
+  schrijven per deelstap de tijd in het log (regels "Afstemmen:" en "Rijen:").
