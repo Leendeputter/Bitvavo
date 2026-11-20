@@ -77,8 +77,10 @@ namespace Procurement.Web.Controllers
 
         private static string MessageOf(Exception exception)
         {
-            while (exception is AggregateException && exception.InnerException != null) exception = exception.InnerException;
-            return exception.Message;
+            // The innermost error (20 nov 2026): Entity Framework's "An error occurred while executing the
+            // command definition. See the inner exception for details." says nothing on its own; the
+            // SQL Server error inside it does.
+            return exception.GetBaseException().Message;
         }
     }
 }

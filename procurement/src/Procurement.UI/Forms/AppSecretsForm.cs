@@ -286,7 +286,7 @@ namespace Procurement.UI.Forms
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, ex.Message, "App Secrets", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, ex.GetBaseException().Message, "App Secrets", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
     }

@@ -122,7 +122,7 @@ namespace Procurement.UI.Forms
             }
             catch (UnauthorizedAccessException ex)
             {
-                MessageBox.Show(this, ex.Message, "Geen rechten", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(this, ex.GetBaseException().Message, "Geen rechten", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 

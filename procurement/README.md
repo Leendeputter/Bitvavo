@@ -1880,3 +1880,8 @@ in hetzelfde pad onder `Logging.FileName`.
   approvals van de regel (de beslissing staat in de Audit Log als APPROVAL_GRANTED/REJECTED) en daarmee de oude
   offers. Gaat het nieuwe aantal boven de auto-approve-grens, dan meldt de web-app nu dat het nieuwe offer op
   goedkeuring wacht; dan is er nog geen offer aangevinkt, wat eruitzag als "terug naar het oude aantal".
+- **20 nov 2026 — Foutmeldingen tonen de echte oorzaak.** Leen kreeg bij Query/Fetch Orders from MAX alleen
+  "An error occurred while executing the command definition. See the inner exception for details." Dat is de
+  buitenste Entity Framework-melding; de SQL Server-fout zit erin. Desktop (alle foutvensters) en web tonen nu de
+  binnenste melding (`GetBaseException()`), zodat de oorzaak (bv. een ontbrekende kolom of tabel in `Unitron` /
+  `Unitron_test`, of een time-out) direct zichtbaar is.

@@ -89,7 +89,7 @@ namespace Procurement.UI.Forms
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, ex.Message, "Fout", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, ex.GetBaseException().Message, "Fout", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             finally
             {

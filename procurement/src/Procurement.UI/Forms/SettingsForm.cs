@@ -277,7 +277,7 @@ namespace Procurement.UI.Forms
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show(this, ex.Message, "Fout", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show(this, ex.GetBaseException().Message, "Fout", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
         }
@@ -323,7 +323,7 @@ namespace Procurement.UI.Forms
             }
             catch (UnauthorizedAccessException ex)
             {
-                MessageBox.Show(this, ex.Message, "Geen rechten", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(this, ex.GetBaseException().Message, "Geen rechten", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
@@ -336,7 +336,7 @@ namespace Procurement.UI.Forms
             }
             catch (SupplierException ex)
             {
-                MessageBox.Show(this, ex.Message, "Fout", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, ex.GetBaseException().Message, "Fout", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
 
@@ -354,7 +354,7 @@ namespace Procurement.UI.Forms
             }
             catch (SupplierException ex)
             {
-                MessageBox.Show(this, ex.Message, "Fout", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, ex.GetBaseException().Message, "Fout", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             catch (Exception ex)
             {

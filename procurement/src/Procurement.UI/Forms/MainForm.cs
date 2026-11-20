@@ -203,7 +203,7 @@ namespace Procurement.UI.Forms
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, ex.Message, "Fout bij opvragen van orders", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, ex.GetBaseException().Message, "Fout bij opvragen van orders", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             finally
             {
@@ -343,7 +343,7 @@ namespace Procurement.UI.Forms
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, ex.Message, "Fout bij laden van offers", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, ex.GetBaseException().Message, "Fout bij laden van offers", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -471,7 +471,7 @@ namespace Procurement.UI.Forms
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, ex.Message, "Fout bij aanpassen van het aantal", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, ex.GetBaseException().Message, "Fout bij aanpassen van het aantal", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             finally
             {
@@ -502,7 +502,7 @@ namespace Procurement.UI.Forms
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, ex.Message, "Fout bij kiezen van offerte", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, ex.GetBaseException().Message, "Fout bij kiezen van offerte", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             finally
             {
@@ -626,7 +626,7 @@ namespace Procurement.UI.Forms
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, ex.Message, "Fout bij plaatsen van order", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, ex.GetBaseException().Message, "Fout bij plaatsen van order", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             finally
             {
@@ -688,7 +688,7 @@ namespace Procurement.UI.Forms
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, ex.Message, "Fout bij verwerken van orderbevestiging", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, ex.GetBaseException().Message, "Fout bij verwerken van orderbevestiging", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
             finally
