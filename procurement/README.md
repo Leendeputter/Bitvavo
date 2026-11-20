@@ -1890,3 +1890,7 @@ in hetzelfde pad onder `Logging.FileName`.
   zet dan een upgradescript op het bureaublad; de web-app niet. Het script staat ook in
   `procurement-web/procurement-upgrade-2026-11-18.sql` (alleen `Procurement_`-tabellen, bestaande gegevens
   blijven staan). De web-app zegt dat nu bij zo'n fout.
+- **20 nov 2026 — Web: geen HttpAntiForgeryException meer na een rebuild.** Een pagina die nog open stond van
+  vóór een rebuild/herstart had een anti-forgery-token van de oude (automatisch gemaakte) machine key. Nu krijgt
+  zo'n aanroep een 401 en laadt de pagina opnieuw, net als bij een verlopen sessie
+  (`ValidateAjaxAntiForgeryAttribute`). Op een echte server met meerdere machines is een vaste `<machineKey>` nodig.

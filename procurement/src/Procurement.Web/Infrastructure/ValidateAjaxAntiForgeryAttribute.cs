@@ -22,7 +22,26 @@ namespace Procurement.Web.Infrastructure
 
             var cookie = request.Cookies[AntiForgeryConfig.CookieName];
             var header = request.Headers[HeaderName] ?? request.Form["__RequestVerificationToken"];
-            AntiForgery.Validate(cookie?.Value, header);
+            try
+            {
+                AntiForgery.Validate(cookie?.Value, header);
+            }
+            catch (HttpAntiForgeryException)
+            {
+                // A page from before a rebuild or restart (20 nov 2026: "de 2e keer Query" after a
+                // rebuild): its token was made with the old, auto-generated machine key and can't be
+                // read any more. The session is gone too, so start over instead of showing a crash:
+                // a script call gets 401 (procurement.js reloads the page), a form post the page again.
+                if (request.IsAjaxRequest())
+                {
+                    filterContext.Result = new JsonNetResult(new { error = "Sessie verlopen, log opnieuw in." }, 401);
+                    filterContext.HttpContext.Response.TrySkipIisCustomErrors = true;
+                }
+                else
+                {
+                    filterContext.Result = new RedirectResult(request.RawUrl);
+                }
+            }
         }
 
         /// <summary>
