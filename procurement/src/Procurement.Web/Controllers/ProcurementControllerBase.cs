@@ -80,7 +80,13 @@ namespace Procurement.Web.Controllers
             // The innermost error (20 nov 2026): Entity Framework's "An error occurred while executing the
             // command definition. See the inner exception for details." says nothing on its own; the
             // SQL Server error inside it does.
-            return exception.GetBaseException().Message;
+            var message = exception.GetBaseException().Message;
+            // The web has no schema check at start-up like the desktop's Program.cs (20 nov 2026: Leen got
+            // "Invalid column name 'BundleKey'" in the web on a database the desktop never upgraded).
+            if (message.StartsWith("Invalid column name", StringComparison.Ordinal) || message.StartsWith("Invalid object name 'dbo.Procurement_", StringComparison.Ordinal))
+                message += " De Procurement-tabellen in deze database zijn nog niet bijgewerkt: start de desktop-app één keer " +
+                           "in dezelfde modus (live of test) voor het upgradescript, of draai dat script in SSMS.";
+            return message;
         }
     }
 }

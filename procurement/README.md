@@ -1885,3 +1885,8 @@ in hetzelfde pad onder `Logging.FileName`.
   buitenste Entity Framework-melding; de SQL Server-fout zit erin. Desktop (alle foutvensters) en web tonen nu de
   binnenste melding (`GetBaseException()`), zodat de oorzaak (bv. een ontbrekende kolom of tabel in `Unitron` /
   `Unitron_test`, of een time-out) direct zichtbaar is.
+- **20 nov 2026 — Web: "Invalid column name 'BundleKey'" e.a.** De database die de web-app gebruikte miste de
+  kolommen van 17-18 nov (uitval, combinatie-offers, bundels). De desktop controleert dat bij het opstarten en
+  zet dan een upgradescript op het bureaublad; de web-app niet. Het script staat ook in
+  `procurement-web/procurement-upgrade-2026-11-18.sql` (alleen `Procurement_`-tabellen, bestaande gegevens
+  blijven staan). De web-app zegt dat nu bij zo'n fout.
