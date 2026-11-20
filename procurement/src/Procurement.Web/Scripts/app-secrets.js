@@ -190,12 +190,14 @@
             ? 'Het recht van ' + stored[0].UserName + ' op ' + stored[0].SecretName + ' direct intrekken?'
             : stored.length + ' rechten direct intrekken?\n\n' + stored.slice(0, 15).map(function (e) { return e.UserName + ' — ' + e.SecretName; }).join('\n') +
               (stored.length > 15 ? '\n... en nog ' + (stored.length - 15) : '');
-        if (!window.confirm(question)) { renderAccess(); return; }
-        status.run('Rechten intrekken...', function () {
-            return P.request('POST', url('DeleteAccess'), {
-                entries: stored.map(function (e) { return { SecretName: e.SecretName, UserName: e.UserName }; })
-            }).then(function (result) {
-                return load().then(function () { status.set(result.status); });
+        P.confirm('Rechten intrekken', question, 'Intrekken').then(function (ok) {
+            if (!ok) { renderAccess(); return; }
+            status.run('Rechten intrekken...', function () {
+                return P.request('POST', url('DeleteAccess'), {
+                    entries: stored.map(function (e) { return { SecretName: e.SecretName, UserName: e.UserName }; })
+                }).then(function (result) {
+                    return load().then(function () { status.set(result.status); });
+                });
             });
         });
     });

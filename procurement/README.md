@@ -1894,3 +1894,8 @@ in hetzelfde pad onder `Logging.FileName`.
   vóór een rebuild/herstart had een anti-forgery-token van de oude (automatisch gemaakte) machine key. Nu krijgt
   zo'n aanroep een 401 en laadt de pagina opnieuw, net als bij een verlopen sessie
   (`ValidateAjaxAntiForgeryAttribute`). Op een echte server met meerdere machines is een vaste `<machineKey>` nodig.
+- **20 nov 2026 — Web: vragen in UniPro-stijl, midden in beeld.** Leen: "Kun je het scherm in Procurement voor
+  de vraag om Sourcing te starten aanpassen naar UniPro stijl? Staat nu ook helemaal van boven op de pagina".
+  Alle `window.confirm`/`alert` (Start Sourcing, Source All, aantal wijzigen, Place Order, meerdere Approve/Reject,
+  rechten intrekken, melding na orderbevestigingen) zijn nu dezelfde gecentreerde dialoog als "Sourcing completed"
+  (`Procurement.confirm` / `Procurement.message`). Enter in een bewerkte cel bevestigt die vraag niet meer ongezien.

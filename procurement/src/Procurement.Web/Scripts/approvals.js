@@ -33,7 +33,13 @@
     function decide(approve) {
         var ids = grid.selectedIds();
         if (!ids.length) { status.set('Selecteer eerst een of meer regels.', 'error'); return; }
-        if (ids.length > 1 && !window.confirm(ids.length + ' regels ' + (approve ? 'goedkeuren' : 'afwijzen') + '?')) return;
+        var ask = ids.length > 1
+            ? P.confirm(approve ? 'Approve' : 'Reject', ids.length + ' regels ' + (approve ? 'goedkeuren' : 'afwijzen') + '?', approve ? 'Approve' : 'Reject')
+            : Promise.resolve(true);
+        ask.then(function (ok) { if (ok) decideConfirmed(ids, approve); });
+    }
+
+    function decideConfirmed(ids, approve) {
         status.run(approve ? 'Goedkeuren...' : 'Afwijzen...', function () {
             return P.request('POST', url('Decide'), { approvalIds: ids, approve: approve, comment: comment.value })
                 .then(function (result) { comment.value = ''; return load().then(function () { status.set(result.status); }); });

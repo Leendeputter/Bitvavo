@@ -76,23 +76,29 @@
         },
         onEdit: function (row, key, value) {
             if (currentLineId === null) return;
-            var ok = window.confirm('Opnieuw sourcen voor een totaal van ' + P.format.integer(value) + ' stuks?\n\n' +
+            var lineId = currentLineId;
+            P.confirm('Aantal wijzigen', 'Opnieuw sourcen voor een totaal van ' + P.format.integer(value) + ' stuks?\n\n' +
                 'Alle offers van deze regel (en van de andere regels in de bundel) worden opnieuw opgehaald voor dat aantal; ' +
-                'een bestaande keuze of goedkeuring vervalt.');
-            if (!ok) return;
-            var warning = null;
-            status.run('Opnieuw sourcen voor ' + P.format.integer(value) + ' stuks...', function () {
-                return P.request('POST', url('Quantity'), { lineId: currentLineId, quantity: value })
-                    .then(function (result) { warning = result.warning; return loadLocal().then(function () { status.set(result.status); }); });
-            }).then(function () {
-                // Why the offer doesn't show the typed number (below the need, or rounded to reels).
-                if (!warning) return;
-                var text = document.createElement('p');
-                text.textContent = warning;
-                return P.dialog({ title: 'Aantal aangepast', content: text, cancelText: null });
+                'een bestaande keuze of goedkeuring vervalt.', 'Sourcen').then(function (ok) {
+                if (ok && lineId === currentLineId) resourceWithQuantity(value);
+                else loadOffers();
             });
         }
     });
+
+    function resourceWithQuantity(value) {
+        var warning = null;
+        status.run('Opnieuw sourcen voor ' + P.format.integer(value) + ' stuks...', function () {
+            return P.request('POST', url('Quantity'), { lineId: currentLineId, quantity: value })
+                .then(function (result) { warning = result.warning; return loadLocal().then(function () { status.set(result.status); }); });
+        }).then(function () {
+            // Why the offer doesn't show the typed number (below the need, or rounded to reels).
+            if (!warning) return;
+            var text = document.createElement('p');
+            text.textContent = warning;
+            return P.dialog({ title: 'Aantal aangepast', content: text, cancelText: null });
+        });
+    }
 
     var requestsGrid = new P.Grid(document.getElementById('grid_requests'), {
         id: 'requests',
@@ -165,7 +171,13 @@
 
     function source(ids) {
         if (!ids.length) { status.set('Selecteer eerst een of meer aanvragen.', 'error'); return; }
-        if (ids.length > 1 && !window.confirm('Sourcing starten voor ' + ids.length + ' aanvragen?')) return;
+        var ask = ids.length > 1
+            ? P.confirm('Start Sourcing', 'Sourcing starten voor ' + ids.length + ' aanvragen?', 'Start')
+            : Promise.resolve(true);
+        ask.then(function (ok) { if (ok) startSourcing(ids); });
+    }
+
+    function startSourcing(ids) {
         var done = null;
         status.run('Sourcing van ' + ids.length + ' aanvraag/aanvragen... (dit kan even duren; leveranciers worden live bevraagd)', function () {
             return P.request('POST', url('Source'), { requestIds: ids }).then(function (result) {
@@ -220,8 +232,11 @@
     function placeOrders() {
         var ids = requestsGrid.selectedIds();
         if (!ids.length) { status.set('Selecteer eerst een of meer aanvragen.', 'error'); return; }
-        if (!window.confirm('Order(s) plaatsen voor ' + ids.length + ' aanvraag/aanvragen? Regels worden per leverancier gebundeld tot één PO per leverancier.')) return;
+        P.confirm('Place Order', 'Order(s) plaatsen voor ' + ids.length + ' aanvraag/aanvragen?\n\nRegels worden per leverancier gebundeld tot één PO per leverancier.', 'Plaatsen')
+            .then(function (ok) { if (ok) placeConfirmed(ids); });
+    }
 
+    function placeConfirmed(ids) {
         status.run('Orders voorbereiden...', function () {
             return P.request('POST', url('ShipToChoices'), { requestIds: ids }).then(function (result) {
                 if (!result.addresses.length) return '';
@@ -289,7 +304,7 @@
             // Shown after the busy state ends, as on the desktop (a dialog over a wait cursor looked stuck).
             if (!result) return;
             if (result.exceptions.length) return showConfirmationExceptions(result.exceptions);
-            if (result.message) window.alert(result.message);
+            if (result.message) return P.message('Process Order Confirmations', result.message);
         });
     }
 

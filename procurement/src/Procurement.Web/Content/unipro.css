@@ -136,6 +136,7 @@ dialog.dialog::backdrop { background: rgba(0, 0, 0, 0.25); }
 .dialog-title { padding: 6px 10px; font-weight: 600; background: linear-gradient(var(--menu-from), var(--menu-to)); border-bottom: 1px solid var(--border); }
 .dialog-body { padding: 10px; }
 .dialog-body p { margin: 0 0 8px; }
+.dialog-message { white-space: pre-line; max-width: 560px; }
 .dialog-buttons { display: flex; justify-content: flex-end; gap: 6px; padding: 0 10px 10px; }
 .dialog-list { width: 100%; min-height: 160px; font: inherit; }
 .dialog .grid { height: 320px; }

@@ -413,8 +413,10 @@
             if (commit && value > 0 && value !== row[column.key]) self.onEdit(row, column.key, value);
         }
         input.addEventListener('keydown', function (ev) {
-            if (ev.key === 'Enter') finish(true);
-            if (ev.key === 'Escape') finish(false);
+            // preventDefault: otherwise the same Enter press also "clicks" the OK button of the question
+            // that onEdit opens (20 nov 2026), which would confirm it unseen.
+            if (ev.key === 'Enter') { ev.preventDefault(); finish(true); }
+            if (ev.key === 'Escape') { ev.preventDefault(); finish(false); }
         });
         // Leaving the cell (clicking elsewhere, Tab) counts as Enter, as in a DataGridView; only Escape
         // cancels (19 nov 2026: a changed quantity silently went back when clicking another cell).
@@ -495,5 +497,22 @@
         });
     }
 
-    window.Procurement = { appRoot: appRoot, request: request, format: format, Grid: Grid, Status: Status, dialog: dialog };
+    // UniPro-style replacements for window.confirm/alert (20 nov 2026, Leen: the browser's own box sat at
+    // the top of the page; these are centred like the "Sourcing completed" dialog). Resolve true/false.
+    function textContent(text) {
+        var p = document.createElement('p');
+        p.className = 'dialog-message';
+        p.textContent = text;
+        return p;
+    }
+    function confirmDialog(title, text, okText) {
+        return dialog({ title: title, content: textContent(text), okText: okText || 'OK', cancelText: 'Cancel',
+            onShown: function (dlg) { dlg.querySelector('.dialog-buttons button').focus(); } });
+    }
+    function messageDialog(title, text) {
+        return dialog({ title: title, content: textContent(text), cancelText: null });
+    }
+
+    window.Procurement = { appRoot: appRoot, request: request, format: format, Grid: Grid, Status: Status, dialog: dialog,
+        confirm: confirmDialog, message: messageDialog };
 })(window, document);
