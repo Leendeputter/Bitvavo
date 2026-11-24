@@ -58,6 +58,10 @@ namespace Procurement.Suppliers.Farnell.Http
 
         [JsonProperty("translatedMultipleQuality")]
         public string OrderMultipleRaw { get; set; }
+
+        /// <summary>The order multiple under element14's other field name (24 nov 2026: the reel size came back empty).</summary>
+        [JsonProperty("orderMultiples")]
+        public string OrderMultiplesRaw { get; set; }
     }
 
     internal class FarnellPriceDto

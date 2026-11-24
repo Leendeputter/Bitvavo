@@ -235,7 +235,7 @@ namespace Procurement.Suppliers.Farnell
             var applicable = priceBreaks.LastOrDefault(pb => pb.BreakQuantity <= quantity) ?? priceBreaks.FirstOrDefault();
 
             int.TryParse(dto.MinimumOrderQuantityRaw, out var moq);
-            int.TryParse(dto.OrderMultipleRaw, out var multiple);
+            var multiple = OrderMultipleOf(dto);
 
             return new SupplierPricing
             {
@@ -255,19 +255,32 @@ namespace Procurement.Suppliers.Farnell
         // real response clarifies whether Farnell exposes packaging variants some other way.
         private static IReadOnlyList<SupplierPackagingOption> MapPackagingOptions(FarnellProductDto dto, int quantity)
         {
-            int.TryParse(dto.OrderMultipleRaw, out var multiple);
+            // Reel size: the order multiple, else the minimum order quantity (a full-reel SKU sells
+            // whole reels only), and only then the needed quantity. 24 nov 2026, Leen: with no
+            // multiple the "reel" was the need itself (6,600), and rounding that up to the MOQ of
+            // 10,000 gave 13,200 instead of one reel of 10,000.
+            var multiple = OrderMultipleOf(dto);
+            int.TryParse(dto.MinimumOrderQuantityRaw, out var moq);
+            var reelSize = multiple > 1 ? multiple : moq > 1 ? moq : quantity;
             return new List<SupplierPackagingOption>
             {
                 new SupplierPackagingOption
                 {
                     SupplierPartNumber = dto.Sku,
                     PackagingType = PackagingType.OriginalReel,
-                    PackagingQuantity = multiple > 0 ? multiple : quantity,
+                    PackagingQuantity = reelSize,
                     ReelType = Core.Enums.ReelType.ManufacturerOriginal,
                     ReelingFee = 0m,
                     AvailableQuantity = dto.Stock?.Level ?? 0
                 }
             };
+        }
+
+        private static int OrderMultipleOf(FarnellProductDto dto)
+        {
+            if (int.TryParse(dto.OrderMultipleRaw, out var multiple) && multiple > 0) return multiple;
+            if (int.TryParse(dto.OrderMultiplesRaw, out multiple) && multiple > 0) return multiple;
+            return 0;
         }
 
         public Task<SupplierOrderResult> CreateOrderAsync(SupplierOrderRequest request, string idempotencyKey)

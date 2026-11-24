@@ -1904,3 +1904,8 @@ in hetzelfde pad onder `Logging.FileName`.
   een koppeling als de VENID_07 als VendorId bij een leverancier in Settings staat (per database: `Unitron` en
   `Unitron_test` hebben elk hun eigen Settings), en alleen bij een Query die die order ophaalt. De Query logt nu
   welke VendorIds overgeslagen zijn; VendorId wordt getrimd en hoofdletterongevoelig vergeleken.
+- **24 nov 2026 — Farnell: reelgrootte uit de MOQ als het order multiple ontbreekt.** Leen: "Ik snap niet
+  helemaal de uitkomst van deze sourcing" (CRCW040210K0FKED, Farnell 2121730: 13.200 stuks voor een behoefte van
+  6.600). Farnell gaf geen order multiple terug, waardoor de "reel" even groot werd als de behoefte (6.600); afronden
+  naar de MOQ van 10.000 gaf dan 2 × 6.600. Nu: order multiple (`translatedMultipleQuality` of `orderMultiples`),
+  anders de MOQ, en pas daarna de behoefte. Voor deze SKU dus één reel van 10.000.
