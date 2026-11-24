@@ -695,13 +695,37 @@ namespace Procurement.Engine
 
             try
             {
-                var products = await adapter.SearchProductsAsync(new ProductSearchRequest
+                // MAX's Manufacturing Part often holds the manufacturer too ("VISHAY CRCW040210K0FKED"),
+                // which DigiKey doesn't find (24 nov 2026). The whole text first, then the part that
+                // looks like a part number.
+                IReadOnlyList<SupplierProduct> products = null;
+                SupplierException notFound = null;
+                foreach (var mpn in ManufacturerPartSearchTerms(line.ManufacturerPartNumber))
                 {
-                    Manufacturer = line.Manufacturer,
-                    ManufacturerPartNumber = line.ManufacturerPartNumber,
-                    Description = line.Description,
-                    Quantity = line.RequestedQuantity
-                });
+                    try
+                    {
+                        products = await adapter.SearchProductsAsync(new ProductSearchRequest
+                        {
+                            Manufacturer = line.Manufacturer,
+                            ManufacturerPartNumber = mpn,
+                            Description = line.Description,
+                            Quantity = line.RequestedQuantity
+                        });
+                    }
+                    catch (SupplierException ex) when (ex.ErrorCode == SupplierErrorCode.ProductNotFound)
+                    {
+                        notFound = ex;
+                        products = null;
+                        continue;
+                    }
+                    if (products != null && products.Any(p => !string.IsNullOrWhiteSpace(p.SupplierPartNumber)))
+                    {
+                        if (mpn != line.ManufacturerPartNumber)
+                            Log($"Regel {line.Id}: {adapter.SupplierCode} gevonden op '{mpn}' (Manufacturing Part '{line.ManufacturerPartNumber}')");
+                        break;
+                    }
+                }
+                if (products == null && notFound != null) throw notFound;
 
                 // Also excludes a match whose own SupplierPartNumber is blank (e.g. a marketplace-only
                 // listing with no direct part number) — same "unusable" reasoning as above, applied
@@ -751,6 +775,26 @@ namespace Procurement.Engine
                     adapter.SupplierCode, error: ex.Message);
                 return (adapter, null, MatchConfidence.Unknown);
             }
+        }
+
+        /// <summary>
+        /// What to search a supplier for (24 nov 2026): the Manufacturing Part as it is, and when it has
+        /// more than one word, each word with a digit in it, longest first ("VISHAY CRCW040210K0FKED" →
+        /// "CRCW040210K0FKED"). A manufacturer name has no digits, a part number nearly always does.
+        /// </summary>
+        public static IReadOnlyList<string> ManufacturerPartSearchTerms(string manufacturingPart)
+        {
+            var terms = new List<string>();
+            if (string.IsNullOrWhiteSpace(manufacturingPart)) return terms;
+            var whole = manufacturingPart.Trim();
+            terms.Add(whole);
+            var words = whole.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+            if (words.Length > 1)
+                terms.AddRange(words
+                    .Where(w => w.Length >= 4 && w.Any(char.IsDigit))
+                    .OrderByDescending(w => w.Length)
+                    .Where(w => !terms.Contains(w)));
+            return terms;
         }
 
         /// <summary>

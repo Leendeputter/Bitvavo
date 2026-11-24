@@ -1946,3 +1946,8 @@ in hetzelfde pad onder `Logging.FileName`.
   in plaats van een pagina die blijft laden, en elke stap staat met zijn tijd in het weblog ("Inloggen: ...").
   Het opzoeken van de MAX-licentie hield een lock vast: bleef dat hangen, dan wachtte elke volgende login mee. Nu
   een `Lazy` die bij een fout opnieuw probeert.
+- **24 nov 2026 — Zoeken op Manufacturing Part zonder fabrikantnaam.** Leen: "Voor deze regel vindt Procurement
+  geen match bij DigiKey, maar als ik zoek op CRCW040210K0FKED dan vind ik [541-10.0KLTR-ND e.a.]". In MAX staat
+  het Manufacturing Part (Part_Master.VIEWER_01) als "VISHAY CRCW040210K0FKED"; DigiKey vindt die combinatie niet.
+  Nu zoekt Procurement eerst op de hele tekst en daarna op elk woord met een cijfer erin, langste eerst
+  (`ProcurementEngine.ManufacturerPartSearchTerms`). Geldt voor alle leveranciers.
