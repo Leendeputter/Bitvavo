@@ -1940,3 +1940,9 @@ in hetzelfde pad onder `Logging.FileName`.
   veelvoud van 10 hier" (rest 6.058 op re-reel). Farnell geeft het veelvoud niet onder `translatedMultipleQuality`
   of `orderMultiples`. Elk ander veld met "multiple" in de naam telt nu ook, en bij sourcing schrijft de adapter
   per Farnell-code de velden in het weblog ("Farnell <code>: ..."), zodat het juiste veld te vinden is.
+- **24 nov 2026 — Web: inloggen blijft niet meer eindeloos laden.** Leen: "Ik heb regelmatig bij inloggen in
+  Procurement dat hij bij inloggen niet verder gaat. Dan blijft de wachtcursor staan draaien". De MAX-aanroepen bij
+  het inloggen (licentie lezen, administraties ophalen, verbinding met de administratie) geven na 45 s een melding
+  in plaats van een pagina die blijft laden, en elke stap staat met zijn tijd in het weblog ("Inloggen: ...").
+  Het opzoeken van de MAX-licentie hield een lock vast: bleef dat hangen, dan wachtte elke volgende login mee. Nu
+  een `Lazy` die bij een fout opnieuw probeert.
