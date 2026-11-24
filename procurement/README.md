@@ -1926,3 +1926,8 @@ in hetzelfde pad onder `Logging.FileName`.
   Verified, staat in de Audit Log (MAPPING_PART_NUMBER_CHANGED) en wordt door een volgende Query niet
   overschreven. Verder kiest de Part_Vendor-sync bij twee codes de code zonder "RL", en zoekt de Farnell-adapter
   bij een niet gevonden re-reel-code ("...RL") de basiscode op. Alleen in de web-app, nog niet in de desktop.
+- **24 nov 2026 — Farnell: afgesneden tape niet meer als "reel van 10".** Leen: "Ik kan de sourcing van Farnell
+  niet volgen, zeker de eerste regel niet, want dat is zeker geen OriginalReel bij dat aantal" (1469672, 16.060
+  stuks, en daardoor ook "1605× 10 OriginalReel + 500 ReReel"). De herkenning keek ook naar `unitOfMeasure`, en
+  daar staat bij de tape-code ook "reel" in. Nu alleen: "RL" = re-reel, veelvoud/MOQ van 1000+ = volle reel,
+  anders afgesneden tape.

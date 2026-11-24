@@ -322,7 +322,7 @@ namespace Procurement.Suppliers.Farnell
         /// which form it is, is read from the code itself (24 nov 2026):
         /// - ends in "RL": re-reel (Farnell's own reel, cut to length);
         /// - sold only in whole multiples of a large quantity (multiple or MOQ of 1000 or more, the
-        ///   two equal when both are given) or "REEL" as unit: full manufacturer reel of that size;
+        ///   two equal when both are given): full manufacturer reel of that size;
         /// - otherwise cut tape, sold per piece above its MOQ in steps of its multiple.
         /// </summary>
         private static SupplierPackagingOption MapPackagingOption(FarnellProductDto dto, int quantity)
@@ -330,7 +330,6 @@ namespace Procurement.Suppliers.Farnell
             var multiple = OrderMultipleOf(dto);
             int.TryParse(dto.MinimumOrderQuantityRaw, out var moq);
             int.TryParse(dto.PackSizeRaw, out var packSize);
-            var unit = dto.UnitOfMeasure ?? string.Empty;
 
             var priceBreaks = (dto.Prices ?? new List<FarnellPriceDto>())
                 .Where(p => p.Cost > 0m)
@@ -350,9 +349,9 @@ namespace Procurement.Suppliers.Farnell
 
             var isReReel = dto.Sku.EndsWith("RL", StringComparison.OrdinalIgnoreCase);
             var reelSize = multiple > 1 ? multiple : moq > 1 ? moq : packSize > 1 ? packSize : 0;
-            var isFullReel = !isReReel &&
-                (unit.IndexOf("REEL", StringComparison.OrdinalIgnoreCase) >= 0 && reelSize > 1
-                 || reelSize >= 1000 && (multiple <= 1 || moq <= 0 || moq == multiple));
+            // Not on unitOfMeasure: Farnell's cut tape code 1469672 (sold per 10) has "reel" in it too
+            // and became a "reel of 10" (24 nov 2026, Leen: "dat is zeker geen OriginalReel bij dat aantal").
+            var isFullReel = !isReReel && reelSize >= 1000 && (multiple <= 1 || moq <= 0 || moq == multiple);
 
             if (isReReel)
             {

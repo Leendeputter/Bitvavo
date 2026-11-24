@@ -64,7 +64,7 @@ namespace Procurement.Tests.Suppliers
         {
             private const string Reel = "{\"sku\":\"2121730\",\"translatedManufacturerPartNumber\":\"CRCW040210K0FKED\",\"brandName\":\"VISHAY\",\"translatedMinimumOrderQuality\":10000,\"translatedMultipleQuality\":0,\"stock\":{\"level\":24601045},\"prices\":[{\"from\":10000,\"to\":99999,\"cost\":0.0045}]}";
             private const string ReReel = "{\"sku\":\"1469669RL\",\"translatedManufacturerPartNumber\":\"CRCW040210K0FKED\",\"brandName\":\"VISHAY\",\"translatedMinimumOrderQuality\":500,\"translatedMultipleQuality\":10,\"stock\":{\"level\":24601045},\"prices\":[{\"from\":500,\"to\":2499,\"cost\":0.0069},{\"from\":5000,\"to\":99999,\"cost\":0.0052}]}";
-            private const string Tape = "{\"sku\":\"1469669\",\"translatedManufacturerPartNumber\":\"CRCW040210K0FKED\",\"brandName\":\"VISHAY\",\"translatedMinimumOrderQuality\":10,\"translatedMultipleQuality\":10,\"stock\":{\"level\":24601045},\"prices\":[{\"from\":10,\"to\":99,\"cost\":0.0124},{\"from\":5000,\"to\":99999,\"cost\":0.0052}]}";
+            private const string Tape = "{\"sku\":\"1469669\",\"unitOfMeasure\":\"EACH (SUPPLIED ON CUT TAPE FROM REEL)\",\"translatedManufacturerPartNumber\":\"CRCW040210K0FKED\",\"brandName\":\"VISHAY\",\"translatedMinimumOrderQuality\":10,\"translatedMultipleQuality\":10,\"stock\":{\"level\":24601045},\"prices\":[{\"from\":10,\"to\":99,\"cost\":0.0124},{\"from\":5000,\"to\":99999,\"cost\":0.0052}]}";
 
             public Task<string> GetAsync(string relativeUrl)
             {
