@@ -698,7 +698,7 @@ namespace Procurement.Engine
                 // MAX's Manufacturing Part often holds the manufacturer too ("VISHAY CRCW040210K0FKED"),
                 // which DigiKey doesn't find (24 nov 2026). The whole text first, then the part that
                 // looks like a part number.
-                IReadOnlyList<SupplierProduct> products = null;
+                IReadOnlyList<SupplierProduct> products = null, firstUsable = null;
                 SupplierException notFound = null;
                 foreach (var mpn in ManufacturerPartSearchTerms(line.ManufacturerPartNumber))
                 {
@@ -718,13 +718,20 @@ namespace Procurement.Engine
                         products = null;
                         continue;
                     }
-                    if (products != null && products.Any(p => !string.IsNullOrWhiteSpace(p.SupplierPartNumber)))
+                    var usable = products?.Where(p => !string.IsNullOrWhiteSpace(p.SupplierPartNumber)).ToList();
+                    if (usable == null || usable.Count == 0) continue;
+                    // Keep the first usable result, but go on to the next term unless it's an exact
+                    // match: "VISHAY CRCW..." can find look-alikes, the bare part number the part itself.
+                    if (firstUsable == null) firstUsable = products;
+                    if (usable.Any(p => p.MatchConfidence >= MatchConfidence.Exact))
                     {
+                        firstUsable = products;
                         if (mpn != line.ManufacturerPartNumber)
                             Log($"Regel {line.Id}: {adapter.SupplierCode} gevonden op '{mpn}' (Manufacturing Part '{line.ManufacturerPartNumber}')");
                         break;
                     }
                 }
+                products = firstUsable ?? products;
                 if (products == null && notFound != null) throw notFound;
 
                 // Also excludes a match whose own SupplierPartNumber is blank (e.g. a marketplace-only

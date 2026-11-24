@@ -1951,3 +1951,9 @@ in hetzelfde pad onder `Logging.FileName`.
   het Manufacturing Part (Part_Master.VIEWER_01) als "VISHAY CRCW040210K0FKED"; DigiKey vindt die combinatie niet.
   Nu zoekt Procurement eerst op de hele tekst en daarna op elk woord met een cijfer erin, langste eerst
   (`ProcurementEngine.ManufacturerPartSearchTerms`). Geldt voor alle leveranciers.
+- **24 nov 2026 — DigiKey: zoekresultaten hadden geen DigiKey-nummer.** Leen: "Digikey geeft nog steeds geen
+  resultaat voor dit item". DigiKey's v4-zoekopdracht zet de DigiKey-nummers per verpakking in
+  `ProductVariations`, niet op het product; elk gevonden product had dus een leeg nummer en telde als "niet
+  gevonden". Nu: het nummer van de Tape & Reel-variant (anders de eerste), en ook `ExactMatches` uit de respons.
+  Het zoeken gaat door naar het volgende zoekwoord tot er een exacte match is, zodat "VISHAY CRCW…" geen
+  look-alike oplevert als "CRCW…" het onderdeel zelf vindt.

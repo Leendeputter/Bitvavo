@@ -34,6 +34,10 @@ namespace Procurement.Suppliers.DigiKey.Http
 
         [JsonProperty("ProductsCount")]
         public int ProductsCount { get; set; }
+
+        /// <summary>V4: the products whose part number matches the keywords exactly, listed apart from Products.</summary>
+        [JsonProperty("ExactMatches")]
+        public List<DigiKeyProductDto> ExactMatches { get; set; }
     }
 
     internal class DigiKeyProductDetailsResponse

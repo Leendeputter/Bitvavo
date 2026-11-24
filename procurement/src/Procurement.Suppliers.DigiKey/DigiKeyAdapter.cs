@@ -92,13 +92,16 @@ namespace Procurement.Suppliers.DigiKey
             var responseJson = await _httpClient.PostAsync("products/v4/search/keyword", body).ConfigureAwait(false);
             var response = Deserialize<DigiKeyKeywordSearchResponse>(responseJson);
 
-            if (response?.Products == null || response.Products.Count == 0)
+            var found = (response?.ExactMatches ?? new List<DigiKeyProductDto>())
+                .Concat(response?.Products ?? new List<DigiKeyProductDto>())
+                .ToList();
+            if (found.Count == 0)
             {
                 throw new SupplierException(Code, SupplierErrorCode.ProductNotFound,
                     $"DigiKey found no products for '{request.ManufacturerPartNumber}'.");
             }
 
-            return response.Products.Select(p => MapProduct(p, request)).ToList();
+            return found.Select(p => MapProduct(p, request)).ToList();
         }
 
         public async Task<SupplierProduct> GetProductAsync(string supplierPartNumber)
@@ -207,13 +210,29 @@ namespace Procurement.Suppliers.DigiKey
 
             return new SupplierProduct
             {
-                SupplierPartNumber = dto.DigiKeyPartNumber,
+                SupplierPartNumber = DigiKeyNumberOf(dto),
                 Manufacturer = dto.Manufacturer?.Text,
                 ManufacturerPartNumber = dto.ManufacturerPartNumber,
                 Description = !string.IsNullOrWhiteSpace(dto.DetailedDescription) ? dto.DetailedDescription : dto.ProductDescription,
                 MatchConfidence = confidence,
                 DatasheetUrl = dto.DatasheetUrl
             };
+        }
+
+        /// <summary>
+        /// V4 search results carry the DigiKey numbers per packaging (ProductVariations), not on the
+        /// product (24 nov 2026, Leen: CRCW040210K0FKED was found but every result had an empty part
+        /// number, so "product niet gevonden"). Tape &amp; Reel first; the packaging step reads all
+        /// variations from that number again anyway.
+        /// </summary>
+        private static string DigiKeyNumberOf(DigiKeyProductDto dto)
+        {
+            if (!string.IsNullOrWhiteSpace(dto.DigiKeyPartNumber)) return dto.DigiKeyPartNumber;
+            var variations = (dto.ProductVariations ?? new List<DigiKeyProductVariationDto>())
+                .Where(v => !string.IsNullOrWhiteSpace(v.DigiKeyProductNumber))
+                .ToList();
+            var reel = variations.FirstOrDefault(v => (v.PackageType?.Name ?? string.Empty).IndexOf("(TR)", StringComparison.OrdinalIgnoreCase) >= 0);
+            return (reel ?? variations.FirstOrDefault())?.DigiKeyProductNumber;
         }
 
         private static SupplierAvailability MapAvailability(DigiKeyProductDto dto)
