@@ -31,5 +31,14 @@ namespace Procurement.Web.Controllers
             Log.Info("{0} zette mapping {1} op Verified", CurrentSession.UserName, mappingId);
             return new JsonNetResult(new { ok = true });
         }
+
+        /// <summary>Another order code for a mapping (24 nov 2026).</summary>
+        [HttpPost]
+        public async Task<ActionResult> ChangePartNumber(int mappingId, string supplierPartNumber)
+        {
+            await Screen.ChangePartNumberAsync(mappingId, supplierPartNumber);
+            Log.Info("{0} zette mapping {1} op ordercode {2}", CurrentSession.UserName, mappingId, supplierPartNumber);
+            return new JsonNetResult(new { ok = true });
+        }
     }
 }

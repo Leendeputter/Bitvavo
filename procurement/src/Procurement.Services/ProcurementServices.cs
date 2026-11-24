@@ -48,6 +48,7 @@ namespace Procurement.Services
         public IReadOnlyList<ISupplierAdapter> Adapters { get; }
         public MaxErpConnector ErpConnector { get; }
         public MaxOrderRepository MaxOrderRepository { get; }
+        public Procurement.Core.Interfaces.IAuditLogger AuditLogger { get; }
 
         /// <summary>
         /// "Ordering.Enabled" from App.config / Web.config (17 nov 2026: order part switched off while
@@ -74,6 +75,7 @@ namespace Procurement.Services
             DbContext = new ProcurementDbContext(Session.SharedConnectionString);
 
             var auditLogger = new DbAuditLogger(DbContext);
+            AuditLogger = auditLogger;
 
             PurchaseRequestRepository = new PurchaseRequestRepository(DbContext, Session);
             SupplierProductMappingRepository = new SupplierProductMappingRepository(DbContext);

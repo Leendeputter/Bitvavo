@@ -378,7 +378,10 @@ namespace Procurement.Erp
             var existingKeys = await _supplierProductMappingRepository.GetExistingKeysAsync();
             var newMappings = new List<SupplierProductMapping>();
 
-            foreach (var vendorPart in vendorParts)
+            // Two codes of one supplier for an article (24 nov 2026, Leen: Farnell full reel and re-reel)
+            // become one mapping, so the base code goes first: a Farnell re-reel code ("...RL") isn't
+            // always found on its own, and the other packagings are looked up from any code anyway.
+            foreach (var vendorPart in vendorParts.OrderBy(v => v.VendorPart != null && v.VendorPart.EndsWith("RL", StringComparison.OrdinalIgnoreCase) ? 1 : 0))
             {
                 if (string.IsNullOrEmpty(vendorPart.VendorId) || !vendorIdToSupplierCode.TryGetValue(vendorPart.VendorId, out var supplierCode))
                     continue;

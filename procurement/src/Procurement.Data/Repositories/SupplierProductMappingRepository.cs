@@ -69,6 +69,16 @@ namespace Procurement.Data.Repositories
             await _context.SaveChangesAsync();
         });
 
+        /// <summary>Another order code typed in Supplier Mapping (24 nov 2026); a code chosen by hand counts as Verified.</summary>
+        public Task UpdatePartNumberAsync(int id, string supplierPartNumber) => _context.RunGuardedAsync(async () =>
+        {
+            var mapping = await _context.SupplierProductMappings.FindAsync(id);
+            if (mapping == null) return;
+            mapping.SupplierPartNumber = supplierPartNumber;
+            mapping.MatchConfidence = MatchConfidence.Verified;
+            await _context.SaveChangesAsync();
+        });
+
         /// <summary>
         /// Overwrites an existing mapping's found-product fields in place — used by
         /// ProcurementEngine.ResolveOneMappingAsync to self-heal a mapping that was previously cached

@@ -227,6 +227,14 @@ namespace Procurement.Suppliers.Farnell
                 .ConfigureAwait(false);
 
             var dto = products.FirstOrDefault();
+            if (dto == null && supplierPartNumber.Length > 2 && supplierPartNumber.EndsWith("RL", StringComparison.OrdinalIgnoreCase))
+            {
+                // A re-reel code ("1469669RL") not found on its own: its base code (cut tape) is the same
+                // part, and the packaging step adds the re-reel back when Farnell lists it (24 nov 2026).
+                var baseTerm = Uri.EscapeDataString($"id:{supplierPartNumber.Substring(0, supplierPartNumber.Length - 2)}");
+                dto = (await FetchProductsAsync($"catalog/products?term={baseTerm}&resultsSettings.responseGroup=large")
+                    .ConfigureAwait(false)).FirstOrDefault();
+            }
             if (dto == null)
             {
                 throw new SupplierException(Code, SupplierErrorCode.ProductNotFound,

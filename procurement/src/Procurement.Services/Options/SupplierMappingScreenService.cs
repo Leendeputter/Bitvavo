@@ -59,5 +59,20 @@ namespace Procurement.Services.Options
 
         public Task MarkVerifiedAsync(int mappingId) =>
             _services.SupplierProductMappingRepository.UpdateConfidenceAsync(mappingId, MatchConfidence.Verified);
+
+        /// <summary>
+        /// Another order code for this article at this supplier (24 nov 2026, Leen: two Farnell codes in
+        /// Part_Vendor, full reel and re-reel, "kan ik nu 1 van de 2 in de supplier mapping zetten?").
+        /// A later Query never overwrites it: Part_Vendor only adds mappings that don't exist yet.
+        /// </summary>
+        public async Task ChangePartNumberAsync(int mappingId, string supplierPartNumber)
+        {
+            var code = (supplierPartNumber ?? string.Empty).Trim();
+            if (code.Length == 0) throw new InvalidOperationException("Vul een ordercode in.");
+            if (code.Length > 100) throw new InvalidOperationException("De ordercode is te lang (maximaal 100 tekens).");
+            await _services.SupplierProductMappingRepository.UpdatePartNumberAsync(mappingId, code);
+            await _services.AuditLogger.LogAsync("SupplierProductMapping", mappingId.ToString(), "MAPPING_PART_NUMBER_CHANGED", "Success",
+                responsePayload: $"SupplierPartNumber={code}", userOrSystem: _services.Session.UserName);
+        }
     }
 }

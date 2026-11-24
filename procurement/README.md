@@ -1919,3 +1919,10 @@ in hetzelfde pad onder `Logging.FileName`.
   rest afgerond op het veelvoud van die code (`SupplierPackagingOption.OrderMultiple`). Een product wordt 2 minuten
   onthouden, zodat één sourcing Farnell niet drie keer om hetzelfde product vraagt. Niet geverifieerd tegen een
   echte API-respons; een re-reel-toeslag van Farnell is nog niet meegenomen (staat op 0).
+- **24 nov 2026 — Supplier Mapping: ordercode aanpassen.** Leen: "Kan ik in de supplier mapping regels aanpassen?
+  Ik heb bv een item waar wij bij Farnell 2 codes hebben staan in de PartVendor, voor volle reel en reReel."
+  Er is maar één mapping per artikel en leverancier (unieke index); bij twee Part_Vendor-regels werd de eerste
+  genomen. Nu: knop "Change Supplier Part Number..." (of dubbelklik) in de web-app; een handmatige code telt als
+  Verified, staat in de Audit Log (MAPPING_PART_NUMBER_CHANGED) en wordt door een volgende Query niet
+  overschreven. Verder kiest de Part_Vendor-sync bij twee codes de code zonder "RL", en zoekt de Farnell-adapter
+  bij een niet gevonden re-reel-code ("...RL") de basiscode op. Alleen in de web-app, nog niet in de desktop.
