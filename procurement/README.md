@@ -1931,3 +1931,8 @@ in hetzelfde pad onder `Logging.FileName`.
   stuks, en daardoor ook "1605× 10 OriginalReel + 500 ReReel"). De herkenning keek ook naar `unitOfMeasure`, en
   daar staat bij de tape-code ook "reel" in. Nu alleen: "RL" = re-reel, veelvoud/MOQ van 1000+ = volle reel,
   anders afgesneden tape.
+- **24 nov 2026 — Farnell re-reel: minimum en veelvoud.** Leen: "Bij Farnell zit dat in de stuksprijs. Maar
+  volgens mij kun je daar niet precies per stuk laten rereelen, maar vaak in een veelvoud" (RE_REEL: Min 500 /
+  Meerdere 10). De re-reel-toeslag blijft 0 (zit in de stuksprijs). Geeft Farnell bij een "...RL"-code geen
+  veelvoud, dan neemt die het veelvoud van de basiscode over; de rest van een combinatie wordt daarop afgerond en
+  is minimaal de MOQ van de re-reel.

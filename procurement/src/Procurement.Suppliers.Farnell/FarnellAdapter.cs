@@ -190,11 +190,24 @@ namespace Procurement.Suppliers.Farnell
             }
 
             // Another code without its own prices can't be compared, so it's left out; the mapped code always stays.
-            return codes
+            var options = codes
                 .GroupBy(c => c.Sku, StringComparer.OrdinalIgnoreCase)
                 .Select(g => MapPackagingOption(g.First(), quantity))
                 .Where(o => string.Equals(o.SupplierPartNumber, mapped.Sku, StringComparison.OrdinalIgnoreCase) || o.PriceBreaks != null)
                 .ToList();
+
+            // A re-reel is cut from the same tape as its base code and comes in the same steps (24 nov 2026,
+            // Leen: "RE_REEL (Min: 500 / Meerdere: 10)"; the rest came out as 6,058). When Farnell gives no
+            // multiple for the "...RL" code, the base code's multiple is used.
+            foreach (var reReel in options.Where(o => o.PackagingType == PackagingType.ReReel && o.OrderMultiple <= 1))
+            {
+                var baseCode = reReel.SupplierPartNumber.Substring(0, reReel.SupplierPartNumber.Length - 2);
+                var baseOption = options.FirstOrDefault(o => string.Equals(o.SupplierPartNumber, baseCode, StringComparison.OrdinalIgnoreCase));
+                if (baseOption != null && baseOption.OrderMultiple > 1)
+                    reReel.OrderMultiple = baseOption.OrderMultiple;
+            }
+
+            return options;
         }
 
         // Pricing, availability and packaging each read the same product: remembered for a short
