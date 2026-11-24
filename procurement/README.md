@@ -1936,3 +1936,7 @@ in hetzelfde pad onder `Logging.FileName`.
   Meerdere 10). De re-reel-toeslag blijft 0 (zit in de stuksprijs). Geeft Farnell bij een "...RL"-code geen
   veelvoud, dan neemt die het veelvoud van de basiscode over; de rest van een combinatie wordt daarop afgerond en
   is minimaal de MOQ van de re-reel.
+- **24 nov 2026 — Farnell: velden in het log, veelvoud ook onder andere namen.** Leen: "Ik krijg nog steeds geen
+  veelvoud van 10 hier" (rest 6.058 op re-reel). Farnell geeft het veelvoud niet onder `translatedMultipleQuality`
+  of `orderMultiples`. Elk ander veld met "multiple" in de naam telt nu ook, en bij sourcing schrijft de adapter
+  per Farnell-code de velden in het weblog ("Farnell <code>: ..."), zodat het juiste veld te vinden is.

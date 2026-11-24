@@ -289,6 +289,8 @@ namespace Procurement.Services
                 // Sourcing steps in the log file (19 nov 2026), per user.
                 Trace = text => NLog.LogManager.GetLogger("Procurement.Sourcing").Info("{0}: {1}", Session.UserName, text)
             };
+            foreach (var farnell in Adapters.OfType<Procurement.Suppliers.Farnell.FarnellAdapter>())
+                farnell.Trace = Engine.Trace;
         }
 
         public void Dispose() => DbContext?.Dispose();

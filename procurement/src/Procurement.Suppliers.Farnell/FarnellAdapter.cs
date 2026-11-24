@@ -196,6 +196,10 @@ namespace Procurement.Suppliers.Farnell
                 .Where(o => string.Equals(o.SupplierPartNumber, mapped.Sku, StringComparison.OrdinalIgnoreCase) || o.PriceBreaks != null)
                 .ToList();
 
+            if (Trace != null)
+                foreach (var code in codes)
+                    Trace($"Farnell {code.Sku}: {DescribeForLog(code)}");
+
             // A re-reel is cut from the same tape as its base code and comes in the same steps (24 nov 2026,
             // Leen: "RE_REEL (Min: 500 / Meerdere: 10)"; the rest came out as 6,058). When Farnell gives no
             // multiple for the "...RL" code, the base code's multiple is used.
@@ -390,10 +394,37 @@ namespace Procurement.Suppliers.Farnell
             return option;
         }
 
+        /// <summary>Sourcing log (24 nov 2026), set by ProcurementServices; null = no logging.</summary>
+        public Action<string> Trace { get; set; }
+
+        /// <summary>The fields that decide the packaging, as Farnell sent them, for the log.</summary>
+        private static string DescribeForLog(FarnellProductDto dto)
+        {
+            var parts = new List<string>
+            {
+                $"translatedMinimumOrderQuality={dto.MinimumOrderQuantityRaw ?? "-"}",
+                $"translatedMultipleQuality={dto.OrderMultipleRaw ?? "-"}",
+                $"orderMultiples={dto.OrderMultiplesRaw ?? "-"}",
+                $"unitOfMeasure={dto.UnitOfMeasure ?? "-"}",
+                $"packSize={dto.PackSizeRaw ?? "-"}",
+                "prices=" + string.Join(" ", (dto.Prices ?? new List<FarnellPriceDto>()).Select(p => $"{p.From}+:{p.Cost}"))
+            };
+            if (dto.Extra != null)
+                parts.AddRange(dto.Extra
+                    .Where(f => f.Value != null && f.Value.Type != Newtonsoft.Json.Linq.JTokenType.Object && f.Value.Type != Newtonsoft.Json.Linq.JTokenType.Array)
+                    .Select(f => $"{f.Key}={f.Value}"));
+            return string.Join("; ", parts);
+        }
+
         private static int OrderMultipleOf(FarnellProductDto dto)
         {
             if (int.TryParse(dto.OrderMultipleRaw, out var multiple) && multiple > 0) return multiple;
             if (int.TryParse(dto.OrderMultiplesRaw, out multiple) && multiple > 0) return multiple;
+            if (dto.Extra != null)
+                foreach (var field in dto.Extra.Where(f => f.Key.IndexOf("multiple", StringComparison.OrdinalIgnoreCase) >= 0))
+                    if (field.Value != null && field.Value.Type != Newtonsoft.Json.Linq.JTokenType.Object && field.Value.Type != Newtonsoft.Json.Linq.JTokenType.Array
+                        && int.TryParse(field.Value.ToString(), out multiple) && multiple > 0)
+                        return multiple;
             return 0;
         }
 

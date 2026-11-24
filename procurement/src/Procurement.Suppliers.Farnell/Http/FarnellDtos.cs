@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace Procurement.Suppliers.Farnell.Http
 {
@@ -69,6 +70,13 @@ namespace Procurement.Suppliers.Farnell.Http
 
         [JsonProperty("packSize")]
         public string PackSizeRaw { get; set; }
+
+        /// <summary>
+        /// Every other field of the response (24 nov 2026): the order multiple didn't come through under
+        /// the two known names, so it's also looked for here, and the fields are written to the log.
+        /// </summary>
+        [JsonExtensionData]
+        public IDictionary<string, JToken> Extra { get; set; }
     }
 
     internal class FarnellPriceDto
