@@ -1899,3 +1899,8 @@ in hetzelfde pad onder `Logging.FileName`.
   Alle `window.confirm`/`alert` (Start Sourcing, Source All, aantal wijzigen, Place Order, meerdere Approve/Reject,
   rechten intrekken, melding na orderbevestigingen) zijn nu dezelfde gecentreerde dialoog als "Sourcing completed"
   (`Procurement.confirm` / `Procurement.message`). Enter in een bewerkte cel bevestigt die vraag niet meer ongezien.
+- **24 nov 2026 — Part_Vendor-koppelingen: log welke vendors overgeslagen worden.** Leen: een Part/Vendor
+  Record in MAX gaf toch "niet gevonden" en stond niet in Supplier Mapping. Een Part_Vendor-regel wordt alleen
+  een koppeling als de VENID_07 als VendorId bij een leverancier in Settings staat (per database: `Unitron` en
+  `Unitron_test` hebben elk hun eigen Settings), en alleen bij een Query die die order ophaalt. De Query logt nu
+  welke VendorIds overgeslagen zijn; VendorId wordt getrimd en hoofdletterongevoelig vergeleken.

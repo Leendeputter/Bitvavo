@@ -351,12 +351,28 @@ namespace Procurement.Erp
             if (partIds.Count == 0) return;
 
             var suppliers = await _supplierRepository.GetAllAsync();
-            var vendorIdToSupplierCode = suppliers
-                .Where(s => !string.IsNullOrEmpty(s.VendorId))
-                .ToDictionary(s => s.VendorId, s => s.SupplierCode);
-            if (vendorIdToSupplierCode.Count == 0) return;
+            // Trimmed and case-insensitive, and a VendorId filled in twice doesn't crash the Query (24 nov 2026).
+            var vendorIdToSupplierCode = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var s in suppliers.Where(s => !string.IsNullOrWhiteSpace(s.VendorId)))
+                if (!vendorIdToSupplierCode.ContainsKey(s.VendorId.Trim()))
+                    vendorIdToSupplierCode[s.VendorId.Trim()] = s.SupplierCode;
+            if (vendorIdToSupplierCode.Count == 0)
+            {
+                QueryLog.Warn("Part_Vendor: geen enkele leverancier heeft een VendorId in Settings, dus geen koppelingen uit MAX.");
+                return;
+            }
 
             var vendorParts = await _maxVendorPartRepository.GetForPartsAsync(partIds);
+
+            // Says which MAX vendors were skipped (24 nov 2026, Leen: a Part_Vendor record that never
+            // showed up in Supplier Mapping): a VendorId missing or different in Settings.
+            var unknownVendors = vendorParts
+                .Where(v => !string.IsNullOrEmpty(v.VendorId) && !vendorIdToSupplierCode.ContainsKey(v.VendorId))
+                .GroupBy(v => v.VendorId, StringComparer.OrdinalIgnoreCase)
+                .Select(g => $"{g.Key} ({g.Count()}x)")
+                .ToList();
+            if (unknownVendors.Count > 0)
+                QueryLog.Info("Part_Vendor: overgeslagen, VendorId niet in Settings: {0}", string.Join(", ", unknownVendors));
 
             // One query for the existing mappings and one save for the new ones (17 nov 2026).
             var existingKeys = await _supplierProductMappingRepository.GetExistingKeysAsync();
