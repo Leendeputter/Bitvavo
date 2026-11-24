@@ -847,7 +847,7 @@ namespace Procurement.Engine
             if (variant != null && variant.PackagingType == PackagingType.OriginalReel && variant.PackagingQuantity > 0)
                 orderMultiple = variant.PackagingQuantity;
             else if (ownPriceBreaks != null)
-                orderMultiple = 1;
+                orderMultiple = variant.OrderMultiple > 1 ? variant.OrderMultiple : 1;
             else
                 orderMultiple = Math.Max(pricing.OrderMultiple, 1);
 

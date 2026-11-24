@@ -1,4 +1,6 @@
+using System.Linq;
 using System.Threading.Tasks;
+using Procurement.Core.Interfaces;
 using Procurement.Core.Enums;
 using Procurement.Core.Models;
 using Procurement.Suppliers.Farnell;
@@ -55,6 +57,39 @@ namespace Procurement.Tests.Suppliers
             var second = await adapter.CreateOrderAsync(request, idempotencyKey);
 
             Assert.Equal(first.SupplierOrderNumber, second.SupplierOrderNumber);
+        }
+
+        /// <summary>Real-mode JSON for CRCW040210K0FKED (24 nov 2026): full reel, re-reel and cut tape codes.</summary>
+        private class FakeFarnellHttp : ISupplierHttpClient
+        {
+            private const string Reel = "{\"sku\":\"2121730\",\"translatedManufacturerPartNumber\":\"CRCW040210K0FKED\",\"brandName\":\"VISHAY\",\"translatedMinimumOrderQuality\":10000,\"translatedMultipleQuality\":0,\"stock\":{\"level\":24601045},\"prices\":[{\"from\":10000,\"to\":99999,\"cost\":0.0045}]}";
+            private const string ReReel = "{\"sku\":\"1469669RL\",\"translatedManufacturerPartNumber\":\"CRCW040210K0FKED\",\"brandName\":\"VISHAY\",\"translatedMinimumOrderQuality\":500,\"translatedMultipleQuality\":10,\"stock\":{\"level\":24601045},\"prices\":[{\"from\":500,\"to\":2499,\"cost\":0.0069},{\"from\":5000,\"to\":99999,\"cost\":0.0052}]}";
+            private const string Tape = "{\"sku\":\"1469669\",\"translatedManufacturerPartNumber\":\"CRCW040210K0FKED\",\"brandName\":\"VISHAY\",\"translatedMinimumOrderQuality\":10,\"translatedMultipleQuality\":10,\"stock\":{\"level\":24601045},\"prices\":[{\"from\":10,\"to\":99,\"cost\":0.0124},{\"from\":5000,\"to\":99999,\"cost\":0.0052}]}";
+
+            public Task<string> GetAsync(string relativeUrl)
+            {
+                var products = relativeUrl.Contains("manuPartNum") ? Reel + "," + ReReel + "," + Tape : Reel;
+                return Task.FromResult("{\"premierFarnellPartNumberReturn\":{\"numberOfResults\":1,\"products\":[" + products + "]}}");
+            }
+
+            public Task<string> PostAsync(string relativeUrl, string jsonBody) => throw new System.NotSupportedException();
+        }
+
+        [Fact]
+        public async Task GetPackagingOptions_RealMode_ReturnsEveryOrderCodeOfThePart()
+        {
+            var adapter = new FarnellAdapter(new FarnellOptions { UseMockData = false }, new FakeFarnellHttp());
+
+            var options = await adapter.GetPackagingOptionsAsync("2121730", 6600);
+
+            Assert.Equal(3, options.Count);
+            var reel = options.Single(o => o.SupplierPartNumber == "2121730");
+            Assert.Equal(PackagingType.OriginalReel, reel.PackagingType);
+            Assert.Equal(10000, reel.PackagingQuantity);
+            Assert.Equal(PackagingType.ReReel, options.Single(o => o.SupplierPartNumber == "1469669RL").PackagingType);
+            var tape = options.Single(o => o.SupplierPartNumber == "1469669");
+            Assert.Equal(PackagingType.CutTape, tape.PackagingType);
+            Assert.Equal(10, tape.OrderMultiple);
         }
     }
 }

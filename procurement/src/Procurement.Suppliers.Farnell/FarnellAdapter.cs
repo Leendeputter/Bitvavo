@@ -154,13 +154,73 @@ namespace Procurement.Suppliers.Farnell
                 return FarnellMockDataProvider.BuildPackagingOptions(supplierPartNumber, quantity);
 
             var dto = await FetchProductBySkuAsync(supplierPartNumber).ConfigureAwait(false);
-            return MapPackagingOptions(dto, quantity);
+            return await GetAllPackagingsAsync(dto, quantity).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Every order code of the same manufacturer part as its own packaging option (user decision,
+        /// 24 nov 2026: "Farnell heeft 3 verschillende ordercodes voor dit artikel", e.g. full reel
+        /// 2121730, re-reel 1469669RL and cut tape 1469669). Each keeps its own price breaks, MOQ,
+        /// multiple and stock, and the chosen offer orders its own code. Falls back to the mapped
+        /// code alone when the search fails or finds nothing else.
+        /// </summary>
+        private async Task<IReadOnlyList<SupplierPackagingOption>> GetAllPackagingsAsync(FarnellProductDto mapped, int quantity)
+        {
+            var codes = new List<FarnellProductDto> { mapped };
+            if (!string.IsNullOrWhiteSpace(mapped.ManufacturerPartNumber))
+            {
+                try
+                {
+                    var term = Uri.EscapeDataString($"manuPartNum:{mapped.ManufacturerPartNumber}");
+                    var products = await FetchProductsAsync($"catalog/products?term={term}&resultsSettings.responseGroup=large")
+                        .ConfigureAwait(false);
+                    codes.AddRange(products.Where(p =>
+                        !string.IsNullOrWhiteSpace(p.Sku)
+                        && !string.Equals(p.Sku, mapped.Sku, StringComparison.OrdinalIgnoreCase)
+                        && string.Equals(p.ManufacturerPartNumber, mapped.ManufacturerPartNumber, StringComparison.OrdinalIgnoreCase)
+                        && (string.IsNullOrWhiteSpace(mapped.BrandName) || string.IsNullOrWhiteSpace(p.BrandName)
+                            || string.Equals(p.BrandName, mapped.BrandName, StringComparison.OrdinalIgnoreCase))));
+                    foreach (var p in products.Where(p => !string.IsNullOrWhiteSpace(p.Sku)))
+                        RememberProduct(p);
+                }
+                catch (SupplierException)
+                {
+                    // Only the mapped code then; sourcing with that one still works as before.
+                }
+            }
+
+            // Another code without its own prices can't be compared, so it's left out; the mapped code always stays.
+            return codes
+                .GroupBy(c => c.Sku, StringComparer.OrdinalIgnoreCase)
+                .Select(g => MapPackagingOption(g.First(), quantity))
+                .Where(o => string.Equals(o.SupplierPartNumber, mapped.Sku, StringComparison.OrdinalIgnoreCase) || o.PriceBreaks != null)
+                .ToList();
+        }
+
+        // Pricing, availability and packaging each read the same product: remembered for a short
+        // while so one sourcing doesn't ask Farnell three times for it (24 nov 2026, now that the
+        // packaging step also searches the other order codes).
+        private readonly ConcurrentDictionary<string, (DateTime At, FarnellProductDto Product)> _recentProducts =
+            new ConcurrentDictionary<string, (DateTime At, FarnellProductDto Product)>(StringComparer.OrdinalIgnoreCase);
+        private static readonly TimeSpan RecentProductLifetime = TimeSpan.FromMinutes(2);
+
+        private void RememberProduct(FarnellProductDto product) =>
+            _recentProducts[product.Sku] = (DateTime.UtcNow, product);
+
+        private async Task<FarnellProductDto> FetchProductBySkuAsync(string supplierPartNumber)
+        {
+            if (_recentProducts.TryGetValue(supplierPartNumber, out var recent) && DateTime.UtcNow - recent.At < RecentProductLifetime)
+                return recent.Product;
+
+            var dto = await FetchProductBySkuUncachedAsync(supplierPartNumber).ConfigureAwait(false);
+            RememberProduct(dto);
+            return dto;
         }
 
         // element14's catalog/products endpoint returns pricing/stock/datasheets in the same
         // response as the product itself (no separate pricing/availability endpoints), so every
         // real-mode read method above funnels through this single-SKU lookup.
-        private async Task<FarnellProductDto> FetchProductBySkuAsync(string supplierPartNumber)
+        private async Task<FarnellProductDto> FetchProductBySkuUncachedAsync(string supplierPartNumber)
         {
             var term = Uri.EscapeDataString($"id:{supplierPartNumber}");
             var products = await FetchProductsAsync($"catalog/products?term={term}&resultsSettings.responseGroup=large")
@@ -249,31 +309,65 @@ namespace Procurement.Suppliers.Farnell
             };
         }
 
-        // element14's product search response doesn't expose a distinct reel/cut-tape packaging
-        // breakdown the way DigiKey's ProductVariations does — it's a single SKU per packaging
-        // form. Approximated here as one OriginalReel option sized to the order multiple, until a
-        // real response clarifies whether Farnell exposes packaging variants some other way.
-        private static IReadOnlyList<SupplierPackagingOption> MapPackagingOptions(FarnellProductDto dto, int quantity)
+        /// <summary>
+        /// One Farnell order code as a packaging option. element14 has one code per packaging form;
+        /// which form it is, is read from the code itself (24 nov 2026):
+        /// - ends in "RL": re-reel (Farnell's own reel, cut to length);
+        /// - sold only in whole multiples of a large quantity (multiple or MOQ of 1000 or more, the
+        ///   two equal when both are given) or "REEL" as unit: full manufacturer reel of that size;
+        /// - otherwise cut tape, sold per piece above its MOQ in steps of its multiple.
+        /// </summary>
+        private static SupplierPackagingOption MapPackagingOption(FarnellProductDto dto, int quantity)
         {
-            // Reel size: the order multiple, else the minimum order quantity (a full-reel SKU sells
-            // whole reels only), and only then the needed quantity. 24 nov 2026, Leen: with no
-            // multiple the "reel" was the need itself (6,600), and rounding that up to the MOQ of
-            // 10,000 gave 13,200 instead of one reel of 10,000.
             var multiple = OrderMultipleOf(dto);
             int.TryParse(dto.MinimumOrderQuantityRaw, out var moq);
-            var reelSize = multiple > 1 ? multiple : moq > 1 ? moq : quantity;
-            return new List<SupplierPackagingOption>
+            int.TryParse(dto.PackSizeRaw, out var packSize);
+            var unit = dto.UnitOfMeasure ?? string.Empty;
+
+            var priceBreaks = (dto.Prices ?? new List<FarnellPriceDto>())
+                .Where(p => p.Cost > 0m)
+                .Select(p => new PriceBreak { BreakQuantity = p.From, UnitPrice = p.Cost })
+                .OrderBy(pb => pb.BreakQuantity)
+                .ToList();
+
+            var option = new SupplierPackagingOption
             {
-                new SupplierPackagingOption
-                {
-                    SupplierPartNumber = dto.Sku,
-                    PackagingType = PackagingType.OriginalReel,
-                    PackagingQuantity = reelSize,
-                    ReelType = Core.Enums.ReelType.ManufacturerOriginal,
-                    ReelingFee = 0m,
-                    AvailableQuantity = dto.Stock?.Level ?? 0
-                }
+                SupplierPartNumber = dto.Sku,
+                AvailableQuantity = dto.Stock?.Level ?? 0,
+                MinimumOrderQuantity = moq > 0 ? moq : 0,
+                OrderMultiple = multiple > 1 ? multiple : 0,
+                PriceBreaks = priceBreaks.Count > 0 ? priceBreaks : null,
+                ReelingFee = 0m
             };
+
+            var isReReel = dto.Sku.EndsWith("RL", StringComparison.OrdinalIgnoreCase);
+            var reelSize = multiple > 1 ? multiple : moq > 1 ? moq : packSize > 1 ? packSize : 0;
+            var isFullReel = !isReReel &&
+                (unit.IndexOf("REEL", StringComparison.OrdinalIgnoreCase) >= 0 && reelSize > 1
+                 || reelSize >= 1000 && (multiple <= 1 || moq <= 0 || moq == multiple));
+
+            if (isReReel)
+            {
+                option.PackagingType = PackagingType.ReReel;
+                option.ReelType = Core.Enums.ReelType.SupplierReReel;
+                option.PackagingQuantity = 1;
+            }
+            else if (isFullReel)
+            {
+                option.PackagingType = PackagingType.OriginalReel;
+                option.ReelType = Core.Enums.ReelType.ManufacturerOriginal;
+                // Reel size: the multiple, else the MOQ (a full-reel code sells whole reels only),
+                // and only then the needed quantity (24 nov 2026: 2 × 6,600 instead of 1 × 10,000).
+                option.PackagingQuantity = reelSize > 1 ? reelSize : quantity;
+                option.OrderMultiple = 0;
+            }
+            else
+            {
+                option.PackagingType = PackagingType.CutTape;
+                option.PackagingQuantity = 1;
+            }
+
+            return option;
         }
 
         private static int OrderMultipleOf(FarnellProductDto dto)

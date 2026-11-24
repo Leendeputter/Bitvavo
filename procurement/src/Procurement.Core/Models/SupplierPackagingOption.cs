@@ -20,6 +20,12 @@ namespace Procurement.Core.Models
         /// <summary>0 = unknown; the part's general pricing MOQ is used then.</summary>
         public int MinimumOrderQuantity { get; set; }
 
+        /// <summary>
+        /// Order multiple of a variant sold per piece (cut tape, re-reel), 0 = unknown (then 1). Farnell
+        /// sells its cut tape and re-reel per 10 (24 nov 2026). A full reel always rounds to whole reels.
+        /// </summary>
+        public int OrderMultiple { get; set; }
+
         /// <summary>Null or empty = unknown; the part's general pricing call is used then.</summary>
         public List<PriceBreak> PriceBreaks { get; set; }
     }

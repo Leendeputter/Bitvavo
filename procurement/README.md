@@ -1909,3 +1909,13 @@ in hetzelfde pad onder `Logging.FileName`.
   6.600). Farnell gaf geen order multiple terug, waardoor de "reel" even groot werd als de behoefte (6.600); afronden
   naar de MOQ van 10.000 gaf dan 2 × 6.600. Nu: order multiple (`translatedMultipleQuality` of `orderMultiples`),
   anders de MOQ, en pas daarna de behoefte. Voor deze SKU dus één reel van 10.000.
+- **24 nov 2026 — Farnell: alle ordercodes van een artikel als verpakkingsopties.** Leen: "Farnell heeft 3
+  verschillende ordercodes voor dit artikel. Hoe bestel ik nu de juiste" (CRCW040210K0FKED: volle reel 2121730,
+  re-reel 1469669RL, afgesneden tape 1469669); gekozen: "Ja, alle verpakkingen ophalen". De Farnell-adapter zoekt
+  nu met het Manufacturing Part van de gekoppelde code de andere codes op (zelfde MPN en merk) en maakt van elke
+  code een eigen optie met eigen prijsstaffels, MOQ, veelvoud en voorraad. Verpakking: code eindigt op "RL" =
+  re-reel; veelvoud of MOQ van 1000+ (of eenheid "REEL") = volle reel van die grootte; anders afgesneden tape.
+  Het gekozen offer bestelt zijn eigen code; de combinatie "hele reels + rest" werkt nu ook bij Farnell, met de
+  rest afgerond op het veelvoud van die code (`SupplierPackagingOption.OrderMultiple`). Een product wordt 2 minuten
+  onthouden, zodat één sourcing Farnell niet drie keer om hetzelfde product vraagt. Niet geverifieerd tegen een
+  echte API-respons; een re-reel-toeslag van Farnell is nog niet meegenomen (staat op 0).

@@ -53,6 +53,8 @@ namespace Procurement.Core.BusinessLogic
                 .Select(o =>
                 {
                     var quantity = Math.Max(rest, Math.Max(o.MinimumOrderQuantity, 1));
+                    if (o.OrderMultiple > 1)
+                        quantity = (int)Math.Ceiling(quantity / (double)o.OrderMultiple) * o.OrderMultiple;
                     var price = PriceAt(o.PriceBreaks, quantity) ?? 0m;
                     return new { Option = o, Quantity = quantity, Price = price, Cost = quantity * price + o.ReelingFee };
                 })
