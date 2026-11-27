@@ -144,6 +144,9 @@ namespace Procurement.Services
             var farnellOptions = new FarnellOptions
             {
                 ApiKey = Secret(farnellSupplier, () => Secrets.FarnellApiKey),
+                // Contract pricing (27 nov 2026): both empty = list prices, as before.
+                CustomerId = Secret(farnellSupplier, () => Secrets.FarnellCustomerId),
+                SecretKey = Secret(farnellSupplier, () => Secrets.FarnellSecretKey),
                 IsSandbox = farnellSupplier?.IsSandbox ?? true,
                 UseMockData = farnellSupplier?.UseMockData ?? true,
                 // Farnell's Order API "tradeAccount" — confirmed by the user (21 okt 2026) to be

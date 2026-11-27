@@ -1957,3 +1957,11 @@ in hetzelfde pad onder `Logging.FileName`.
   gevonden". Nu: het nummer van de Tape & Reel-variant (anders de eerste), en ook `ExactMatches` uit de respons.
   Het zoeken gaat door naar het volgende zoekwoord tot er een exacte match is, zodat "VISHAY CRCW…" geen
   look-alike oplevert als "CRCW…" het onderdeel zelf vindt.
+- **27 nov 2026 — Farnell contractprijzen.** Leen: "Ik heb van Farnell credentials gehad voor contract pricing.
+  Waar moet ik die in de code verwerken?" Niet in de code: twee nieuwe secrets in Beheer > App Secrets,
+  `FarnellCustomerId` en `FarnellSecretKey` (plus leesrecht in SecretAccess). Zijn beide gevuld, dan ondertekent
+  de Farnell-adapter elke productzoekvraag met `userInfo.customerId`, `userInfo.timestamp` (UTC,
+  yyyy-MM-ddTHH:mm:ss.fff) en `userInfo.signature` = Base64(HMAC-SHA1(secret key, operatie + timestamp)), met als
+  operatie searchByPremierFarnellPartNumber / searchByManufacturerPartNumber / searchByKeyword
+  (`FarnellHttpClientWrapper.ContractPricingQuery`). Leeg = lijstprijzen zoals voorheen. Niet geverifieerd tegen
+  een echte respons.

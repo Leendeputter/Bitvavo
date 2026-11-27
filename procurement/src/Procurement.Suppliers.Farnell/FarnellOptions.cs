@@ -8,6 +8,14 @@ namespace Procurement.Suppliers.Farnell
     public class FarnellOptions
     {
         public string ApiKey { get; set; }
+
+        /// <summary>
+        /// Contract pricing (27 nov 2026, Leen got these from Farnell): with both filled in, every
+        /// product search is signed (userInfo.customerId/timestamp/signature) and Farnell answers with
+        /// the account's own prices. Empty = list prices. From App Secrets, never from config.
+        /// </summary>
+        public string CustomerId { get; set; }
+        public string SecretKey { get; set; }
         public bool IsSandbox { get; set; } = true;
 
         /// <summary>

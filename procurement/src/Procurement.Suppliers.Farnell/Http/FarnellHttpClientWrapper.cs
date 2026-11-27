@@ -105,7 +105,41 @@ namespace Procurement.Suppliers.Farnell.Http
             var separator = relativeUrl.Contains("?") ? "&" : "?";
             return $"{relativeUrl}{separator}callInfo.apiKey={Uri.EscapeDataString(_options.ApiKey ?? string.Empty)}" +
                    "&callInfo.responseDataFormat=JSON" +
-                   $"&storeInfo.id={Uri.EscapeDataString(_options.StoreId ?? string.Empty)}";
+                   $"&storeInfo.id={Uri.EscapeDataString(_options.StoreId ?? string.Empty)}" +
+                   ContractPricingQuery(relativeUrl);
+        }
+
+        /// <summary>
+        /// element14's signed request for contract prices (27 nov 2026): userInfo.customerId,
+        /// userInfo.timestamp (UTC, yyyy-MM-ddTHH:mm:ss.fff) and userInfo.signature =
+        /// Base64(HMAC-SHA1(secret key, operation name + timestamp)). The operation name follows the
+        /// search type: id → searchByPremierFarnellPartNumber, manuPartNum → searchByManufacturerPartNumber,
+        /// otherwise searchByKeyword. Empty when no customer id/secret key is set.
+        /// </summary>
+        private string ContractPricingQuery(string relativeUrl)
+        {
+            if (string.IsNullOrWhiteSpace(_options.CustomerId) || string.IsNullOrWhiteSpace(_options.SecretKey)) return string.Empty;
+            if (relativeUrl.IndexOf("catalog/products", StringComparison.OrdinalIgnoreCase) < 0) return string.Empty;
+
+            var timestamp = DateTime.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.fff", System.Globalization.CultureInfo.InvariantCulture);
+            var signature = Sign(OperationName(relativeUrl), timestamp, _options.SecretKey.Trim());
+            return $"&userInfo.customerId={Uri.EscapeDataString(_options.CustomerId.Trim())}" +
+                   $"&userInfo.timestamp={Uri.EscapeDataString(timestamp)}" +
+                   $"&userInfo.signature={Uri.EscapeDataString(signature)}";
+        }
+
+        internal static string OperationName(string relativeUrl)
+        {
+            var decoded = Uri.UnescapeDataString(relativeUrl);
+            if (decoded.IndexOf("term=id:", StringComparison.OrdinalIgnoreCase) >= 0) return "searchByPremierFarnellPartNumber";
+            if (decoded.IndexOf("term=manuPartNum:", StringComparison.OrdinalIgnoreCase) >= 0) return "searchByManufacturerPartNumber";
+            return "searchByKeyword";
+        }
+
+        internal static string Sign(string operationName, string timestamp, string secretKey)
+        {
+            using (var hmac = new System.Security.Cryptography.HMACSHA1(Encoding.UTF8.GetBytes(secretKey)))
+                return Convert.ToBase64String(hmac.ComputeHash(Encoding.UTF8.GetBytes(operationName + timestamp)));
         }
 
         /// <summary>

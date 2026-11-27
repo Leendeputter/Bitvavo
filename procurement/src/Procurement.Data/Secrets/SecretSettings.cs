@@ -39,6 +39,8 @@ namespace Procurement.Data.Secrets
         public const string DigiKeyClientSecretName = "DigiKeyClientSecret";
         public const string DigiKeyRefreshTokenName = "DigiKeyRefreshToken";
         public const string FarnellApiKeyName = "FarnellApiKey";
+        public const string FarnellCustomerIdName = "FarnellCustomerId";
+        public const string FarnellSecretKeyName = "FarnellSecretKey";
         public const string MouserApiKeyName = "MouserApiKey";
         public const string TmeTokenName = "TmeToken";
         public const string TmeApiKeyName = "TmeApiKey";
@@ -58,6 +60,8 @@ namespace Procurement.Data.Secrets
             (DigiKeyClientSecretName, "DigiKey Client Secret", true),
             (DigiKeyRefreshTokenName, "DigiKey Ordering refresh token", false),
             (FarnellApiKeyName, "Farnell API Key", true),
+            (FarnellCustomerIdName, "Farnell Customer ID (contract pricing)", true),
+            (FarnellSecretKeyName, "Farnell Secret Key (contract pricing)", true),
             (MouserApiKeyName, "Mouser API Key", true),
             (TmeTokenName, "TME Token", true),
             (TmeApiKeyName, "TME API Key (signing secret)", true),
@@ -73,6 +77,8 @@ namespace Procurement.Data.Secrets
         public string DigiKeyRefreshToken => GetSecret(DigiKeyRefreshTokenName);
 
         public string FarnellApiKey => GetSecret(FarnellApiKeyName);
+        public string FarnellCustomerId => GetSecret(FarnellCustomerIdName);
+        public string FarnellSecretKey => GetSecret(FarnellSecretKeyName);
         public string MouserApiKey => GetSecret(MouserApiKeyName);
         public string TmeToken => GetSecret(TmeTokenName);
         public string TmeApiKey => GetSecret(TmeApiKeyName);
